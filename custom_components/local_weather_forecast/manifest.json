@@ -1,6 +1,7 @@
 {
   "domain": "local_weather_forecast",
   "name": "Local Weather Forecast",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@HAuser1234", "@wajo666"],
   "config_flow": true,
   "documentation": "https://github.com/wajo666/homeassistant-local-weather-forecast",
@@ -8,7 +9,6 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/wajo666/homeassistant-local-weather-forecast/issues",
   "requirements": [],
-  "after_dependencies": ["recorder"],
   "version": "2.0.2"
 }
 
