@@ -260,7 +260,6 @@ All sensors + Additional:
 
 💡 **Pro Tip**: Even without wind sensors, the integration provides ~88% accuracy. Adding wind sensors is highly recommended if available!
 
-📖 **Want even better accuracy?** See [FUTURE_SENSORS.md](FUTURE_SENSORS.md) for planned enhancements (humidity, rain sensors, cloud cover) that will boost accuracy to ~97%+!
 
 ---
 

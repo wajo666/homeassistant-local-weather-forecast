@@ -12,13 +12,16 @@ custom_components/local_weather_forecast/
 ├── const.py                   ✅
 ├── forecast_data.py           ✅
 ├── manifest.json              ✅
+├── negretti_zambra.py         ✅
 ├── sensor.py                  ✅
 ├── strings.json               ✅
 ├── zambretti.py               ✅
 └── translations/
-    ├── cs.json               ✅
-    ├── de.json               ✅
-    └── en.json               ✅
+    ├── de.json               ✅ German
+    ├── en.json               ✅ English
+    ├── gr.json               ✅ Greek
+    ├── it.json               ✅ Italian
+    └── sk.json               ✅ Slovak
 ```
 
 ### 2. Code Validation
@@ -65,13 +68,13 @@ Language: English
 #### Expected After Setup:
 ```
 Created entities:
-✅ sensor.local_forecast
-✅ sensor.local_forecast_pressure
-✅ sensor.local_forecast_temperature
-✅ sensor.local_forecast_pressure_change
-✅ sensor.local_forecast_temperature_change
-✅ sensor.local_forecast_zambretti_detail
-✅ sensor.local_forecast_neg_zam_detail
+✅ sensor.local_weather_forecast_local_forecast
+✅ sensor.local_weather_forecast_pressure
+✅ sensor.local_weather_forecast_temperature
+✅ sensor.local_weather_forecast_pressure_change
+✅ sensor.local_weather_forecast_temperature_change
+✅ sensor.local_weather_forecast_zambretti_detail
+✅ sensor.local_weather_forecast_negretti_zambra_detail
 ```
 
 ---
@@ -120,11 +123,11 @@ sensor.test_temperature:
 
 #### Expected Results:
 After 1 minute:
-- ✅ `sensor.local_forecast` shows forecast title
-- ✅ `sensor.local_forecast_pressure` = ~1013.25 hPa
-- ✅ `sensor.local_forecast_temperature` = 15.0 °C
-- ✅ `sensor.local_forecast.attributes.p0` exists
-- ✅ `sensor.local_forecast.attributes.forecast_zambretti` has text
+- ✅ `sensor.local_weather_forecast_local_forecast` shows forecast title
+- ✅ `sensor.local_weather_forecast_pressure` = ~1013.25 hPa
+- ✅ `sensor.local_weather_forecast_temperature` = 15.0 °C
+- ✅ `sensor.local_weather_forecast_local_forecast.attributes.p0` exists
+- ✅ `sensor.local_weather_forecast_local_forecast.attributes.forecast_zambretti` has text
 
 ---
 
@@ -234,7 +237,7 @@ Slovak (sk):
 5. Change to 1015 hPa
 
 #### Expected:
-- ✅ `sensor.local_forecast_pressure_change` updates
+- ✅ `sensor.local_weather_forecast_pressure_change` updates
 - ✅ Shows difference between oldest and newest (1015 - 1010 = 5 hPa)
 - ✅ Keeps data for 180 minutes
 
@@ -278,11 +281,11 @@ Wind: South, 20 km/h
 type: entities
 title: Test Local Weather Forecast
 entities:
-  - entity: sensor.local_forecast
-  - entity: sensor.local_forecast_pressure
-  - entity: sensor.local_forecast_temperature
+  - entity: sensor.local_weather_forecast_local_forecast
+  - entity: sensor.local_weather_forecast_pressure
+  - entity: sensor.local_weather_forecast_temperature
   - type: attribute
-    entity: sensor.local_forecast
+    entity: sensor.local_weather_forecast_local_forecast
     attribute: forecast_zambretti
     name: Forecast
 ```
@@ -319,7 +322,7 @@ Check in Home Assistant logs:
 ```sql
 -- Check number of state changes
 SELECT COUNT(*) FROM states 
-WHERE entity_id LIKE 'sensor.local_forecast%';
+WHERE entity_id LIKE 'sensor.local_weather_forecast%';
 ```
 
 #### Expected:

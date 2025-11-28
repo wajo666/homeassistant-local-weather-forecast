@@ -288,15 +288,21 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         ]
         self._state = titles[lang_index]
 
+        # Convert forecast lists to strings for easier parsing by detail sensors
+        zambretti_str = ", ".join(str(x) for x in zambretti_forecast) if isinstance(zambretti_forecast, list) else str(zambretti_forecast)
+        neg_zam_str = ", ".join(str(x) for x in neg_zam_forecast) if isinstance(neg_zam_forecast, list) else str(neg_zam_forecast)
+        current_condition_str = ", ".join(str(x) for x in current_condition) if isinstance(current_condition, list) else str(current_condition)
+        pressure_trend_str = ", ".join(str(x) for x in pressure_trend) if isinstance(pressure_trend, list) else str(pressure_trend)
+
         self._attributes = {
             "language": lang_index,
             "temperature": round(temperature, 1),
             "p0": round(p0, 1),
             "wind_direction": wind_data,
-            "forecast_short_term": current_condition,
-            "forecast_zambretti": zambretti_forecast,
-            "forecast_neg_zam": neg_zam_forecast,
-            "forecast_pressure_trend": pressure_trend,
+            "forecast_short_term": current_condition_str,
+            "forecast_zambretti": zambretti_str,
+            "forecast_neg_zam": neg_zam_str,
+            "forecast_pressure_trend": pressure_trend_str,
         }
 
     def _calculate_sea_level_pressure(
@@ -440,18 +446,27 @@ class LocalForecastPressureSensor(LocalWeatherForecastEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast"],
+                ["sensor.local_weather_forecast_local_forecast"],
                 self._handle_main_update,
             )
         )
 
+        # Initial update
+        await self._update_from_main()
+
+    async def _update_from_main(self):
+        """Update from main sensor."""
+        main_sensor = self.hass.states.get("sensor.local_weather_forecast_local_forecast")
+        if main_sensor and main_sensor.state != "unknown":
+            p0 = main_sensor.attributes.get("p0")
+            if p0 is not None:
+                self._state = float(p0)
+
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        main_sensor = self.hass.states.get("sensor.local_forecast")
-        if main_sensor and "p0" in main_sensor.attributes:
-            self._state = main_sensor.attributes["p0"]
-            self.async_write_ha_state()
+        await self._update_from_main()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
@@ -487,18 +502,27 @@ class LocalForecastTemperatureSensor(LocalWeatherForecastEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast"],
+                ["sensor.local_weather_forecast_local_forecast"],
                 self._handle_main_update,
             )
         )
 
+        # Initial update
+        await self._update_from_main()
+
+    async def _update_from_main(self):
+        """Update from main sensor."""
+        main_sensor = self.hass.states.get("sensor.local_weather_forecast_local_forecast")
+        if main_sensor and main_sensor.state != "unknown":
+            temp = main_sensor.attributes.get("temperature")
+            if temp is not None:
+                self._state = float(temp)
+
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        main_sensor = self.hass.states.get("sensor.local_forecast")
-        if main_sensor and "temperature" in main_sensor.attributes:
-            self._state = main_sensor.attributes["temperature"]
-            self.async_write_ha_state()
+        await self._update_from_main()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
@@ -534,10 +558,23 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast_pressure"],
+                ["sensor.local_weather_forecast_pressure"],
                 self._handle_pressure_update,
             )
         )
+
+        # Add initial pressure value to history
+        pressure_sensor = self.hass.states.get("sensor.local_weather_forecast_pressure")
+        if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable"):
+            try:
+                pressure = float(pressure_sensor.state)
+                timestamp = datetime.now()
+                self._history.append((timestamp, pressure))
+                _LOGGER.debug(
+                    f"Pressure change sensor initialized with {pressure} hPa at {timestamp}"
+                )
+            except (ValueError, TypeError):
+                pass
 
     @callback
     async def _handle_pressure_update(self, event):
@@ -601,10 +638,23 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast_temperature"],
+                ["sensor.local_weather_forecast_temperature"],
                 self._handle_temperature_update,
             )
         )
+
+        # Add initial temperature value to history
+        temp_sensor = self.hass.states.get("sensor.local_weather_forecast_temperature")
+        if temp_sensor and temp_sensor.state not in ("unknown", "unavailable"):
+            try:
+                temperature = float(temp_sensor.state)
+                timestamp = datetime.now()
+                self._history.append((timestamp, temperature))
+                _LOGGER.debug(
+                    f"Temperature change sensor initialized with {temperature}°C at {timestamp}"
+                )
+            except (ValueError, TypeError):
+                pass
 
     @callback
     async def _handle_temperature_update(self, event):
@@ -660,17 +710,128 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast"],
+                ["sensor.local_weather_forecast_local_forecast"],
                 self._handle_main_update,
             )
         )
 
+        # Initial update
+        await self._update_from_main()
+
+    async def _update_from_main(self):
+        """Update from main sensor."""
+        main_sensor = self.hass.states.get("sensor.local_weather_forecast_local_forecast")
+        if not main_sensor or main_sensor.state in ("unknown", "unavailable"):
+            return
+
+        attrs = main_sensor.attributes
+
+        # Parse Zambretti forecast - can be list ['Fine', 1, 'B'] or string "Fine, 1, B"
+        zambretti = attrs.get("forecast_zambretti")
+        if not zambretti:
+            return
+
+        # Handle both list and string formats
+        if isinstance(zambretti, list):
+            forecast_text = str(zambretti[0]) if len(zambretti) > 0 else ""
+            forecast_num = int(zambretti[1]) if len(zambretti) > 1 else 0
+            letter_code = str(zambretti[2]) if len(zambretti) > 2 else ""
+        elif isinstance(zambretti, str) and ", " in zambretti:
+            parts = zambretti.split(", ")
+            forecast_text = parts[0] if len(parts) > 0 else ""
+            try:
+                forecast_num = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                forecast_num = 0
+            letter_code = parts[2] if len(parts) > 2 else ""
+        else:
+            # Fallback
+            self._state = str(zambretti)
+            self._attributes = {}
+            return
+
+        # Map to icon
+        icon_6h = self._get_icon_for_forecast(forecast_num)
+        icon_12h = icon_6h
+
+        # Estimate rain probability
+        rain_6h, rain_12h = self._estimate_rain_probability(forecast_num)
+
+        # Set state and attributes
+        self._state = forecast_text
+        self._attributes = {
+            "forecast_text": forecast_text,
+            "forecast_number": forecast_num,
+            "letter_code": letter_code,
+            "icons": f"{icon_6h}, {icon_12h}",
+            "rain_prob": f"{rain_6h}, {rain_12h}",
+            "first_time": "6",
+            "second_time": "12",
+        }
+
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        # Implementation for detailed forecast attributes
-        # This will be expanded with icon mapping, rain probability, etc.
+        await self._update_from_main()
         self.async_write_ha_state()
+
+    def _get_icon_for_forecast(self, forecast_num: int) -> str:
+        """Map forecast number to icon."""
+        # Based on forecast_data.py CONDITIONS mapping
+        icon_map = {
+            0: "mdi:weather-sunny",           # Settled fine
+            1: "mdi:weather-sunny",           # Fine weather
+            2: "mdi:weather-partly-cloudy",   # Becoming fine
+            3: "mdi:weather-partly-cloudy",   # Fine, becoming less settled
+            4: "mdi:weather-partly-cloudy",   # Fine, possible showers
+            5: "mdi:weather-cloudy",          # Fairly fine, improving
+            6: "mdi:weather-cloudy",          # Fairly fine, possible showers early
+            7: "mdi:weather-partly-rainy",    # Fairly fine, showery later
+            8: "mdi:weather-rainy",           # Showery early, improving
+            9: "mdi:weather-rainy",           # Changeable, mending
+            10: "mdi:weather-cloudy",         # Fairly fine, showers likely
+            11: "mdi:weather-rainy",          # Rather unsettled, clearing later
+            12: "mdi:weather-rainy",          # Unsettled, probably improving
+            13: "mdi:weather-rainy",          # Showery, bright intervals
+            14: "mdi:weather-rainy",          # Showery, becoming more unsettled
+            15: "mdi:weather-pouring",        # Changeable, some rain
+            16: "mdi:weather-pouring",        # Unsettled, short fine intervals
+            17: "mdi:weather-pouring",        # Unsettled, rain later
+            18: "mdi:weather-pouring",        # Unsettled, rain at times
+            19: "mdi:weather-lightning-rainy",# Very unsettled, finer at times
+            20: "mdi:weather-lightning-rainy",# Stormy, possibly improving
+            21: "mdi:weather-lightning-rainy",# Stormy, much rain
+        }
+        return icon_map.get(forecast_num, "mdi:weather-cloudy")
+
+    def _estimate_rain_probability(self, forecast_num: int) -> tuple[int, int]:
+        """Estimate rain probability for 6h and 12h based on forecast number."""
+        # Map forecast number to rain probability
+        rain_map = {
+            0: (5, 10),    # Settled fine
+            1: (10, 15),   # Fine weather
+            2: (15, 20),   # Becoming fine
+            3: (20, 30),   # Fine, becoming less settled
+            4: (30, 40),   # Fine, possible showers
+            5: (25, 35),   # Fairly fine, improving
+            6: (30, 40),   # Fairly fine, possible showers early
+            7: (40, 50),   # Fairly fine, showery later
+            8: (45, 35),   # Showery early, improving
+            9: (40, 30),   # Changeable, mending
+            10: (50, 60),  # Fairly fine, showers likely
+            11: (55, 45),  # Rather unsettled, clearing later
+            12: (50, 40),  # Unsettled, probably improving
+            13: (60, 60),  # Showery, bright intervals
+            14: (65, 70),  # Showery, becoming more unsettled
+            15: (70, 75),  # Changeable, some rain
+            16: (75, 70),  # Unsettled, short fine intervals
+            17: (70, 80),  # Unsettled, rain later
+            18: (80, 80),  # Unsettled, rain at times
+            19: (85, 75),  # Very unsettled, finer at times
+            20: (80, 70),  # Stormy, possibly improving
+            21: (90, 95),  # Stormy, much rain
+        }
+        return rain_map.get(forecast_num, (50, 50))
 
     @property
     def native_value(self) -> str | None:
@@ -699,20 +860,121 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
 
+        # Restore previous state
+        if (last_state := await self.async_get_last_state()) is not None:
+            if last_state.state not in ("unknown", "unavailable"):
+                self._state = last_state.state
+                self._attributes = dict(last_state.attributes)
+
         # Track main sensor
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [f"sensor.local_forecast"],
+                ["sensor.local_weather_forecast_local_forecast"],
                 self._handle_main_update,
             )
         )
 
+        # Initial update - always update from main sensor
+        await self._update_from_main()
+        # Write state immediately
+        self.async_write_ha_state()
+
+    async def _update_from_main(self):
+        """Update from main sensor."""
+        main_sensor = self.hass.states.get("sensor.local_weather_forecast_local_forecast")
+        if not main_sensor or main_sensor.state in ("unknown", "unavailable"):
+            return
+
+        attrs = main_sensor.attributes
+
+        # Parse Negretti-Zambra forecast - can be list or string
+        neg_zam = attrs.get("forecast_neg_zam")
+        if not neg_zam:
+            return
+
+        # Handle both list and string formats
+        if isinstance(neg_zam, list):
+            forecast_text = str(neg_zam[0]) if len(neg_zam) > 0 else ""
+            forecast_num = int(neg_zam[1]) if len(neg_zam) > 1 else 0
+            letter_code = str(neg_zam[2]) if len(neg_zam) > 2 else ""
+        elif isinstance(neg_zam, str) and ", " in neg_zam:
+            parts = neg_zam.split(", ")
+            forecast_text = parts[0] if len(parts) > 0 else ""
+            try:
+                forecast_num = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                forecast_num = 0
+            letter_code = parts[2] if len(parts) > 2 else ""
+        else:
+            # Fallback
+            self._state = str(neg_zam)
+            self._attributes = {}
+            return
+
+        # Map to icon
+        icon_6h = self._get_icon_for_forecast(forecast_num)
+        icon_12h = icon_6h
+
+        # Estimate rain probability
+        rain_6h, rain_12h = self._estimate_rain_probability(forecast_num)
+
+        # Set state and attributes
+        self._state = forecast_text
+        self._attributes = {
+            "forecast_text": forecast_text,
+            "forecast_number": forecast_num,
+            "letter_code": letter_code,
+            "icons": f"{icon_6h}, {icon_12h}",
+            "rain_prob": f"{rain_6h}, {rain_12h}",
+            "first_time": "6",
+            "second_time": "12",
+        }
+
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        # Implementation for detailed forecast attributes
+        await self._update_from_main()
         self.async_write_ha_state()
+
+    def _get_icon_for_forecast(self, forecast_num: int) -> str:
+        """Map forecast number to icon."""
+        icon_map = {
+            0: "mdi:weather-sunny",
+            1: "mdi:weather-sunny",
+            2: "mdi:weather-partly-cloudy",
+            3: "mdi:weather-partly-cloudy",
+            4: "mdi:weather-partly-cloudy",
+            5: "mdi:weather-cloudy",
+            6: "mdi:weather-cloudy",
+            7: "mdi:weather-partly-rainy",
+            8: "mdi:weather-rainy",
+            9: "mdi:weather-rainy",
+            10: "mdi:weather-cloudy",
+            11: "mdi:weather-rainy",
+            12: "mdi:weather-rainy",
+            13: "mdi:weather-rainy",
+            14: "mdi:weather-rainy",
+            15: "mdi:weather-pouring",
+            16: "mdi:weather-pouring",
+            17: "mdi:weather-pouring",
+            18: "mdi:weather-pouring",
+            19: "mdi:weather-lightning-rainy",
+            20: "mdi:weather-lightning-rainy",
+            21: "mdi:weather-lightning-rainy",
+        }
+        return icon_map.get(forecast_num, "mdi:weather-cloudy")
+
+    def _estimate_rain_probability(self, forecast_num: int) -> tuple[int, int]:
+        """Estimate rain probability."""
+        rain_map = {
+            0: (5, 10), 1: (10, 15), 2: (15, 20), 3: (20, 30), 4: (30, 40),
+            5: (25, 35), 6: (30, 40), 7: (40, 50), 8: (45, 35), 9: (40, 30),
+            10: (50, 60), 11: (55, 45), 12: (50, 40), 13: (60, 60), 14: (65, 70),
+            15: (70, 75), 16: (75, 70), 17: (70, 80), 18: (80, 80), 19: (85, 75),
+            20: (80, 70), 21: (90, 95),
+        }
+        return rain_map.get(forecast_num, (50, 50))
 
     @property
     def native_value(self) -> str | None:
