@@ -1,0 +1,31 @@
+{
+  "services": {
+    "reload": "mdi:reload"
+  },
+  "entity": {
+    "sensor": {
+      "local_forecast": {
+        "default": "mdi:weather-partly-cloudy"
+      },
+      "pressure": {
+        "default": "mdi:gauge"
+      },
+      "temperature": {
+        "default": "mdi:thermometer"
+      },
+      "pressure_change": {
+        "default": "mdi:trending-up"
+      },
+      "temperature_change": {
+        "default": "mdi:thermometer-lines"
+      },
+      "zambretti_detail": {
+        "default": "mdi:weather-cloudy-arrow-right"
+      },
+      "negretti_zambra_detail": {
+        "default": "mdi:weather-cloudy-clock"
+      }
+    }
+  }
+}
+
