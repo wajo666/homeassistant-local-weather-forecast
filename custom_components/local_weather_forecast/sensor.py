@@ -23,6 +23,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers import entity_registry as er
 from homeassistant.components.recorder import get_instance, history
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ELEVATION,
@@ -122,7 +123,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.0.0",
+            "sw_version": "3.0.1",
         }
 
     async def _get_sensor_value(
@@ -846,7 +847,7 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             return
 
         # Update timestamp
-        now = datetime.now()
+        now = dt_util.now()
         if self._last_update_time is None:
             self._last_update_time = now
 
@@ -1080,7 +1081,7 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             return
 
         # Update timestamp
-        now = datetime.now()
+        now = dt_util.now()
         if self._last_update_time is None:
             self._last_update_time = now
 

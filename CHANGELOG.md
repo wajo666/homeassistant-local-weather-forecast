@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2025-11-28
+## [3.0.1] - 2025-01-29
+
+### 🐛 Fixed
+- **Timezone Bug**: Fixed `TypeError: can't subtract offset-naive and offset-aware datetimes` in detail sensors
+  - Changed `datetime.now()` to `dt_util.now()` for timezone-aware datetime objects
+  - Affects `LocalForecastZambrettiDetailSensor` and `LocalForecastNegZamDetailSensor`
+  - Issue occurred when calculating `_calculate_interval_time()` with restored state from database
+  - Thanks to user report for identifying this critical bug
+
+### 🔧 Technical Details
+- Added import: `from homeassistant.util import dt as dt_util`
+- All datetime operations now use Home Assistant's timezone-aware utilities
+- Ensures consistency between restored state timestamps (timezone-aware) and current time calculations
+
+---
+
+## [3.0.0] - 2025-01-28
 
 ### 🎯 Major Release - 100% YAML Compatibility
 
