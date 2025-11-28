@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Home Assistant
+*.log
+*.db
+*.db-shm
+*.db-wal
+
+# Testing
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Development/Internal files - DO NOT COMMIT
+*SUMMARY*.md
+*ADDED*.md
+*CHANGES*.md
+*CLEANUP*.md
+*SPLIT*.md
+START_HERE.md
+STRUCTURE.md
+PROJECT_COMPLETE.md
+FINAL_*.md
+CARDS_ADDED.md
+SENSORS_DOCUMENTATION_ADDED.md
+PRESSURE_TYPE_CHANGES.md
+IMPLEMENTATION_SUMMARY.md
+INSTALLATION.md
+RELEASE_NOTES_v2.md
+README_NEW.md
+GIT_COMMIT_READY.md
+
+# Old YAML files (replaced by integration)
+weather_forecast.yaml
+weather_card_*.yaml
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.~*
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Git
+*.orig
+

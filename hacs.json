@@ -1,0 +1,12 @@
+{
+  "name": "Local Weather Forecast",
+  "content_in_root": false,
+  "filename": "local_weather_forecast",
+  "render_readme": true,
+  "domains": ["sensor"],
+  "homeassistant": "2024.1.0",
+  "iot_class": "Calculated",
+  "zip_release": true,
+  "hide_default_branch": false
+}
+

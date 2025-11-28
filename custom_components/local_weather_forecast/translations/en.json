@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Local Weather Forecast Setup",
+        "description": "Configure your local weather forecast based on barometric pressure. This integration provides ~94% accurate weather predictions without external API dependencies.",
+        "data": {
+          "pressure_sensor": "Pressure Sensor (Required)",
+          "temperature_sensor": "Temperature Sensor (Optional)",
+          "wind_direction_sensor": "Wind Direction Sensor (Optional)",
+          "wind_speed_sensor": "Wind Speed Sensor (Optional)",
+          "elevation": "Elevation Above Sea Level",
+          "pressure_type": "Pressure Type",
+          "language": "Forecast Language"
+        },
+        "data_description": {
+          "pressure_sensor": "Barometric pressure sensor (required). Must provide values in hPa (hectopascals).",
+          "temperature_sensor": "Temperature sensor (needed if pressure is not at sea level). Must provide values in °C (Celsius).",
+          "wind_direction_sensor": "Wind direction in degrees (0-360°). Improves forecast accuracy, especially for detecting weather fronts.",
+          "wind_speed_sensor": "Wind speed in km/h or m/s. Improves forecast accuracy by determining wind factor.",
+          "elevation": "Your location's elevation in meters above sea level (used to calculate sea level pressure from station pressure).",
+          "pressure_type": "Select whether your sensor provides absolute station pressure (QFE) or relative sea level pressure (QNH). Most sensors provide absolute pressure.",
+          "language": "Language for forecast text and descriptions"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensor entity not found. Please check the entity ID.",
+      "invalid_elevation": "Elevation must be between 0 and 9000 meters."
+    },
+    "abort": {
+      "already_configured": "This pressure sensor is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Local Weather Forecast Options",
+        "description": "Update your local weather forecast configuration.",
+        "data": {
+          "temperature_sensor": "Temperature Sensor",
+          "wind_direction_sensor": "Wind Direction Sensor",
+          "wind_speed_sensor": "Wind Speed Sensor",
+          "elevation": "Elevation Above Sea Level",
+          "pressure_type": "Pressure Type",
+          "language": "Forecast Language"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensor entity not found. Please check the entity ID.",
+      "invalid_elevation": "Elevation must be between 0 and 9000 meters."
+    }
+  }
+}
+

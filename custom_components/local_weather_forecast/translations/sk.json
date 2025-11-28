@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavenie lokálnej predpovede počasia",
+        "description": "Nakonfigurujte lokálnu predpoveď počasia založenú na barometrickom tlaku. Táto integrácia poskytuje ~94% presnú predpoveď počasia bez závislosti na externých API.",
+        "data": {
+          "pressure_sensor": "Tlakový senzor (povinný)",
+          "temperature_sensor": "Teplotný senzor (voliteľný)",
+          "wind_direction_sensor": "Senzor smeru vetra (voliteľný)",
+          "wind_speed_sensor": "Senzor rýchlosti vetra (voliteľný)",
+          "elevation": "Nadmorská výška",
+          "pressure_type": "Typ tlaku",
+          "language": "Jazyk predpovede"
+        },
+        "data_description": {
+          "pressure_sensor": "Barometrický tlakový senzor (povinný). Musí poskytovať hodnoty v hPa (hektopascaloch).",
+          "temperature_sensor": "Teplotný senzor (potrebný ak tlak nie je na úrovni mora). Musí poskytovať hodnoty v °C (Celsius).",
+          "wind_direction_sensor": "Smer vetra v stupňoch (0-360°). Zlepšuje presnosť predpovede, najmä pri detekcii frontov.",
+          "wind_speed_sensor": "Rýchlosť vetra v km/h alebo m/s. Zlepšuje presnosť predpovede pomocou faktoru vetra.",
+          "elevation": "Nadmorská výška vášho miesta v metroch (na prepočet tlaku na hladinu mora).",
+          "pressure_type": "Vyberte, či váš senzor poskytuje absolútny staničný tlak (QFE) alebo relatívny tlak na hladinu mora (QNH). Väčšina senzorov poskytuje absolútny tlak.",
+          "language": "Jazyk pre texty predpovede"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Senzor nebol nájdený. Skontrolujte ID entity.",
+      "invalid_elevation": "Nadmorská výška musí byť medzi 0 a 9000 metrami."
+    },
+    "abort": {
+      "already_configured": "Tento tlakový senzor je už nakonfigurovaný."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti lokálnej predpovede počasia",
+        "description": "Aktualizujte nastavenia lokálnej predpovede počasia.",
+        "data": {
+          "temperature_sensor": "Teplotný senzor",
+          "wind_direction_sensor": "Senzor smeru vetra",
+          "wind_speed_sensor": "Senzor rýchlosti vetra",
+          "elevation": "Nadmorská výška",
+          "pressure_type": "Typ tlaku",
+          "language": "Jazyk predpovede"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Senzor nebol nájdený. Skontrolujte ID entity.",
+      "invalid_elevation": "Nadmorská výška musí byť medzi 0 a 9000 metrami."
+    }
+  }
+}
+

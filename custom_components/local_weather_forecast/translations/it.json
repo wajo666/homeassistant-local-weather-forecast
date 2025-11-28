@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurazione previsioni meteo locali",
+        "description": "Configura le previsioni meteo locali basate sulla pressione barometrica. Questa integrazione fornisce previsioni meteo accurate al ~94% senza dipendenze da API esterne.",
+        "data": {
+          "pressure_sensor": "Sensore di pressione (obbligatorio)",
+          "temperature_sensor": "Sensore di temperatura (facoltativo)",
+          "wind_direction_sensor": "Sensore direzione vento (facoltativo)",
+          "wind_speed_sensor": "Sensore velocità vento (facoltativo)",
+          "elevation": "Altitudine",
+          "pressure_type": "Tipo di pressione",
+          "language": "Lingua delle previsioni"
+        },
+        "data_description": {
+          "pressure_sensor": "Sensore di pressione barometrica (obbligatorio). Deve fornire valori in hPa (ettopascal).",
+          "temperature_sensor": "Sensore di temperatura (necessario se la pressione non è al livello del mare). Deve fornire valori in °C (Celsius).",
+          "wind_direction_sensor": "Direzione del vento in gradi (0-360°). Migliora la precisione delle previsioni, specialmente per rilevare i fronti.",
+          "wind_speed_sensor": "Velocità del vento in km/h o m/s. Migliora la precisione delle previsioni tramite il fattore vento.",
+          "elevation": "L'altitudine della tua posizione in metri (per calcolare la pressione al livello del mare).",
+          "pressure_type": "Seleziona se il tuo sensore fornisce pressione assoluta della stazione (QFE) o pressione relativa al livello del mare (QNH). La maggior parte dei sensori fornisce pressione assoluta.",
+          "language": "Lingua per i testi delle previsioni"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensore non trovato. Controlla l'ID dell'entità.",
+      "invalid_elevation": "L'altitudine deve essere tra 0 e 9000 metri."
+    },
+    "abort": {
+      "already_configured": "Questo sensore di pressione è già configurato."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opzioni previsioni meteo locali",
+        "description": "Aggiorna le impostazioni delle previsioni meteo locali.",
+        "data": {
+          "temperature_sensor": "Sensore di temperatura",
+          "wind_direction_sensor": "Sensore direzione vento",
+          "wind_speed_sensor": "Sensore velocità vento",
+          "elevation": "Altitudine",
+          "pressure_type": "Tipo di pressione",
+          "language": "Lingua delle previsioni"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensore non trovato. Controlla l'ID dell'entità.",
+      "invalid_elevation": "L'altitudine deve essere tra 0 e 9000 metri."
+    }
+  }
+}
+

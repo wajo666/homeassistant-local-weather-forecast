@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Lokale Wettervorhersage Einrichtung",
+        "description": "Konfigurieren Sie Ihre lokale Wettervorhersage basierend auf Luftdruck. Diese Integration bietet ~94% genaue Wettervorhersagen ohne externe API-Abhängigkeiten.",
+        "data": {
+          "pressure_sensor": "Drucksensor (Erforderlich)",
+          "temperature_sensor": "Temperatursensor (Optional)",
+          "wind_direction_sensor": "Windrichtungssensor (Optional)",
+          "wind_speed_sensor": "Windgeschwindigkeitssensor (Optional)",
+          "elevation": "Höhe über dem Meeresspiegel",
+          "pressure_type": "Drucktyp",
+          "language": "Vorhersagesprache"
+        },
+        "data_description": {
+          "pressure_sensor": "Barometrischer Drucksensor (erforderlich). Muss Werte in hPa (Hektopascal) liefern.",
+          "temperature_sensor": "Temperatursensor (erforderlich, wenn Druck nicht auf Meereshöhe ist). Muss Werte in °C (Celsius) liefern.",
+          "wind_direction_sensor": "Windrichtung in Grad (0-360°). Verbessert Vorhersagegenauigkeit, besonders für Frontenerkennung.",
+          "wind_speed_sensor": "Windgeschwindigkeit in km/h oder m/s. Verbessert Vorhersagegenauigkeit durch Windfaktor.",
+          "elevation": "Höhe Ihres Standorts in Metern über dem Meeresspiegel (zur Berechnung des Drucks auf Meereshöhe).",
+          "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck.",
+          "language": "Sprache für Vorhersagetexte und Beschreibungen"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensor-Entität nicht gefunden. Bitte überprüfen Sie die Entitäts-ID.",
+      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen."
+    },
+    "abort": {
+      "already_configured": "Dieser Drucksensor ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Lokale Wettervorhersage Optionen",
+        "description": "Aktualisieren Sie Ihre lokale Wettervorhersage-Konfiguration.",
+        "data": {
+          "temperature_sensor": "Temperatursensor",
+          "wind_direction_sensor": "Windrichtungssensor",
+          "wind_speed_sensor": "Windgeschwindigkeitssensor",
+          "elevation": "Höhe über dem Meeresspiegel",
+          "pressure_type": "Drucktyp",
+          "language": "Vorhersagesprache"
+        }
+      }
+    },
+    "error": {
+      "sensor_not_found": "Sensor nicht gefunden. Bitte überprüfen Sie die Entitäts-ID.",
+      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen."
+    }
+  }
+}
+
