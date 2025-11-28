@@ -1,29 +1,42 @@
 # Weather Card Examples
 
+## 📋 Entity IDs Reference
+
+After installation, your sensors will have these entity IDs:
+- **Main Forecast:** `sensor.local_weather_forecast_local_forecast`
+- **Pressure:** `sensor.local_weather_forecast_pressure`
+- **Temperature:** `sensor.local_weather_forecast_temperature`
+- **Pressure Change:** `sensor.local_weather_forecast_pressure_change`
+- **Temperature Change:** `sensor.local_weather_forecast_temperature_change`
+- **Zambretti Details:** `sensor.local_weather_forecast_zambretti_detail`
+- **Negretti-Zambra Details:** `sensor.local_weather_forecast_neg_zam_detail`
+
+---
+
 ## 📋 Simple Entities Card (No custom cards needed)
 
 ```yaml
 type: entities
 title: Local Weather Forecast
 entities:
-  - entity: sensor.local_forecast
+  - entity: sensor.local_weather_forecast_local_forecast
     name: Forecast
   - type: attribute
-    entity: sensor.local_forecast
+    entity: sensor.local_weather_forecast_local_forecast
     attribute: forecast_short_term
     name: Current Conditions
-  - entity: sensor.local_forecast_pressure
+  - entity: sensor.local_weather_forecast_pressure
     name: Sea Level Pressure
-  - entity: sensor.local_forecast_temperature
+  - entity: sensor.local_weather_forecast_temperature
     name: Temperature
-  - entity: sensor.local_forecast_pressure_change
+  - entity: sensor.local_weather_forecast_pressure_change
     name: Pressure Trend (3h)
   - type: attribute
-    entity: sensor.local_forecast
+    entity: sensor.local_weather_forecast_local_forecast
     attribute: forecast_zambretti
     name: Zambretti Forecast
   - type: attribute
-    entity: sensor.local_forecast
+    entity: sensor.local_weather_forecast_local_forecast
     attribute: forecast_pressure_trend
     name: Pressure Status
 ```
@@ -44,7 +57,7 @@ type: custom:vertical-stack-in-card
 cards:
   # Title
   - type: custom:mushroom-title-card
-    title: '{{states("sensor.local_forecast")}}'
+    title: '{{states("sensor.local_weather_forecast_local_forecast")}}'
     subtitle: 'Local Weather Forecast'
   
   # Current conditions + Next 6h + Next 12h
@@ -52,10 +65,10 @@ cards:
     cards:
       # Current
       - type: custom:mushroom-template-card
-        primary: '{{state_attr("sensor.local_forecast", "forecast_short_term")[0]}}'
+        primary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_short_term")[0]}}'
         secondary: |
-          {{states("sensor.local_forecast_temperature")}}°C
-          {{state_attr("sensor.local_forecast", "forecast_short_term")[1]}}
+          {{states("sensor.local_weather_forecast_temperature")}}°C
+          {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_short_term")[1]}}
         icon: mdi:weather-cloudy-clock
         icon_color: blue
         layout: vertical
@@ -64,10 +77,10 @@ cards:
       # ~6 hours
       - type: custom:mushroom-template-card
         primary: |
-          ~{{state_attr("sensor.local_forecast_zambretti_detail", "first_time")[0]}}h
+          ~{{state_attr("sensor.local_weather_forecast_zambretti_detail", "first_time")[0]}}h
         secondary: |
-          Rain: {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0]}}%
-        icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[0]}}'
+          Rain: {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[0]}}'
         icon_color: amber
         layout: vertical
         multiline_secondary: true
@@ -75,20 +88,20 @@ cards:
       # ~12 hours
       - type: custom:mushroom-template-card
         primary: |
-          ~{{state_attr("sensor.local_forecast_zambretti_detail", "second_time")[0]}}h
+          ~{{state_attr("sensor.local_weather_forecast_zambretti_detail", "second_time")[0]}}h
         secondary: |
-          Rain: {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[1]}}%
-        icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[1]}}'
+          Rain: {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[1]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[1]}}'
         icon_color: orange
         layout: vertical
         multiline_secondary: true
   
   # Detailed forecast text
   - type: custom:mushroom-template-card
-    primary: '{{state_attr("sensor.local_forecast", "forecast_zambretti")[0]}}'
+    primary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")[0]}}'
     secondary: |
-      Pressure: {{state_attr("sensor.local_forecast", "forecast_pressure_trend")[0]}}
-      Change: {{states("sensor.local_forecast_pressure_change")}} hPa/3h
+      Pressure: {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_pressure_trend")[0]}}
+      Change: {{states("sensor.local_weather_forecast_pressure_change")}} hPa/3h
     icon: mdi:weather-cloudy-arrow-right
     icon_color: grey
     multiline_secondary: true
@@ -98,13 +111,13 @@ cards:
     chips:
       - type: template
         icon: mdi:gauge
-        content: '{{states("sensor.local_forecast_pressure")}} hPa'
+        content: '{{states("sensor.local_weather_forecast_pressure")}} hPa'
       - type: template
         icon: mdi:thermometer
-        content: '{{states("sensor.local_forecast_temperature")}}°C'
+        content: '{{states("sensor.local_weather_forecast_temperature")}}°C'
       - type: template
         icon: mdi:trending-up
-        content: '{{states("sensor.local_forecast_pressure_change")}} hPa'
+        content: '{{states("sensor.local_weather_forecast_pressure_change")}} hPa'
 ```
 
 ---
@@ -117,7 +130,7 @@ cards:
   # Header with dynamic icon based on forecast
   - type: custom:mushroom-title-card
     title: 'Weather Forecast'
-    subtitle: '{{state_attr("sensor.local_forecast", "forecast_zambretti")[0]}}'
+    subtitle: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")[0]}}'
   
   # Main info row
   - type: horizontal-stack
@@ -126,11 +139,11 @@ cards:
       - type: custom:mushroom-template-card
         primary: 'Now'
         secondary: |
-          {{state_attr("sensor.local_forecast", "forecast_short_term")[0]}}
-          {{states("sensor.local_forecast_temperature")}}°C
+          {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_short_term")[0]}}
+          {{states("sensor.local_weather_forecast_temperature")}}°C
         icon: mdi:weather-cloudy-clock
         icon_color: |
-          {% set pressure = states("sensor.local_forecast_pressure") | float %}
+          {% set pressure = states("sensor.local_weather_forecast_pressure") | float %}
           {% if pressure < 1000 %}red
           {% elif pressure < 1020 %}amber
           {% else %}green
@@ -139,17 +152,17 @@ cards:
         multiline_secondary: true
         tap_action:
           action: more-info
-          entity: sensor.local_forecast
+          entity: sensor.local_weather_forecast_local_forecast
       
       # 6h forecast
       - type: custom:mushroom-template-card
         primary: '6h'
         secondary: |
-          {{state_attr("sensor.local_forecast_zambretti_detail", "first_time")[0]}}
-          ☔ {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0]}}%
-        icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[0]}}'
+          {{state_attr("sensor.local_weather_forecast_zambretti_detail", "first_time")[0]}}
+          ☔ {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[0]}}'
         icon_color: |
-          {% set rain = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0] | int %}
+          {% set rain = state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0] | int %}
           {% if rain > 70 %}blue
           {% elif rain > 40 %}amber
           {% else %}green
@@ -161,11 +174,11 @@ cards:
       - type: custom:mushroom-template-card
         primary: '12h'
         secondary: |
-          {{state_attr("sensor.local_forecast_zambretti_detail", "second_time")[0]}}
-          ☔ {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[1]}}%
-        icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[1]}}'
+          {{state_attr("sensor.local_weather_forecast_zambretti_detail", "second_time")[0]}}
+          ☔ {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[1]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[1]}}'
         icon_color: |
-          {% set rain = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[1] | int %}
+          {% set rain = state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[1] | int %}
           {% if rain > 70 %}blue
           {% elif rain > 40 %}amber
           {% else %}green
@@ -175,10 +188,10 @@ cards:
   
   # Forecast text
   - type: custom:mushroom-template-card
-    primary: '{{state_attr("sensor.local_forecast", "forecast_zambretti")[0]}}'
+    primary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")[0]}}'
     secondary: |
-      Pressure {{state_attr("sensor.local_forecast", "forecast_pressure_trend")[0]}}
-      {{states("sensor.local_forecast_pressure_change")}} hPa in 3h
+      Pressure {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_pressure_trend")[0]}}
+      {{states("sensor.local_weather_forecast_pressure_change")}} hPa in 3h
     icon: mdi:weather-cloudy-arrow-right
     icon_color: grey
     multiline_secondary: true
@@ -189,26 +202,26 @@ cards:
     chips:
       - type: template
         icon: mdi:gauge
-        content: '{{states("sensor.local_forecast_pressure")}} hPa'
+        content: '{{states("sensor.local_weather_forecast_pressure")}} hPa'
         tap_action:
           action: more-info
           entity: sensor.local_forecast_pressure
       - type: template
         icon: mdi:thermometer
-        content: '{{states("sensor.local_forecast_temperature")}}°C'
+        content: '{{states("sensor.local_weather_forecast_temperature")}}°C'
         tap_action:
           action: more-info
           entity: sensor.local_forecast_temperature
       - type: template
         icon: |
-          {% set change = states("sensor.local_forecast_pressure_change") | float %}
+          {% set change = states("sensor.local_weather_forecast_pressure_change") | float %}
           {% if change > 0 %}mdi:trending-up
           {% elif change < 0 %}mdi:trending-down
           {% else %}mdi:trending-neutral
           {% endif %}
-        content: '{{states("sensor.local_forecast_pressure_change")}} hPa'
+        content: '{{states("sensor.local_weather_forecast_pressure_change")}} hPa'
         icon_color: |
-          {% set change = states("sensor.local_forecast_pressure_change") | float %}
+          {% set change = states("sensor.local_weather_forecast_pressure_change") | float %}
           {% if change > 2 %}green
           {% elif change < -2 %}red
           {% else %}grey
@@ -217,7 +230,7 @@ cards:
   # Alternative forecast model
   - type: custom:mushroom-template-card
     primary: 'Negretti-Zambra Alternative'
-    secondary: '{{state_attr("sensor.local_forecast", "forecast_neg_zam")[0]}}'
+    secondary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_neg_zam")[0]}}'
     icon: mdi:weather-cloudy
     icon_color: purple
     multiline_secondary: true
@@ -232,13 +245,13 @@ cards:
 
 ```yaml
 type: custom:mushroom-template-card
-primary: '{{state_attr("sensor.local_forecast", "forecast_zambretti")[0]}}'
+primary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")[0]}}'
 secondary: |
-  {{states("sensor.local_forecast_temperature")}}°C | {{states("sensor.local_forecast_pressure")}} hPa
-  Rain: {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0]}}% (6h) | {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[1]}}% (12h)
-icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[0]}}'
+  {{states("sensor.local_weather_forecast_temperature")}}°C | {{states("sensor.local_weather_forecast_pressure")}} hPa
+  Rain: {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0]}}% (6h) | {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[1]}}% (12h)
+icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[0]}}'
 icon_color: |
-  {% set rain = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0] | int %}
+  {% set rain = state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0] | int %}
   {% if rain > 70 %}blue
   {% elif rain > 40 %}amber
   {% else %}green
@@ -246,7 +259,7 @@ icon_color: |
 multiline_secondary: true
 tap_action:
   action: more-info
-  entity: sensor.local_forecast
+  entity: sensor.local_weather_forecast_local_forecast
 ```
 
 ---
@@ -255,14 +268,14 @@ tap_action:
 
 ```yaml
 type: custom:mushroom-template-card
-primary: '{{states("sensor.local_forecast_temperature")}}°C'
-secondary: '{{state_attr("sensor.local_forecast", "forecast_short_term")[0]}}'
-icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[0]}}'
+primary: '{{states("sensor.local_weather_forecast_temperature")}}°C'
+secondary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_short_term")[0]}}'
+icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[0]}}'
 icon_color: blue
 layout: horizontal
 tap_action:
   action: more-info
-  entity: sensor.local_forecast
+  entity: sensor.local_weather_forecast_local_forecast
 ```
 
 ---
@@ -281,9 +294,9 @@ cards:
       - type: custom:mushroom-template-card
         primary: 'Zambretti'
         secondary: |
-          {{state_attr("sensor.local_forecast", "forecast_zambretti")[0]}}
-          Rain: {{state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0]}}%
-        icon: '{{state_attr("sensor.local_forecast_zambretti_detail", "icons")[0]}}'
+          {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")[0]}}
+          Rain: {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons")[0]}}'
         icon_color: blue
         layout: vertical
         multiline_secondary: true
@@ -292,9 +305,9 @@ cards:
       - type: custom:mushroom-template-card
         primary: 'Negretti-Zambra'
         secondary: |
-          {{state_attr("sensor.local_forecast", "forecast_neg_zam")[0]}}
-          Rain: {{state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob")[0]}}%
-        icon: '{{state_attr("sensor.local_forecast_neg_zam_detail", "icons")[0]}}'
+          {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_neg_zam")[0]}}
+          Rain: {{state_attr("sensor.local_weather_forecast_neg_zam_detail", "rain_prob")[0]}}%
+        icon: '{{state_attr("sensor.local_weather_forecast_neg_zam_detail", "icons")[0]}}'
         icon_color: purple
         layout: vertical
         multiline_secondary: true
@@ -341,7 +354,7 @@ cards:
 ### Dynamic Icons Based on Conditions:
 ```yaml
 icon: |
-  {% set pressure = states("sensor.local_forecast_pressure") | float %}
+  {% set pressure = states("sensor.local_weather_forecast_pressure") | float %}
   {% if pressure < 1000 %}mdi:weather-pouring
   {% elif pressure < 1010 %}mdi:weather-rainy
   {% elif pressure < 1020 %}mdi:weather-partly-cloudy
@@ -352,7 +365,7 @@ icon: |
 ### Color Based on Pressure Trend:
 ```yaml
 icon_color: |
-  {% set change = states("sensor.local_forecast_pressure_change") | float %}
+  {% set change = states("sensor.local_weather_forecast_pressure_change") | float %}
   {% if change > 3 %}green
   {% elif change > 1 %}lime
   {% elif change > -1 %}grey
@@ -364,7 +377,7 @@ icon_color: |
 ### Rain Probability Warning:
 ```yaml
 secondary: |
-  {% set rain = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0] | int %}
+  {% set rain = state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob")[0] | int %}
   {% if rain > 70 %}⚠️ High rain chance!
   {% elif rain > 40 %}☔ Possible rain
   {% else %}✅ Low rain chance
@@ -379,8 +392,8 @@ secondary: |
 ### Weather Station Style:
 ```yaml
 # Large numbers, minimal text
-primary: '{{states("sensor.local_forecast_pressure")}} hPa'
-secondary: '{{states("sensor.local_forecast_temperature")}}°C'
+primary: '{{states("sensor.local_weather_forecast_pressure")}} hPa'
+secondary: '{{states("sensor.local_weather_forecast_temperature")}}°C'
 ```
 
 ### Forecast Timeline:
