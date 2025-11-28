@@ -91,7 +91,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain=SENSOR_DOMAIN,
-                        device_class="atmospheric_pressure",
+                        device_class=["atmospheric_pressure", "pressure"],
                     )
                 ),
                 vol.Optional(

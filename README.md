@@ -1,7 +1,7 @@
 # Home Assistant Local Weather Forecast Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![GitHub release](https://img.shields.io/github/release/HAuser1234/homeassistant-local-weather-forecast.svg)](https://github.com/HAuser1234/homeassistant-local-weather-forecast/releases)
+[![GitHub release](https://img.shields.io/github/release/wajo666/homeassistant-local-weather-forecast.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Original Author](https://img.shields.io/badge/Original%20Author-HAuser1234-blue.svg)](https://github.com/HAuser1234)
 [![Maintainer](https://img.shields.io/badge/Maintainer-wajo666-green.svg)](https://github.com/wajo666)
@@ -10,7 +10,9 @@
 
 This Home Assistant integration provides **local weather forecasting** without relying on external services or APIs. It uses barometric pressure trends and proven meteorological algorithms to predict weather up to 12 hours ahead.
 
-**Original Source:** [github.com/HAuser1234/homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)
+**Original Developer:** [@HAuser1234](https://github.com/HAuser1234)  
+**Original Repository:** [github.com/HAuser1234/homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)  
+**Original Forum Thread:** [Home Assistant Community](https://community.home-assistant.io/t/homeassistant-12h-local-weather-forecast-94-accurate/569975)
 
 ### ✨ Key Features
 
@@ -30,7 +32,7 @@ This Home Assistant integration provides **local weather forecasting** without r
 
 | Sensor | Unit | Symbol | Example | Device Class |
 |--------|------|--------|---------|--------------|
-| **Pressure** | Hectopascals | `hPa` | 1013.25 | `atmospheric_pressure` |
+| **Pressure** | Hectopascals | `hPa` | 1013.25 | `atmospheric_pressure` or `pressure` |
 | **Temperature** | Celsius | `°C` | 15.0 | `temperature` |
 | **Wind Speed** | Metres/second | `m/s` | 5.0 (= 18 km/h) | `wind_speed` |
 | **Wind Direction** | Degrees | `°` | 180 (South) | - |
@@ -75,7 +77,7 @@ The integration uses two independent forecast algorithms:
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/HAuser1234/homeassistant-local-weather-forecast`
+5. Add this repository URL: `https://github.com/wajo666/homeassistant-local-weather-forecast`
 6. Select category: "Integration"
 7. Click "Add"
 8. Find "Local Weather Forecast" in HACS and click "Download"
@@ -117,11 +119,13 @@ The integration uses two independent forecast algorithms:
 
 | Measurement | Required Unit | Alternative Units | Home Assistant Device Class |
 |-------------|---------------|-------------------|------------------------------|
-| **Pressure** | **hPa** (hectopascals) | ❌ NOT mbar, inHg, mmHg, or atm | `atmospheric_pressure` |
+| **Pressure** | **hPa** (hectopascals) | ❌ NOT mbar, inHg, mmHg, or atm | `atmospheric_pressure` **or** `pressure` |
 | **Temperature** | **°C** (Celsius) | ❌ NOT °F or K | `temperature` |
 | **Wind Speed** | **m/s** (metres/second) | ❌ NOT km/h, mph, or knots | `wind_speed` |
 | **Wind Direction** | **°** (degrees 0-360) | - | - |
 | **Elevation** | **m** (metres) | - | - |
+
+**💡 Note:** The integration accepts pressure sensors with either `atmospheric_pressure` or `pressure` device class.
 
 #### 🔄 Unit Conversions (if needed)
 
@@ -269,28 +273,28 @@ The integration creates the following sensors:
 
 ### Main Sensors
 
-- **`sensor.local_forecast`** - Main forecast with all attributes
+- **`sensor.local_weather_forecast_local_forecast`** - Main forecast with all attributes
   - Current conditions (Sunny, Rainy, Stormy, etc.)
   - Zambretti forecast text and number
   - Negretti-Zambra forecast
   - Pressure trend (Rising/Falling/Steady)
 
-- **`sensor.local_forecast_pressure`** - Sea level corrected pressure (hPa)
-- **`sensor.local_forecast_temperature`** - Current temperature (°C)
+- **`sensor.local_weather_forecast_pressure`** - Sea level corrected pressure (hPa)
+- **`sensor.local_weather_forecast_temperature`** - Current temperature (°C)
 
 ### Statistical Sensors
 
-- **`sensor.local_forecast_pressure_change`** - Pressure change over 3 hours
-- **`sensor.local_forecast_temperature_change`** - Temperature change over 1 hour
+- **`sensor.local_weather_forecast_pressure_change`** - Pressure change over 3 hours
+- **`sensor.local_weather_forecast_temperature_change`** - Temperature change over 1 hour
 
 ### Detailed Forecast Sensors
 
-- **`sensor.local_forecast_zambretti_detail`** - Zambretti forecast details
+- **`sensor.local_weather_forecast_zambretti_detail`** - Zambretti forecast details
   - Weather icons for 6h and 12h ahead
   - Rain probability percentages
   - Timing information
 
-- **`sensor.local_forecast_neg_zam_detail`** - Negretti-Zambra forecast details
+- **`sensor.local_weather_forecast_negretti_zambra_detail`** - Negretti-Zambra forecast details
   - Alternative forecast model
   - Same detailed attributes as Zambretti
 
@@ -306,22 +310,22 @@ The integration creates the following sensors:
 type: custom:vertical-stack-in-card
 cards:
   - type: custom:mushroom-title-card
-    title: '{{states.sensor.local_forecast.state}}'
+    title: '{{states("sensor.local_weather_forecast_local_forecast")}}'
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-template-card
-        primary: '{{states.sensor.local_forecast.attributes.forecast_short_term[0]}}'
-        secondary: '{{states.sensor.local_forecast.attributes.temperature}}°C'
+        primary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_short_term")}}'
+        secondary: '{{state_attr("sensor.local_weather_forecast_local_forecast", "temperature")}}°C'
         icon: mdi:weather-cloudy-clock
         layout: vertical
       - type: custom:mushroom-template-card
-        primary: '~{{states.sensor.local_forecast_zambretti_detail.attributes.first_time[0]}}'
-        secondary: 'Rain: {{states.sensor.local_forecast_zambretti_detail.attributes.rain_prob[0]}}%'
-        icon: '{{states.sensor.local_forecast_zambretti_detail.attributes.icons[0]}}'
+        primary: '~{{state_attr("sensor.local_weather_forecast_zambretti_detail", "first_time")}}'
+        secondary: 'Rain: {{state_attr("sensor.local_weather_forecast_zambretti_detail", "rain_prob").split(",")[0]}}%'
+        icon: '{{state_attr("sensor.local_weather_forecast_zambretti_detail", "icons").split(",")[0]}}'
         layout: vertical
   - type: custom:mushroom-template-card
-    primary: 'Forecast: {{states.sensor.local_forecast.attributes.forecast_zambretti[0]}}'
-    secondary: 'Pressure: {{states.sensor.local_forecast.attributes.forecast_pressure_trend[0]}}'
+    primary: 'Forecast: {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_zambretti")}}'
+    secondary: 'Pressure: {{state_attr("sensor.local_weather_forecast_local_forecast", "forecast_pressure_trend")}}'
     icon: mdi:weather-cloudy-arrow-right
 ```
 
@@ -427,7 +431,8 @@ Try:
 ### Original Developer
 This integration was originally developed by **[@HAuser1234](https://github.com/HAuser1234)**
 
-**Original Source:** [homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)
+**Original Repository:** [homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)  
+**Original Forum Thread:** [Home Assistant Community](https://community.home-assistant.io/t/homeassistant-12h-local-weather-forecast-94-accurate/569975)
 
 ### Current Maintainers
 - **[@HAuser1234](https://github.com/HAuser1234)** - Original developer
