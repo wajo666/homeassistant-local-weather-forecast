@@ -3,10 +3,10 @@
   "name": "Local Weather Forecast",
   "codeowners": ["@HAuser1234", "@wajo666"],
   "config_flow": true,
-  "documentation": "https://github.com/HAuser1234/homeassistant-local-weather-forecast",
+  "documentation": "https://github.com/wajo666/homeassistant-local-weather-forecast",
   "integration_type": "device",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/HAuser1234/homeassistant-local-weather-forecast/issues",
+  "issue_tracker": "https://github.com/wajo666/homeassistant-local-weather-forecast/issues",
   "requirements": [],
   "version": "2.0.0"
 }
