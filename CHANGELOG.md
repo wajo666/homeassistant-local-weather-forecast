@@ -174,7 +174,8 @@ This version achieves complete feature parity with the original YAML implementat
 
 ## Release Links
 
-- [v3.0.0](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/3.0.0) - [Release Notes](RELEASE_NOTES_v3.0.0.md)
+- [v3.0.1](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/v3.0.1) - Bugfix Release
+- [v3.0.0](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/v3.0.0) - Major Release
 - [v2.0.2](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/2.0.2)
 - [v2.0.1](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/2.0.1)
 
