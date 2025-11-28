@@ -10,6 +10,7 @@
           "wind_direction_sensor": "Wind Direction Sensor (Optional)",
           "wind_speed_sensor": "Wind Speed Sensor (Optional)",
           "elevation": "Elevation Above Sea Level",
+          "pressure_type": "Pressure Type",
           "pressure_at_sealevel": "Pressure Sensor Already at Sea Level",
           "language": "Forecast Language"
         },
