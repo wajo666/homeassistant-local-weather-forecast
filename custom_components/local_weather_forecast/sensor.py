@@ -123,7 +123,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.0.1",
+            "sw_version": "3.0.2",
         }
 
     async def _get_sensor_value(

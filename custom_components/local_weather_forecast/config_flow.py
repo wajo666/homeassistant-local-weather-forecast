@@ -75,9 +75,16 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(pressure_sensor)
                 self._abort_if_unique_id_configured()
 
+                # Clean up empty strings - convert to None for optional fields
+                cleaned_input = user_input.copy()
+                for key in [CONF_TEMPERATURE_SENSOR, CONF_WIND_DIRECTION_SENSOR, CONF_WIND_SPEED_SENSOR]:
+                    # Convert empty strings to None, ensure key exists even if not provided
+                    if key not in cleaned_input or not cleaned_input[key]:
+                        cleaned_input[key] = None
+
                 return self.async_create_entry(
                     title=f"Local Weather Forecast",
-                    data=user_input,
+                    data=cleaned_input,
                 )
 
         # Build schema with entity selectors
@@ -96,32 +103,37 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_TEMPERATURE_SENSOR,
-                    default=user_input.get(CONF_TEMPERATURE_SENSOR, "")
-                    if user_input
-                    else "",
+                    description={"suggested_value": user_input.get(CONF_TEMPERATURE_SENSOR)}
+                    if user_input and user_input.get(CONF_TEMPERATURE_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain=SENSOR_DOMAIN,
                         device_class="temperature",
+                        multiple=False,
                     )
                 ),
                 vol.Optional(
                     CONF_WIND_DIRECTION_SENSOR,
-                    default=user_input.get(CONF_WIND_DIRECTION_SENSOR, "")
-                    if user_input
-                    else "",
+                    description={"suggested_value": user_input.get(CONF_WIND_DIRECTION_SENSOR)}
+                    if user_input and user_input.get(CONF_WIND_DIRECTION_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                    selector.EntitySelectorConfig(
+                        domain=SENSOR_DOMAIN,
+                        multiple=False,
+                    )
                 ),
                 vol.Optional(
                     CONF_WIND_SPEED_SENSOR,
-                    default=user_input.get(CONF_WIND_SPEED_SENSOR, "")
-                    if user_input
-                    else "",
+                    description={"suggested_value": user_input.get(CONF_WIND_SPEED_SENSOR)}
+                    if user_input and user_input.get(CONF_WIND_SPEED_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain=SENSOR_DOMAIN,
                         device_class="wind_speed",
+                        multiple=False,
                     )
                 ),
                 vol.Optional(
@@ -222,10 +234,17 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                 errors[CONF_ELEVATION] = "invalid_elevation"
 
             if not errors:
+                # Clean up empty strings - convert to None for optional fields
+                cleaned_input = user_input.copy()
+                for key in [CONF_TEMPERATURE_SENSOR, CONF_WIND_DIRECTION_SENSOR, CONF_WIND_SPEED_SENSOR]:
+                    # Convert empty strings to None, ensure key exists even if not provided
+                    if key not in cleaned_input or not cleaned_input[key]:
+                        cleaned_input[key] = None
+
                 # Update config entry with new data
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
-                    data={**self.config_entry.data, **user_input},
+                    data={**self.config_entry.data, **cleaned_input},
                 )
                 return self.async_create_entry(title="", data={})
 
@@ -235,26 +254,37 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
             {
                 vol.Optional(
                     CONF_TEMPERATURE_SENSOR,
-                    default=current_config.get(CONF_TEMPERATURE_SENSOR, ""),
+                    description={"suggested_value": current_config.get(CONF_TEMPERATURE_SENSOR)}
+                    if current_config.get(CONF_TEMPERATURE_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="sensor",
                         device_class="temperature",
+                        multiple=False,
                     )
                 ),
                 vol.Optional(
                     CONF_WIND_DIRECTION_SENSOR,
-                    default=current_config.get(CONF_WIND_DIRECTION_SENSOR, ""),
+                    description={"suggested_value": current_config.get(CONF_WIND_DIRECTION_SENSOR)}
+                    if current_config.get(CONF_WIND_DIRECTION_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        multiple=False,
+                    )
                 ),
                 vol.Optional(
                     CONF_WIND_SPEED_SENSOR,
-                    default=current_config.get(CONF_WIND_SPEED_SENSOR, ""),
+                    description={"suggested_value": current_config.get(CONF_WIND_SPEED_SENSOR)}
+                    if current_config.get(CONF_WIND_SPEED_SENSOR)
+                    else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="sensor",
                         device_class="wind_speed",
+                        multiple=False,
                     )
                 ),
                 vol.Optional(

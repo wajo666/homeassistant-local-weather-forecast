@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2025-11-29
+
+### 🐛 Fixed
+- **Config Flow**: Fixed issue where optional wind speed and wind direction sensors couldn't be left empty
+  - Changed from `default=""` to `description={"suggested_value": ...}` for entity selectors
+  - Added `multiple=False` parameter to prevent multiple entity selection
+  - Empty values are now properly converted to `None` instead of empty strings
+  - Affects both initial setup and options flow
+  - Users can now save configuration without providing wind sensors
+
+### 🔧 Technical Details
+- Updated `config_flow.py` to use `suggested_value` instead of `default` for optional entity selectors
+- Added cleanup logic to convert empty strings to `None` for optional sensor fields
+- Properly handles `None`/empty validation in both setup and options flows
+
+---
+
 ## [3.0.1] - 2025-11-29
 
 ### 🐛 Fixed
