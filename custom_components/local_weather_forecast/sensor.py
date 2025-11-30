@@ -83,6 +83,8 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
         self.config_entry = config_entry
         self._attr_has_entity_name = False  # Don't prefix with device name
         self._attr_should_poll = False
+        self._last_update_time = None
+        self._update_throttle_seconds = 30  # Minimum seconds between updates
 
     def _get_main_sensor_id(self) -> str:
         """Get the entity_id of the main sensor."""
@@ -123,7 +125,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.0.2",
+            "sw_version": "3.0.3",
         }
 
     async def _get_sensor_value(
@@ -149,8 +151,12 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
         try:
             return float(state.state)
         except (ValueError, TypeError):
+            # Check if this is an optional sensor (wind direction/speed)
+            sensor_type = "sensor"
+            if "wind" in sensor_id.lower():
+                sensor_type = "optional wind sensor"
             _LOGGER.warning(
-                f"Could not convert {sensor_id} state '{state.state}' to float"
+                f"Could not convert {sensor_type} {sensor_id} state '{state.state}' to float, using default {default}"
             )
             if use_history:
                 return await self._get_historical_value(sensor_id, default)
@@ -251,6 +257,17 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
     @callback
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
+        # Throttle updates to prevent flooding
+        now = dt_util.now()
+        if self._last_update_time is not None:
+            time_since_last_update = (now - self._last_update_time).total_seconds()
+            if time_since_last_update < self._update_throttle_seconds:
+                _LOGGER.debug(
+                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
+                )
+                return
+
+        self._last_update_time = now
         await self.async_update()
         self.async_write_ha_state()
 
@@ -345,19 +362,27 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         # Get temperature change sensor
         temp_change_sensor = self.hass.states.get("sensor.local_forecast_temperaturechange")  # Match original YAML entity_id
         if not temp_change_sensor or temp_change_sensor.state in ("unknown", "unavailable"):
+            _LOGGER.debug(
+                f"Temperature change sensor not available: {temp_change_sensor.state if temp_change_sensor else 'not found'}"
+            )
             return ["unavailable", -1]
 
         try:
             temp_change = float(temp_change_sensor.state)
         except (ValueError, TypeError):
+            _LOGGER.debug(f"Could not convert temperature change to float: {temp_change_sensor.state}")
             return ["unavailable", -1]
 
         # Get Zambretti detail sensor for timing information
         zambretti_detail = self.hass.states.get("sensor.local_forecast_zambretti_detail")  # Match original YAML entity_id
         if not zambretti_detail or zambretti_detail.state in ("unknown", "unavailable"):
+            _LOGGER.debug(
+                f"Zambretti detail sensor not available: {zambretti_detail.state if zambretti_detail else 'not found'}"
+            )
             return ["unavailable", -1]
 
         attrs = zambretti_detail.attributes
+        _LOGGER.debug(f"Zambretti detail attributes: {attrs}")
 
         # Try to get first_time
         first_time = attrs.get("first_time")
@@ -368,9 +393,13 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                     # Calculate temperature at first interval
                     # temp_change is per hour, so convert minutes to hours
                     predicted_temp = (temp_change / 60 * minutes_to_first) + current_temp
+                    _LOGGER.debug(
+                        f"Calculated temp forecast using first_time: {predicted_temp:.1f}°C "
+                        f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_first})"
+                    )
                     return [round(predicted_temp, 1), 0]
-            except (ValueError, TypeError, IndexError):
-                pass
+            except (ValueError, TypeError, IndexError) as e:
+                _LOGGER.debug(f"Error calculating from first_time: {e}")
 
         # Try second_time if first_time failed
         second_time = attrs.get("second_time")
@@ -380,10 +409,15 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 if minutes_to_second > 0:
                     # Calculate temperature at second interval
                     predicted_temp = (temp_change / 60 * minutes_to_second) + current_temp
+                    _LOGGER.debug(
+                        f"Calculated temp forecast using second_time: {predicted_temp:.1f}°C "
+                        f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_second})"
+                    )
                     return [round(predicted_temp, 1), 1]
-            except (ValueError, TypeError, IndexError):
-                pass
+            except (ValueError, TypeError, IndexError) as e:
+                _LOGGER.debug(f"Error calculating from second_time: {e}")
 
+        _LOGGER.debug("No valid time intervals found for temperature forecast")
         return ["unavailable", -1]
 
     def _calculate_sea_level_pressure(
@@ -546,6 +580,17 @@ class LocalForecastPressureSensor(LocalWeatherForecastEntity):
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
+        # Throttle updates to prevent flooding
+        now = dt_util.now()
+        if self._last_update_time is not None:
+            time_since_last_update = (now - self._last_update_time).total_seconds()
+            if time_since_last_update < self._update_throttle_seconds:
+                _LOGGER.debug(
+                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
+                )
+                return
+
+        self._last_update_time = now
         await self._update_from_main()
         self.async_write_ha_state()
 
@@ -602,6 +647,17 @@ class LocalForecastTemperatureSensor(LocalWeatherForecastEntity):
     @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
+        # Throttle updates to prevent flooding
+        now = dt_util.now()
+        if self._last_update_time is not None:
+            time_since_last_update = (now - self._last_update_time).total_seconds()
+            if time_since_last_update < self._update_throttle_seconds:
+                _LOGGER.debug(
+                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
+                )
+                return
+
+        self._last_update_time = now
         await self._update_from_main()
         self.async_write_ha_state()
 
@@ -793,8 +849,9 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             if last_state.state not in ("unknown", "unavailable"):
                 self._state = last_state.state
                 self._attributes = dict(last_state.attributes)
-                # Try to restore last update time
-                self._last_update_time = last_state.last_changed
+                # DO NOT restore last_update_time from old state - always use current time
+                # to prevent negative time intervals in forecasts
+                self._last_update_time = dt_util.now()
 
         # Track main sensor
         self.async_on_remove(
@@ -1027,8 +1084,9 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             if last_state.state not in ("unknown", "unavailable"):
                 self._state = last_state.state
                 self._attributes = dict(last_state.attributes)
-                # Try to restore last update time
-                self._last_update_time = last_state.last_changed
+                # DO NOT restore last_update_time from old state - always use current time
+                # to prevent negative time intervals in forecasts
+                self._last_update_time = dt_util.now()
 
         # Track main sensor
         self.async_on_remove(

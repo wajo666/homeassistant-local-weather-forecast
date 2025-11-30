@@ -5,7 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.2] - 2025-11-29
+## [3.0.3] - 2025-11-30
+
+### 🐛 Fixed
+- **Device Software Version**: Updated device info to show correct version 3.0.3 (was incorrectly showing 2.0.0)
+
+---
+
+## [3.0.2] - 2025-11-30
+
+### 🐛 Fixed
+- **Home Assistant 2025.12 Compatibility**: Fixed deprecated `config_entry` warning in options flow
+  - Removed explicit `self.config_entry = config_entry` assignment
+  - Options flow now uses parent class property (HA 2025.12+)
+  - Maintains backward compatibility with older HA versions
+- **Sensor State Warnings**: Improved warning messages for optional wind sensors with invalid states
+  - Now indicates if sensor is an optional wind sensor
+  - Shows default value being used for better debugging
+- **WebSocket Flooding**: Added throttle mechanism to prevent excessive state updates
+  - Minimum 30 seconds between sensor updates for ALL sensors
+  - Applied to main sensor and all child sensors (Pressure, Temperature, Zambretti Detail, Negretti-Zambra Detail)
+  - Prevents "Client unable to keep up with pending messages" errors
+  - Reduces database writes and improves system performance
+  - Forecast accuracy not impacted (30s interval is acceptable for weather data)
+  - PressureChange and TemperatureChange sensors have their own optimized update logic
+- **Negative Time Intervals**: Fixed negative time values in `first_time` and `second_time` attributes
+  - Detail sensors now reset `_last_update_time` to current time on restore instead of using old saved time
+  - Prevents calculation errors when restoring from old saved states (e.g., first_time: -4269.75 minutes)
+  - Fixes `forecast_temp_short: unavailable, -1` issue caused by negative time intervals
+  - Time intervals now always show positive values for future forecasts
+- **Temperature Forecast Debug**: Added detailed debug logging to `_calculate_temp_short_forecast()`
+  - Shows why temperature forecast is unavailable (missing sensors, invalid data, etc.)
+  - Helps troubleshoot forecast calculation issues
+  - Displays calculation details when forecast succeeds
+
+### 🔧 Technical Details
+- Updated `config_flow.py` to remove deprecated `__init__` method in `LocalWeatherForecastOptionsFlow`
+- Modified `_get_sensor_value()` to provide more informative warning messages
+- Added `_last_update_time` and `_update_throttle_seconds` to `LocalWeatherForecastEntity`
+- Implemented throttle logic in `_handle_sensor_update()` callback for main sensor
+- Implemented throttle logic in `_handle_main_update()` callback for all child sensors
+- PressureChange and TemperatureChange sensors maintain their existing efficient update logic
+- Fixed `_last_update_time` restore logic in `LocalForecastZambrettiDetailSensor` and `LocalForecastNegZamDetailSensor`
+- Changed from `last_state.last_changed` to `dt_util.now()` to prevent negative intervals
+- Enhanced `_calculate_temp_short_forecast()` with comprehensive debug logging
+
+---
+
+## [3.0.1] - 2025-11-29
 
 ### 🐛 Fixed
 - **Config Flow**: Fixed issue where optional wind speed and wind direction sensors couldn't be left empty
@@ -22,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.0.1] - 2025-11-29
+## [3.0.0] - 2025-11-29
 
 ### 🐛 Fixed
 - **Timezone Bug**: Fixed `TypeError: can't subtract offset-naive and offset-aware datetimes` in detail sensors
