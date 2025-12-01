@@ -449,6 +449,9 @@ cards:
           {% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast
       
       # 6h forecast with calculated time
       - type: custom:mushroom-template-card
@@ -471,6 +474,9 @@ cards:
           {% else %}green{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_zambretti_detail
       
       # 12h forecast with calculated time
       - type: custom:mushroom-template-card
@@ -493,6 +499,9 @@ cards:
           {% else %}green{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_zambretti_detail
   
   # Divider
   - type: custom:mushroom-template-card
@@ -529,6 +538,9 @@ cards:
         icon_color: purple
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast
       
       # 6h forecast with calculated time
       - type: custom:mushroom-template-card
@@ -551,6 +563,9 @@ cards:
           {% else %}purple{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_neg_zam_detail
       
       # 12h forecast with calculated time
       - type: custom:mushroom-template-card
@@ -573,6 +588,9 @@ cards:
           {% else %}purple{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_neg_zam_detail
   
   # Pressure trend chips at the bottom
   - type: custom:mushroom-chips-card
@@ -592,6 +610,9 @@ cards:
           {% elif change < -2 %}red
           {% else %}grey
           {% endif %}
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_pressure
       - type: template
         icon: |
           {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
@@ -606,6 +627,9 @@ cards:
           {% elif change < -1 %}blue
           {% else %}grey
           {% endif %}
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_temperature
 ```
 
 ---
