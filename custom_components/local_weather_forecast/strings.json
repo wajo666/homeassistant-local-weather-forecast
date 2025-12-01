@@ -44,7 +44,11 @@
           "wind_speed_sensor": "Wind Speed Sensor",
           "elevation": "Elevation Above Sea Level",
           "pressure_type": "Pressure Type",
-          "language": "Forecast Language"
+          "language": "Forecast Language",
+          "enable_weather_entity": "Enable Weather Entity"
+        },
+        "data_description": {
+          "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
       }
     },

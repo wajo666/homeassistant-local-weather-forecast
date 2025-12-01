@@ -16,6 +16,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_ELEVATION,
+    CONF_ENABLE_WEATHER_ENTITY,
     CONF_LANGUAGE,
     CONF_PRESSURE_TYPE,
     CONF_PRESSURE_SENSOR,
@@ -23,6 +24,7 @@ from .const import (
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
+    DEFAULT_ENABLE_WEATHER_ENTITY,
     DEFAULT_LANGUAGE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
@@ -326,6 +328,10 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    CONF_ENABLE_WEATHER_ENTITY,
+                    default=current_config.get(CONF_ENABLE_WEATHER_ENTITY, DEFAULT_ENABLE_WEATHER_ENTITY),
+                ): selector.BooleanSelector(),
             }
         )
 

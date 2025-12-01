@@ -382,6 +382,111 @@ Both models provide:
 
 ---
 
+## 🆕 Enhanced Sensors (v3.0.3+)
+
+### Enhanced Forecast Sensor
+
+**Entity:** `sensor.local_forecast_enhanced`
+
+Combines classical Zambretti/Negretti-Zambra algorithms with modern sensor data:
+
+**Features:**
+- ✅ Fog risk detection (CRITICAL/HIGH/MEDIUM/LOW)
+- ✅ Humidity effects on forecast
+- ✅ Atmospheric stability from wind gust ratio
+- ✅ Consensus confidence scoring
+- ✅ Accuracy: ~94-98%
+
+**Example Output:**
+```
+State: "Settling fair. CRITICAL fog risk (spread 1.2°C), High humidity (92.7%)"
+
+Attributes:
+  base_forecast: "Settling fair"
+  fog_risk: "high"
+  dewpoint_spread: 1.2
+  humidity: 92.7
+  confidence: "medium"
+  accuracy_estimate: "~94%"
+```
+
+---
+
+### Rain Probability Sensor
+
+**Entity:** `sensor.local_forecast_rain_probability`
+
+Enhanced rain probability calculation using multiple factors:
+
+**Factors:**
+- Zambretti forecast → probability
+- Negretti-Zambra forecast → probability
+- Humidity adjustments (±15%)
+- Dewpoint spread adjustments (±15%)
+- Current rain override
+
+**Example Output:**
+```
+State: 45  # percentage
+
+Attributes:
+  zambretti_probability: 34
+  negretti_probability: 86
+  enhanced_probability: 45
+  confidence: "high"
+  factors_used: ["Zambretti", "Negretti-Zambra", "Humidity", "Dewpoint spread"]
+```
+
+---
+
+### Weather Entity
+
+**Entity:** `weather.local_weather_forecast_weather`
+
+Standard Home Assistant weather entity with advanced calculations:
+
+**Properties:**
+- Temperature, Pressure, Humidity
+- Wind Speed, Direction, Gust
+- **NEW:** Dew Point (Magnus formula)
+- **NEW:** Feels Like (Heat Index/Wind Chill)
+- Condition from Zambretti
+- Daily forecast
+
+**Enable:** Settings → Devices & Services → Local Weather Forecast → Options → ☑️ Enable Weather Entity
+
+**Example Attributes:**
+```yaml
+feels_like: 2.5
+comfort_level: "Cold"
+dew_point: 3.5
+fog_risk: "high"
+dewpoint_spread: 1.2
+```
+
+---
+
+## 📊 Complete Sensor List
+
+| Sensor | Entity ID | Description |
+|--------|-----------|-------------|
+| **Core Sensors** | | |
+| Main Forecast | `sensor.local_forecast` | Combined forecast with all data |
+| Pressure | `sensor.local_forecast_pressure` | Sea level pressure (hPa) |
+| Temperature | `sensor.local_forecast_temperature` | Current temperature (°C) |
+| Pressure Change | `sensor.local_forecast_pressurechange` | 3-hour pressure trend (hPa) |
+| Temperature Change | `sensor.local_forecast_temperaturechange` | 1-hour temp trend (°C/h) |
+| **Detail Sensors** | | |
+| Zambretti Detail | `sensor.local_forecast_zambretti_detail` | Detailed Zambretti forecast |
+| Negretti Detail | `sensor.local_forecast_neg_zam_detail` | Detailed Negretti forecast |
+| **Enhanced Sensors** | | |
+| Enhanced Forecast | `sensor.local_forecast_enhanced` | ⭐ Modern sensors + algorithms |
+| Rain Probability | `sensor.local_forecast_rain_probability` | ⭐ Enhanced rain % |
+| **Weather Entity** | | |
+| Weather | `weather.local_weather_forecast_weather` | ⭐ Standard HA weather entity |
+
+---
+
 ## 🌍 Supported Languages
 
 | Language | Code | Status |

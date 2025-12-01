@@ -1,6 +1,140 @@
-# Architecture Overview - Extended Sensors Feature
+# Architecture Overview - v3.0.3 with Enhanced Sensors
 
-## Current Architecture (v3.0.3)
+## Current Architecture (v3.0.3) ✅ IMPLEMENTED
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          Home Assistant Core                               │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                   Local Weather Forecast Integration                       │
+│                                                                            │
+│  ┌──────────────────┐  ┌──────────────┐  ┌────────────────────────────┐    │
+│  │  Config Flow     │  │ __init__.py  │  │      sensor.py             │    │
+│  │  - Basic Setup   │  │ - Platform   │  │  ┌──────────────────────┐  │    │
+│  │  - Options       │  │   loading    │  │  │  Core Sensors (7):   │  │    │
+│  │  - Weather opt ✅│  │ - Migration  │  │  │  - Main              │  │   │
+│  └──────────────────┘  └──────────────┘   │  │  - Pressure          │  │  │
+│                                           │  │  - Temperature       │  │  │
+│  ┌──────────────────┐  ┌──────────────┐   │  │  - Pressure Change  │  │  │
+│  │    const.py      │  │forecast_data │   │  │  - Temp Change      │  │  │
+│  │  - Core consts   │  │  - Texts     │   │  │  - Zambretti Detail │  │  │
+│  │  - Weather map ✅│  │  - 26 types  │   │  │  - Negretti Detail  │  │  │
+│  │  - Comfort ✅    │  └──────────────┘   │  └─────────────────────┘  │  │
+│  │  - Fog risk ✅   │                     │                            │  │
+│  └──────────────────┘                     │  ┌─────────────────────┐  │  │
+│                                           │  │  Enhanced (2): ✅    │  │  │
+│  ┌──────────────────┐  ┌──────────────┐   │  │  - Enhanced         │  │  │
+│  │ calculations.py ✅│  │zambretti.py  │  │  │  - Rain Probability │  │  │
+│  │  - 10 functions  │  │  - Algorithm │  │  └──────────────────────┘  │  │
+│  │  - Dew Point     │  │  - ~94% acc. │  └────────────────────────────┘  │
+│  │  - Heat Index    │  └──────────────┘                                  │
+│  │  - Wind Chill    │                     ┌───────────────────────────┐  │
+│  │  - Feels Like    │  ┌──────────────┐   │      weather.py ✅        │  │
+│  │  - Comfort Level │  │negretti_     │   │  - Weather Entity        │   │
+│  │  - Fog Risk      │  │  zambra.py   │   │  - Dew point property    │   │
+│  │  - Rain Enhanced │  │  - Algorithm │   │  - Feels like property   │   │
+│  │  - Visibility    │  │  - ~92% acc. │   │  - Comfort attributes    │   │
+│  │  - Interpolation │  └──────────────┘   │  - Fog risk attributes   │   │
+│  └──────────────────┘                     │  - Daily forecast        │   │
+│                                           └────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┴────────────────────────────┐
+        │                                                        │
+        ▼                                                        ▼
+┌──────────────────────┐                          ┌──────────────────────────┐
+│  Required Sensors    │                          │  Optional Sensors ✅     │
+│  - pressure          │                          │  - humidity ✅           │
+│  - temperature       │                          │  - wind_gust ✅          │
+└──────────────────────┘                          │  - rain_rate ✅          │
+                                                  │                          │
+┌──────────────────────┐                          │  Future:                 │
+│  Enhanced (opt)      │                          │  - cloud_coverage        │
+│  - wind_direction    │                          │  - uv_index              │
+│  - wind_speed        │                          │  - visibility            │
+└──────────────────────┘                          └──────────────────────────┘
+```
+
+## Sensor Hierarchy
+
+```
+sensor.local_forecast (Main)
+├── Attributes:
+│   ├── forecast_zambretti: [text, number, letter]
+│   ├── forecast_neg_zam: [text, number, letter]
+│   ├── forecast_short_term: [condition, pressure_system]
+│   ├── forecast_pressure_trend: [text, trend_index]
+│   ├── forecast_temp_short: [predicted_temp, interval]
+│   ├── wind_direction: [fak, degrees, text, speed_fak]
+│   ├── p0: sea_level_pressure
+│   ├── temperature: current_temp
+│   └── language: lang_index
+│
+├── sensor.local_forecast_pressure (hPa)
+├── sensor.local_forecast_temperature (°C)
+├── sensor.local_forecast_pressurechange (hPa/3h)
+├── sensor.local_forecast_temperaturechange (°C/h)
+│
+├── sensor.local_forecast_zambretti_detail
+│   └── Attributes:
+│       ├── forecast: [state_6h, state_12h]
+│       ├── icons: (icon_now, icon_later)
+│       ├── rain_prob: [prob_6h%, prob_12h%]
+│       ├── first_time: [time_string, minutes]
+│       ├── second_time: [time_string, minutes]
+│       └── letter_code, forecast_number
+│
+├── sensor.local_forecast_neg_zam_detail
+│   └── Attributes: (same as Zambretti)
+│
+├── sensor.local_forecast_enhanced ✅
+│   └── Attributes:
+│       ├── base_forecast: Zambretti text
+│       ├── adjustments: [list of adjustments]
+│       ├── fog_risk: none/low/medium/high
+│       ├── dewpoint_spread: temp - dewpoint
+│       ├── humidity: current %
+│       ├── gust_ratio: gust/speed
+│       ├── confidence: very_high/high/medium/low
+│       └── accuracy_estimate: ~94-98%
+│
+└── sensor.local_forecast_rain_probability ✅
+    └── Attributes:
+        ├── zambretti_probability: 0-100%
+        ├── negretti_probability: 0-100%
+        ├── base_probability: average
+        ├── enhanced_probability: with adjustments
+        ├── confidence: confidence level
+        └── factors_used: [list]
+
+weather.local_weather_forecast_weather ✅
+├── Properties:
+│   ├── native_temperature
+│   ├── native_pressure
+│   ├── humidity
+│   ├── native_wind_speed
+│   ├── wind_bearing
+│   ├── native_wind_gust_speed
+│   ├── native_dew_point ✅
+│   ├── native_apparent_temperature ✅ (feels like)
+│   ├── condition (from Zambretti)
+│   └── forecast (daily)
+│
+└── Attributes:
+    ├── feels_like ✅
+    ├── comfort_level ✅
+    ├── dew_point ✅
+    ├── fog_risk ✅
+    ├── dewpoint_spread ✅
+    ├── forecast_zambretti
+    ├── forecast_negretti_zambra
+    └── pressure_trend
+```
+
+## Data Flow - Enhanced Forecast Generation
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

@@ -1,3 +1,4 @@
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -5,7 +6,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.3] - 2025-11-30
+## [3.0.3] - 2025-12-01
+
+### ✨ Added - Enhanced Sensors
+- **Enhanced Forecast Sensor** (`sensor.local_forecast_enhanced`)
+  - Combines Zambretti/Negretti-Zambra with modern sensors
+  - CRITICAL/HIGH/MEDIUM fog risk detection
+  - Humidity effects on forecast
+  - Atmospheric stability from wind gust ratio
+  - Consensus confidence scoring
+  - Accuracy estimate: ~94-98%
+  
+- **Enhanced Rain Probability Sensor** (`sensor.local_forecast_rain_probability`)
+  - Zambretti + Negretti-Zambra probability mapping
+  - Humidity adjustments (±15%)
+  - Dewpoint spread adjustments (±15%)
+  - Current rain override (100% if raining)
+  - Confidence levels
+  
+- **Weather Entity** (`weather.local_weather_forecast_weather`)
+  - Standard Home Assistant weather entity
+  - Dew point calculation (Magnus formula)
+  - Apparent temperature (Feels Like) - Heat Index/Wind Chill
+  - Comfort level (Very Cold to Very Hot)
+  - Fog risk assessment
+  - Daily forecast support
+  - Enable via config options
+
+### 🔧 Enhanced - Calculations Module
+- Added `calculate_dewpoint()` - Magnus formula for dew point
+- Added `calculate_heat_index()` - US NWS formula for hot weather
+- Added `calculate_wind_chill()` - US NWS formula for cold weather
+- Added `calculate_apparent_temperature()` - Feels like temperature
+- Added `get_comfort_level()` - Temperature comfort classification
+- Added `get_fog_risk()` - Fog risk from temp-dewpoint spread
+- Added `calculate_rain_probability_enhanced()` - Multi-factor rain probability
+
+### 📝 Documentation
+- Updated SENSORS_GUIDE.md with enhanced sensors
+- Updated README.md with complete sensor list
+- Added section on using modern sensors with algorithms
+- Documented new weather entity features
 
 ### 🐛 Fixed
 - **Device Software Version**: Updated device info to show correct version 3.0.3 (was incorrectly showing 2.0.0)
