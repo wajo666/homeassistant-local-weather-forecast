@@ -397,6 +397,8 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         if first_time and isinstance(first_time, list) and len(first_time) > 1:
             try:
                 minutes_to_first = float(first_time[1])
+                _LOGGER.debug(f"first_time minutes: {minutes_to_first}")
+
                 if minutes_to_first > 0:
                     # Calculate temperature at first interval
                     # temp_change is per hour, so convert minutes to hours
@@ -406,6 +408,11 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                         f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_first})"
                     )
                     return [round(predicted_temp, 1), 0]
+                else:
+                    _LOGGER.warning(
+                        f"first_time has negative minutes: {minutes_to_first}. "
+                        f"This indicates old forecast data. Detail sensor needs to update."
+                    )
             except (ValueError, TypeError, IndexError) as e:
                 _LOGGER.debug(f"Error calculating from first_time: {e}")
 
@@ -414,6 +421,8 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         if second_time and isinstance(second_time, list) and len(second_time) > 1:
             try:
                 minutes_to_second = float(second_time[1])
+                _LOGGER.debug(f"second_time minutes: {minutes_to_second}")
+
                 if minutes_to_second > 0:
                     # Calculate temperature at second interval
                     predicted_temp = (temp_change / 60 * minutes_to_second) + current_temp
@@ -422,10 +431,18 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                         f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_second})"
                     )
                     return [round(predicted_temp, 1), 1]
+                else:
+                    _LOGGER.warning(
+                        f"second_time has negative minutes: {minutes_to_second}. "
+                        f"This indicates old forecast data. Detail sensor needs to update."
+                    )
             except (ValueError, TypeError, IndexError) as e:
                 _LOGGER.debug(f"Error calculating from second_time: {e}")
 
-        _LOGGER.debug("No valid time intervals found for temperature forecast")
+        _LOGGER.warning(
+            "No valid time intervals found for temperature forecast. "
+            "Check that detail sensors are updating correctly."
+        )
         return ["unavailable", -1]
 
     def _calculate_sea_level_pressure(
@@ -911,9 +928,18 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             self._attributes = {}
             return
 
-        # Update timestamp
+        # Update timestamp - ALWAYS update to current time when forecast changes
         now = dt_util.now()
-        if self._last_update_time is None:
+
+        # Check if forecast actually changed (different number)
+        forecast_changed = False
+        if self._attributes:
+            old_forecast_num = self._attributes.get("forecast_number")
+            if old_forecast_num != forecast_num:
+                forecast_changed = True
+
+        # Update last_update_time if forecast changed OR if it's None
+        if self._last_update_time is None or forecast_changed:
             self._last_update_time = now
 
         # Map forecast number to weather states
@@ -1146,9 +1172,18 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             self._attributes = {}
             return
 
-        # Update timestamp
+        # Update timestamp - ALWAYS update to current time when forecast changes
         now = dt_util.now()
-        if self._last_update_time is None:
+
+        # Check if forecast actually changed (different number)
+        forecast_changed = False
+        if self._attributes:
+            old_forecast_num = self._attributes.get("forecast_number")
+            if old_forecast_num != forecast_num:
+                forecast_changed = True
+
+        # Update last_update_time if forecast changed OR if it's None
+        if self._last_update_time is None or forecast_changed:
             self._last_update_time = now
 
         # Map forecast number to weather states (slightly different from Zambretti)
