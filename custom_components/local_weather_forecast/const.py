@@ -16,11 +16,13 @@ CONF_PRESSURE_TYPE: Final = "pressure_type"
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"
 CONF_DEWPOINT_SENSOR: Final = "dewpoint_sensor"
 CONF_CLOUD_COVERAGE_SENSOR: Final = "cloud_coverage_sensor"
+CONF_SOLAR_RADIATION_SENSOR: Final = "solar_radiation_sensor"
 CONF_UV_INDEX_SENSOR: Final = "uv_index_sensor"
 CONF_VISIBILITY_SENSOR: Final = "visibility_sensor"
 CONF_WIND_GUST_SENSOR: Final = "wind_gust_sensor"
 CONF_RAIN_RATE_SENSOR: Final = "rain_rate_sensor"
 CONF_PRECIPITATION_SENSOR: Final = "precipitation_sensor"
+CONF_LATITUDE: Final = "latitude"
 
 # Configuration keys - Feature flags
 CONF_ENABLE_WEATHER_ENTITY: Final = "enable_weather_entity"
@@ -33,6 +35,7 @@ PRESSURE_TYPE_RELATIVE: Final = "relative"  # QNH - Sea level pressure
 
 # Defaults
 DEFAULT_ELEVATION: Final = 0
+DEFAULT_LATITUDE: Final = 50.0  # Europe middle latitude
 DEFAULT_LANGUAGE: Final = "en"
 DEFAULT_PRESSURE_TYPE: Final = PRESSURE_TYPE_ABSOLUTE
 DEFAULT_ENABLE_WEATHER_ENTITY: Final = False
@@ -79,9 +82,9 @@ ZAMBRETTI_TO_CONDITION: Final = {
     # Zambretti codes A-Z mapped to HA weather conditions
     # clear-night, cloudy, exceptional, fog, hail, lightning, lightning-rainy,
     # partlycloudy, pouring, rainy, snowy, snowy-rainy, sunny, windy
-    "A": "pouring",           # Settled fine -> pouring (code 1-2)
-    "B": "sunny",             # Fine weather -> sunny (code 3-4)
-    "C": "partlycloudy",      # Becoming fine -> partly cloudy (code 5-6)
+    "A": "sunny",             # Settled fine (code 0-1) ✅
+    "B": "sunny",             # Fine weather (code 2-3)
+    "C": "partlycloudy",      # Becoming fine (code 4-5)
     "D": "partlycloudy",      # Fine, becoming less settled
     "E": "partlycloudy",      # Fine, possible showers
     "F": "cloudy",            # Fairly fine, improving

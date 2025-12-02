@@ -42,12 +42,26 @@
           "temperature_sensor": "Temperature Sensor",
           "wind_direction_sensor": "Wind Direction Sensor",
           "wind_speed_sensor": "Wind Speed Sensor",
+          "humidity_sensor": "Humidity Sensor (Enhanced)",
+          "wind_gust_sensor": "Wind Gust Sensor (Enhanced)",
+          "rain_rate_sensor": "Rain Rate Sensor (Enhanced)",
+          "dewpoint_sensor": "Dew Point Sensor (Enhanced)",
+          "precipitation_sensor": "Precipitation Sensor (Enhanced)",
+          "solar_radiation_sensor": "Solar Radiation Sensor (Enhanced)",
+          "cloud_coverage_sensor": "Cloud Coverage Sensor (Enhanced)",
           "elevation": "Elevation Above Sea Level",
           "pressure_type": "Pressure Type",
           "language": "Forecast Language",
           "enable_weather_entity": "Enable Weather Entity"
         },
         "data_description": {
+          "humidity_sensor": "Humidity sensor for enhanced fog risk detection, dew point calculation, and rain probability (optional)",
+          "wind_gust_sensor": "Wind gust sensor for atmospheric stability detection and severe weather alerts (optional)",
+          "rain_rate_sensor": "Rain rate sensor for real-time rain probability override (optional)",
+          "dewpoint_sensor": "Dew point sensor to override calculated values (optional)",
+          "precipitation_sensor": "Precipitation sensor for rainfall tracking and trend analysis (optional)",
+          "solar_radiation_sensor": "Solar radiation sensor (W/m²) for accurate feels-like temperature in sunny conditions (optional)",
+          "cloud_coverage_sensor": "Cloud coverage sensor (%) to adjust solar radiation effects on apparent temperature (optional)",
           "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
       }

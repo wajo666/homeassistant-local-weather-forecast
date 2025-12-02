@@ -41,9 +41,27 @@
           "temperature_sensor": "Teplotný senzor",
           "wind_direction_sensor": "Senzor smeru vetra",
           "wind_speed_sensor": "Senzor rýchlosti vetra",
+          "humidity_sensor": "Senzor vlhkosti (rozšírený)",
+          "wind_gust_sensor": "Senzor nárazov vetra (rozšírený)",
+          "rain_rate_sensor": "Senzor intenzity dažďa (rozšírený)",
+          "dewpoint_sensor": "Senzor rosného bodu (rozšírený)",
+          "precipitation_sensor": "Senzor zrážok (rozšírený)",
+          "solar_radiation_sensor": "Senzor slnečného žiarenia (rozšírený)",
+          "cloud_coverage_sensor": "Senzor oblačnosti (rozšírený)",
           "elevation": "Nadmorská výška",
           "pressure_type": "Typ tlaku",
-          "language": "Jazyk predpovede"
+          "language": "Jazyk predpovede",
+          "enable_weather_entity": "Povoliť weather entitu"
+        },
+        "data_description": {
+          "humidity_sensor": "Senzor vlhkosti pre detekciu rizika hmly, výpočet rosného bodu a pravdepodobnosť dažďa (voliteľné)",
+          "wind_gust_sensor": "Senzor nárazov vetra pre detekciu stability atmosféry a varovanie pred búrkami (voliteľné)",
+          "rain_rate_sensor": "Senzor intenzity dažďa pre okamžité prepísanie pravdepodobnosti dažďa (voliteľné)",
+          "dewpoint_sensor": "Senzor rosného bodu na prepísanie vypočítaných hodnôt (voliteľné - vypočíta sa automaticky z teploty a vlhkosti)",
+          "precipitation_sensor": "Senzor celkových zrážok za deň alebo hodinu - napr. rain gauge (voliteľné - zatiaľ sa nepoužíva)",
+          "solar_radiation_sensor": "Senzor slnečného žiarenia (W/m²) pre presný pocit teploty v slnečných podmienkach (voliteľné)",
+          "cloud_coverage_sensor": "Senzor oblačnosti (%) na úpravu vplyvu slnečného žiarenia na pocitovú teplotu (voliteľné)",
+          "enable_weather_entity": "Vytvorte weather entitu ktorú možno použiť v kartách počasia a automatizáciách"
         }
       }
     },

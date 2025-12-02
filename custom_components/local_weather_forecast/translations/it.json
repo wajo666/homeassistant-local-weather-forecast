@@ -41,9 +41,27 @@
           "temperature_sensor": "Sensore di temperatura",
           "wind_direction_sensor": "Sensore direzione vento",
           "wind_speed_sensor": "Sensore velocità vento",
+          "humidity_sensor": "Sensore di umidità (Avanzato)",
+          "wind_gust_sensor": "Sensore raffiche di vento (Avanzato)",
+          "rain_rate_sensor": "Sensore intensità pioggia (Avanzato)",
+          "dewpoint_sensor": "Sensore punto di rugiada (Avanzato)",
+          "precipitation_sensor": "Sensore precipitazioni (Avanzato)",
+          "solar_radiation_sensor": "Sensore radiazione solare (Avanzato)",
+          "cloud_coverage_sensor": "Sensore copertura nuvolosa (Avanzato)",
           "elevation": "Altitudine",
           "pressure_type": "Tipo di pressione",
-          "language": "Lingua delle previsioni"
+          "language": "Lingua delle previsioni",
+          "enable_weather_entity": "Abilita entità meteo"
+        },
+        "data_description": {
+          "humidity_sensor": "Sensore di umidità per rilevamento avanzato nebbia, calcolo punto di rugiada e probabilità di pioggia (opzionale)",
+          "wind_gust_sensor": "Sensore raffiche per rilevamento stabilità atmosferica e allerte meteo (opzionale)",
+          "rain_rate_sensor": "Sensore intensità pioggia per override in tempo reale della probabilità di pioggia (opzionale)",
+          "dewpoint_sensor": "Sensore punto di rugiada per sovrascrivere i valori calcolati (opzionale)",
+          "precipitation_sensor": "Sensore precipitazioni per monitoraggio pioggia e analisi delle tendenze (opzionale)",
+          "solar_radiation_sensor": "Sensore radiazione solare (W/m²) per temperatura percepita accurata in condizioni soleggiate (opzionale)",
+          "cloud_coverage_sensor": "Sensore copertura nuvolosa (%) per regolare gli effetti della radiazione solare sulla temperatura apparente (opzionale)",
+          "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"
         }
       }
     },

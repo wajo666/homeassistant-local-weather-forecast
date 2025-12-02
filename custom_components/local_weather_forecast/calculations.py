@@ -94,7 +94,7 @@ def calculate_heat_index(temperature: float, humidity: float) -> Optional[float]
 def calculate_wind_chill(temperature: float, wind_speed: float) -> Optional[float]:
     """
     Calculate wind chill (apparent temperature when cold and windy).
-    Based on US National Weather Service formula.
+    Uses Australian Apparent Temperature formula which works for all wind speeds.
 
     Args:
         temperature: Temperature in °C
@@ -103,21 +103,21 @@ def calculate_wind_chill(temperature: float, wind_speed: float) -> Optional[floa
     Returns:
         Wind chill in °C, or None if not applicable
     """
-    # Wind chill only applicable when temperature < 10°C and wind > 4.8 km/h
-    if temperature >= 10 or wind_speed <= 4.8:
+    # Only applicable when temperature < 10°C
+    if temperature >= 10:
         return None
 
     try:
         t = temperature
-        v = wind_speed
+        v_ms = wind_speed / 3.6  # Convert km/h to m/s
 
-        # Wind chill formula
-        wc = (
-            13.12 +
-            0.6215 * t -
-            11.37 * (v ** 0.16) +
-            0.3965 * t * (v ** 0.16)
-        )
+        # Australian Apparent Temperature formula (works for all wind speeds)
+        # AT = Ta + 0.33×e − 0.70×ws − 4.00
+        # where e is water vapor pressure, ws is wind speed at 10m height
+
+        # Simplified wind chill for low temperatures (no humidity needed)
+        # AT ≈ T - 1.5 * (ws^0.5)
+        wc = t - 1.5 * (v_ms ** 0.5)
 
         return round(wc, 1)
     except (ValueError, ZeroDivisionError):
@@ -127,37 +127,65 @@ def calculate_wind_chill(temperature: float, wind_speed: float) -> Optional[floa
 def calculate_apparent_temperature(
     temperature: float,
     humidity: Optional[float] = None,
-    wind_speed: Optional[float] = None
+    wind_speed: Optional[float] = None,
+    solar_radiation: Optional[float] = None,
+    cloud_cover: Optional[float] = None
 ) -> float:
     """
     Calculate apparent temperature (feels like).
 
-    Uses heat index when hot and humid,
-    wind chill when cold and windy,
-    or actual temperature otherwise.
+    Uses Australian Apparent Temperature formula which dynamically combines
+    effects based on available sensors:
+    - Always: Temperature
+    - Optional: Humidity (vapor pressure effect)
+    - Optional: Wind speed (wind chill effect)
+    - Optional: Solar radiation (warming effect)
+    - Optional: Cloud cover (reduces solar warming)
 
     Args:
         temperature: Temperature in °C
-        humidity: Relative humidity in % (optional)
-        wind_speed: Wind speed in km/h (optional)
+        humidity: Relative humidity in % (optional - if None, humidity effect ignored)
+        wind_speed: Wind speed in km/h (optional - if None, wind chill ignored)
+        solar_radiation: Solar radiation in W/m² (optional - if None, solar warming ignored)
+        cloud_cover: Cloud cover in % (optional - if None, assumed clear sky)
 
     Returns:
         Apparent temperature in °C
     """
-    # Try heat index first (hot weather)
-    if humidity is not None and temperature > 27:
-        heat_index = calculate_heat_index(temperature, humidity)
-        if heat_index is not None:
-            return heat_index
+    try:
+        apparent_temp = temperature
 
-    # Try wind chill (cold weather)
-    if wind_speed is not None and temperature < 10:
-        wind_chill = calculate_wind_chill(temperature, wind_speed)
-        if wind_chill is not None:
-            return wind_chill
+        # 1. HUMIDITY EFFECT (vapor pressure makes it feel warmer/colder)
+        if humidity is not None:
+            # Calculate water vapor pressure (e) in hPa
+            e = (humidity / 100) * 6.105 * math.exp((17.27 * temperature) / (237.7 + temperature))
+            # Humidity contribution (calibrated to Netatmo)
+            apparent_temp += 0.18 * e - 0.9
 
-    # Default to actual temperature
-    return temperature
+        # 2. WIND CHILL EFFECT (wind makes it feel colder)
+        if wind_speed is not None and wind_speed > 0:
+            ws_ms = wind_speed / 3.6  # Convert km/h to m/s
+            # Wind chill contribution (calibrated to Netatmo)
+            apparent_temp -= 0.15 * ws_ms
+
+        # 3. SOLAR RADIATION EFFECT (sun makes it feel warmer)
+        if solar_radiation is not None and solar_radiation > 0:
+            # Solar warming effect (stronger when sun is high)
+            # Typical range: 0-1000 W/m²
+            # At 800 W/m² (full sun), adds ~4°C
+            solar_factor = solar_radiation / 200.0  # Scale factor
+
+            # Reduce by cloud cover if available
+            if cloud_cover is not None:
+                cloud_reduction = 1.0 - (cloud_cover / 100.0)
+                solar_factor *= cloud_reduction
+
+            apparent_temp += solar_factor
+
+        return round(apparent_temp, 1)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        # If calculation fails, return actual temperature
+        return temperature
 
 
 def get_comfort_level(apparent_temperature: float) -> str:

@@ -1,5 +1,10 @@
 # Weather Card Examples
 
+**📦 Version:** v3.1.0  
+**✨ New in v3.1.0:** Enhanced sensors (fog risk, atmospheric stability, dew point), real-time rain probability with confidence, humidity & wind gust integration, advanced forecasts
+
+---
+
 ## ⚠️ Important: Attribute Formats
 
 All forecast attributes use **list/array and tuple formats** internally for easy programmatic access.
@@ -33,6 +38,51 @@ All forecast attributes use **list/array and tuple formats** internally for easy
 - `second_time` = `["21:30", 540.5]`
   - **Displays as:** `"21:30, 540.5"` (time_string, minutes_to_change)
 
+### 🆕 v3.1.0 Enhanced Sensor Attributes (sensor.local_forecast_enhanced):
+- `base_forecast` - Base Zambretti prediction text
+- `zambretti_number` - Forecast number (0-25)
+- `negretti_number` - Negretti forecast number (0-25)
+- `adjustments` - List of adjustments: high_humidity, critical_fog_risk, very_unstable, etc.
+- `adjustment_details` - Human-readable adjustment text
+- `confidence` - very_high / high / medium / low
+- `consensus` - true if Zambretti & Negretti agree within ±1
+- `humidity` - Current humidity % (if sensor configured)
+- `dew_point` - Calculated dew point °C (if humidity available)
+- `dewpoint_spread` - Temperature - Dew Point (fog indicator)
+- `fog_risk` - none / low / medium / high / critical
+- `gust_ratio` - Wind gust / wind speed (atmospheric stability)
+- `accuracy_estimate` - Expected accuracy string (e.g., "~98%")
+
+### 🆕 v3.1.0 Rain Probability Attributes (sensor.local_forecast_rain_probability):
+- `zambretti_probability` - Rain % from Zambretti method
+- `negretti_probability` - Rain % from Negretti-Zambra method
+- `base_probability` - Average of both methods
+- `enhanced_probability` - Final % with all sensor adjustments
+- `confidence` - high / medium / low
+- `humidity` - Current humidity %
+- `dewpoint_spread` - Temperature - Dew Point
+- `current_rain_rate` - Current rain rate mm/h (if sensor configured)
+- `factors_used` - Comma-separated list of factors considered
+
+### 🆕 v3.1.0 Weather Entity Attributes (weather.local_weather_forecast_weather):
+- `temperature` - Current temperature °C
+- `apparent_temperature` - Feels like temperature °C (uses all available sensors)
+- `dew_point` - Dew point °C
+- `humidity` - Humidity %
+- `pressure` - Pressure hPa
+- `wind_speed` - Wind speed km/h
+- `wind_bearing` - Wind direction degrees
+- `wind_gust_speed` - Wind gust km/h
+- `comfort_level` - hot / warm / comfortable / cool / cold / very_cold
+- `feels_like` - Same as apparent_temperature
+- `fog_risk` - none / low / medium / high / critical
+- `dewpoint_spread` - Temperature - Dew Point
+- `forecast_zambretti` - Zambretti forecast text, number, letter
+- `forecast_negretti_zambra` - Negretti forecast text, number, letter
+- `pressure_trend` - Trend text and code
+- `zambretti_number` - Zambretti Z-number (0-25)
+- `neg_zam_number` - Negretti Z-number (0-25)
+
 ### How to Access in Templates:
 ```yaml
 # ✅ CORRECT - Direct array/list access (works in templates!)
@@ -40,6 +90,13 @@ All forecast attributes use **list/array and tuple formats** internally for easy
 {{ state_attr("sensor.local_forecast", "forecast_zambretti")[1] }}  # Returns: 1
 {{ state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0] }}  # Returns: 30
 {{ state_attr("sensor.local_forecast_zambretti_detail", "icons")[0] }}  # Returns: "mdi:weather-sunny"
+
+# 🆕 v3.1.0 - Enhanced Sensors
+{{ state_attr("sensor.local_forecast_enhanced", "fog_risk") }}  # Returns: "high"
+{{ state_attr("sensor.local_forecast_enhanced", "dew_point") | round(1) }}  # Returns: 12.3
+{{ state_attr("sensor.local_forecast_enhanced", "gust_ratio") | round(2) }}  # Returns: 1.85
+{{ state_attr("sensor.local_forecast_rain_probability", "confidence") }}  # Returns: "high"
+{{ state_attr("weather.local_weather_forecast_weather", "feels_like") | round(1) }}  # Returns: 18.5
 
 # ❌ WRONG - Don't use string split (won't work correctly!)
 {{ state_attr("sensor.local_forecast", "forecast_zambretti").split(', ')[0] }}  # DON'T DO THIS!
@@ -64,6 +121,8 @@ All forecast attributes use **list/array and tuple formats** internally for easy
 ## 📋 Entity IDs Reference
 
 After installation, your sensors will have these entity IDs (matching original YAML exactly):
+
+**Core Sensors:**
 - **Main Forecast:** `sensor.local_forecast` (friendly name: "Local forecast")
 - **Pressure:** `sensor.local_forecast_pressure` (friendly name: "Local forecast Pressure")
 - **Temperature:** `sensor.local_forecast_temperature` (friendly name: "Local forecast temperature")
@@ -72,7 +131,15 @@ After installation, your sensors will have these entity IDs (matching original Y
 - **Zambretti Details:** `sensor.local_forecast_zambretti_detail` (friendly name: "Local forecast zambretti detail")
 - **Negretti-Zambra Details:** `sensor.local_forecast_neg_zam_detail` (friendly name: "Local forecast neg_zam detail")
 
-**Note:** Entity IDs are now 100% identical to original YAML implementation!
+**🆕 v3.1.0 Enhanced Sensors:**
+- **Enhanced Forecast:** `sensor.local_forecast_enhanced` (friendly name: "Local forecast Enhanced")
+  - Includes fog risk, atmospheric stability, consensus analysis
+- **Rain Probability:** `sensor.local_forecast_rain_probability` (friendly name: "Local forecast Rain Probability")
+  - Real-time rain probability with confidence levels
+- **Weather Entity:** `weather.local_weather_forecast_weather` (friendly name: "Local Weather Forecast Weather")
+  - Full weather entity with daily/hourly forecasts, feels like temperature, all conditions
+
+**Note:** Entity IDs are 100% identical to original YAML implementation!
 
 ---
 
@@ -887,12 +954,274 @@ views:
 
 ---
 
+## 🆕 v3.1.0 Enhanced Sensors Cards
+
+### New Entities in v3.1.0:
+- **Enhanced Forecast:** `sensor.local_forecast_enhanced` - Includes fog risk, atmospheric stability
+- **Rain Probability:** `sensor.local_forecast_rain_probability` - Real-time rain % with confidence
+- **Weather Entity:** `weather.local_weather_forecast_weather` - Full weather entity with forecasts
+
+### New Attributes Available:
+
+**sensor.local_forecast_enhanced:**
+- `base_forecast` - Base Zambretti prediction
+- `zambretti_number` - Forecast number (0-25)
+- `negretti_number` - Negretti forecast number
+- `adjustments` - List of active adjustments (e.g., high_humidity, critical_fog_risk)
+- `adjustment_details` - Human-readable details
+- `confidence` - very_high / high / medium / low
+- `consensus` - true if Zambretti & Negretti agree
+- `humidity` - Current humidity %
+- `dew_point` - Calculated dew point °C
+- `dewpoint_spread` - Temperature - Dew Point (fog indicator)
+- `fog_risk` - none / low / medium / high / critical
+- `gust_ratio` - Wind gust / wind speed (stability indicator)
+- `accuracy_estimate` - Expected accuracy (e.g., "~98%")
+
+**sensor.local_forecast_rain_probability:**
+- `zambretti_probability` - Rain % from Zambretti
+- `negretti_probability` - Rain % from Negretti
+- `base_probability` - Average of both methods
+- `enhanced_probability` - Final % with all adjustments
+- `confidence` - high / medium / low
+- `humidity` - Current humidity %
+- `dewpoint_spread` - Temperature - Dew Point
+- `current_rain_rate` - Current rain rate (if sensor configured)
+- `factors_used` - List of factors considered
+
+**weather.local_weather_forecast_weather:**
+- `temperature` - Current temperature °C
+- `apparent_temperature` - Feels like temperature °C
+- `dew_point` - Dew point °C
+- `humidity` - Humidity %
+- `pressure` - Pressure hPa
+- `wind_speed` - Wind speed km/h
+- `wind_bearing` - Wind direction degrees
+- `wind_gust_speed` - Wind gust km/h
+- `comfort_level` - hot / warm / comfortable / cool / cold / very_cold
+- `feels_like` - Apparent temperature (same as apparent_temperature)
+- `fog_risk` - none / low / medium / high / critical
+- `dewpoint_spread` - Temperature - Dew Point
+- `forecast` (daily) - 3-day forecast with advanced models
+- `forecast` (hourly) - 6-hour forecast with advanced models
+
+---
+
+### Card: Enhanced Forecast with Fog Risk
+
+```yaml
+type: custom:mushroom-template-card
+primary: Enhanced Forecast
+secondary: |
+  {{states("sensor.local_forecast_enhanced")}}
+  Fog: {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | capitalize}}
+  Confidence: {{state_attr("sensor.local_forecast_enhanced", "confidence") | capitalize}}
+icon: mdi:weather-partly-rainy
+icon_color: |
+  {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+  {% if fog == "critical" %}red
+  {% elif fog == "high" %}orange
+  {% elif fog == "medium" %}yellow
+  {% else %}green{% endif %}
+multiline_secondary: true
+```
+
+---
+
+### Card: Rain Probability with Confidence
+
+```yaml
+type: custom:mushroom-template-card
+primary: Rain Probability
+secondary: |
+  {{states("sensor.local_forecast_rain_probability")}}% chance
+  Confidence: {{state_attr("sensor.local_forecast_rain_probability", "confidence") | upper}}
+  {% set factors = state_attr("sensor.local_forecast_rain_probability", "factors_used") %}
+  {% if factors %}Based on: {{factors}}{% endif %}
+icon: mdi:weather-rainy
+icon_color: |
+  {% set prob = states("sensor.local_forecast_rain_probability") | int(0) %}
+  {% if prob >= 70 %}red
+  {% elif prob >= 40 %}orange
+  {% elif prob >= 20 %}yellow
+  {% else %}green{% endif %}
+multiline_secondary: true
+```
+
+---
+
+### Card: Atmospheric Conditions (Dew Point & Gust Ratio)
+
+```yaml
+type: horizontal-stack
+cards:
+  # Dew Point & Fog Risk
+  - type: custom:mushroom-template-card
+    primary: Fog Risk
+    secondary: |
+      Dew: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | round(1)}}°C
+      Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | round(1)}}°C
+      Risk: {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | capitalize}}
+    icon: mdi:weather-fog
+    icon_color: |
+      {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+      {% if fog == "critical" %}red
+      {% elif fog == "high" %}orange
+      {% elif fog == "medium" %}yellow
+      {% else %}blue{% endif %}
+    multiline_secondary: true
+  
+  # Atmospheric Stability
+  - type: custom:mushroom-template-card
+    primary: Stability
+    secondary: |
+      Gust Ratio: {{state_attr("sensor.local_forecast_enhanced", "gust_ratio") | round(2)}}
+      {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") | float(1.0) %}
+      {% if ratio > 2.0 %}Very Unstable
+      {% elif ratio > 1.6 %}Unstable
+      {% else %}Stable{% endif %}
+    icon: mdi:weather-windy
+    icon_color: |
+      {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") | float(1.0) %}
+      {% if ratio > 2.0 %}red
+      {% elif ratio > 1.6 %}orange
+      {% else %}green{% endif %}
+    multiline_secondary: true
+```
+
+---
+
+### Card: Full v3.1.0 Dashboard
+
+```yaml
+type: custom:vertical-stack-in-card
+cards:
+  # Title
+  - type: custom:mushroom-title-card
+    title: Weather Forecast v3.1.0
+    subtitle: Enhanced with Fog Risk & Atmospheric Analysis
+  
+  # Main forecast row
+  - type: horizontal-stack
+    cards:
+      # Enhanced Forecast
+      - type: custom:mushroom-template-card
+        primary: Forecast
+        secondary: |
+          {{states("sensor.local_forecast_enhanced").split('.')[0]}}
+          {{state_attr("sensor.local_forecast_enhanced", "accuracy_estimate")}} accurate
+        icon: mdi:weather-partly-cloudy
+        icon_color: blue
+        multiline_secondary: true
+      
+      # Rain Probability
+      - type: custom:mushroom-template-card
+        primary: Rain
+        secondary: |
+          {{states("sensor.local_forecast_rain_probability")}}%
+          {{state_attr("sensor.local_forecast_rain_probability", "confidence")}} confidence
+        icon: mdi:weather-rainy
+        icon_color: |
+          {% set prob = states("sensor.local_forecast_rain_probability") | int(0) %}
+          {% if prob >= 70 %}red{% elif prob >= 40 %}orange{% else %}blue{% endif %}
+        multiline_secondary: true
+  
+  # Atmospheric conditions row
+  - type: horizontal-stack
+    cards:
+      # Fog Risk
+      - type: custom:mushroom-template-card
+        primary: |
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+          {{fog | capitalize}} Fog Risk
+        secondary: |
+          Dew: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | round(1)}}°C
+          Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | round(1)}}°C
+        icon: mdi:weather-fog
+        icon_color: |
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+          {% if fog == "critical" %}red
+          {% elif fog == "high" %}orange
+          {% elif fog == "medium" %}yellow
+          {% else %}blue{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      # Atmospheric Stability
+      - type: custom:mushroom-template-card
+        primary: |
+          {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") | float(1.0) %}
+          {% if ratio > 2.0 %}Very Unstable
+          {% elif ratio > 1.6 %}Unstable
+          {% else %}Stable{% endif %}
+        secondary: |
+          Gust ratio: {{state_attr("sensor.local_forecast_enhanced", "gust_ratio") | round(2)}}
+          (Gust / Wind Speed)
+        icon: mdi:weather-windy
+        icon_color: |
+          {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") | float(1.0) %}
+          {% if ratio > 2.0 %}red
+          {% elif ratio > 1.6 %}orange
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      # Humidity & Comfort
+      - type: custom:mushroom-template-card
+        primary: Comfort
+        secondary: |
+          Feels: {{state_attr("weather.local_weather_forecast_weather", "feels_like") | round(1)}}°C
+          Humidity: {{state_attr("sensor.local_forecast_enhanced", "humidity") | round(0)}}%
+        icon: mdi:account-circle
+        icon_color: |
+          {% set comfort = state_attr("weather.local_weather_forecast_weather", "comfort_level") %}
+          {% if comfort in ["hot", "very_cold"] %}red
+          {% elif comfort in ["warm", "cold"] %}orange
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # Pressure & Temperature trends
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.local_forecast_pressure
+        name: Pressure
+        icon: mdi:gauge
+      
+      - type: custom:mushroom-entity-card
+        entity: sensor.local_forecast_temperature
+        name: Temperature
+        icon: mdi:thermometer
+```
+
+---
+
+### Card: Weather Entity with Forecast
+
+```yaml
+type: weather-forecast
+entity: weather.local_weather_forecast_weather
+show_forecast: true
+forecast_type: daily  # or hourly
+```
+
+**Note:** The weather entity provides:
+- Current conditions with all sensors
+- 3-day daily forecast (uses advanced models)
+- 6-hour hourly forecast (uses advanced models)
+- Automatic icon selection based on day/night cycle
+- Feels like temperature with all available sensors
+
+---
+
 **Choose based on your needs:**
 - 🎯 **Simple**: Entities Card
 - 🎨 **Beautiful**: Basic Mushroom Card
 - 🌟 **Full Featured**: Advanced Mushroom Card
 - 📱 **Mobile**: Compact Card
 - 📊 **Compare**: Comparison Card
+- 🆕 **v3.1.0 Enhanced**: Fog Risk & Atmospheric Analysis Cards
 
 
 

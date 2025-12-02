@@ -85,7 +85,51 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    """Reload config entry when options change."""
+    # Only reload if sensor configuration or critical settings changed
+    # This prevents infinite reload loop when only options like enable_weather_entity change
+
+    # Get old and new data
+    old_data = hass.data[DOMAIN].get(entry.entry_id, {})
+    new_data = entry.data
+
+    # Check if sensor configuration changed (these require platform reload)
+    sensor_keys = [
+        "pressure_sensor",
+        "temperature_sensor",
+        "wind_direction_sensor",
+        "wind_speed_sensor",
+        "humidity_sensor",
+        "wind_gust_sensor",
+        "rain_rate_sensor",
+        "dewpoint_sensor",
+        "precipitation_sensor",
+    ]
+
+    # Check if any sensor configuration changed
+    sensors_changed = False
+    for key in sensor_keys:
+        if old_data.get(key) != new_data.get(key):
+            sensors_changed = True
+            _LOGGER.info(f"Sensor configuration changed: {key}")
+            break
+
+    # Check if critical settings changed
+    critical_keys = ["elevation", "pressure_type", "language", "enable_weather_entity"]
+    critical_changed = False
+    for key in critical_keys:
+        if old_data.get(key) != new_data.get(key):
+            critical_changed = True
+            _LOGGER.info(f"Critical setting changed: {key}")
+            break
+
+    # Only reload if something actually changed
+    if sensors_changed or critical_changed:
+        _LOGGER.info("Configuration changed, reloading integration")
+        await async_unload_entry(hass, entry)
+        await async_setup_entry(hass, entry)
+    else:
+        # Just update the data in memory without reload
+        _LOGGER.debug("Configuration unchanged, skipping reload")
+        hass.data[DOMAIN][entry.entry_id] = new_data
 

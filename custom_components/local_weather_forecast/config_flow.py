@@ -15,13 +15,20 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_CLOUD_COVERAGE_SENSOR,
+    CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
+    CONF_HUMIDITY_SENSOR,
     CONF_LANGUAGE,
-    CONF_PRESSURE_TYPE,
+    CONF_PRECIPITATION_SENSOR,
     CONF_PRESSURE_SENSOR,
+    CONF_PRESSURE_TYPE,
+    CONF_RAIN_RATE_SENSOR,
+    CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
+    CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
     DEFAULT_ENABLE_WEATHER_ENTITY,
@@ -228,6 +235,19 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                 if wind_speed_sensor and not self.hass.states.get(wind_speed_sensor):
                     errors[CONF_WIND_SPEED_SENSOR] = "sensor_not_found"
 
+            # Validate new optional sensors
+            if humidity_sensor := user_input.get(CONF_HUMIDITY_SENSOR):
+                if humidity_sensor and not self.hass.states.get(humidity_sensor):
+                    errors[CONF_HUMIDITY_SENSOR] = "sensor_not_found"
+
+            if wind_gust_sensor := user_input.get(CONF_WIND_GUST_SENSOR):
+                if wind_gust_sensor and not self.hass.states.get(wind_gust_sensor):
+                    errors[CONF_WIND_GUST_SENSOR] = "sensor_not_found"
+
+            if rain_rate_sensor := user_input.get(CONF_RAIN_RATE_SENSOR):
+                if rain_rate_sensor and not self.hass.states.get(rain_rate_sensor):
+                    errors[CONF_RAIN_RATE_SENSOR] = "sensor_not_found"
+
             elevation = user_input.get(CONF_ELEVATION, DEFAULT_ELEVATION)
             if elevation < 0 or elevation > 9000:
                 errors[CONF_ELEVATION] = "invalid_elevation"
@@ -235,7 +255,19 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
             if not errors:
                 # Clean up empty strings - convert to None for optional fields
                 cleaned_input = user_input.copy()
-                for key in [CONF_TEMPERATURE_SENSOR, CONF_WIND_DIRECTION_SENSOR, CONF_WIND_SPEED_SENSOR]:
+                optional_sensors = [
+                    CONF_TEMPERATURE_SENSOR,
+                    CONF_WIND_DIRECTION_SENSOR,
+                    CONF_WIND_SPEED_SENSOR,
+                    CONF_HUMIDITY_SENSOR,
+                    CONF_WIND_GUST_SENSOR,
+                    CONF_RAIN_RATE_SENSOR,
+                    CONF_DEWPOINT_SENSOR,
+                    CONF_PRECIPITATION_SENSOR,
+                    CONF_SOLAR_RADIATION_SENSOR,
+                    CONF_CLOUD_COVERAGE_SENSOR,
+                ]
+                for key in optional_sensors:
                     # Convert empty strings to None, ensure key exists even if not provided
                     if key not in cleaned_input or not cleaned_input[key]:
                         cleaned_input[key] = None
@@ -251,6 +283,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
 
         options_schema = vol.Schema(
             {
+                # Core sensors
                 vol.Optional(
                     CONF_TEMPERATURE_SENSOR,
                     description={"suggested_value": current_config.get(CONF_TEMPERATURE_SENSOR)}
@@ -286,6 +319,90 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         multiple=False,
                     )
                 ),
+                # Enhanced sensors for better forecast accuracy
+                vol.Optional(
+                    CONF_HUMIDITY_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_HUMIDITY_SENSOR)}
+                    if current_config.get(CONF_HUMIDITY_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="humidity",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_WIND_GUST_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_WIND_GUST_SENSOR)}
+                    if current_config.get(CONF_WIND_GUST_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="wind_speed",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_RAIN_RATE_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_RAIN_RATE_SENSOR)}
+                    if current_config.get(CONF_RAIN_RATE_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_DEWPOINT_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_DEWPOINT_SENSOR)}
+                    if current_config.get(CONF_DEWPOINT_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="temperature",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_PRECIPITATION_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_PRECIPITATION_SENSOR)}
+                    if current_config.get(CONF_PRECIPITATION_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="precipitation",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_SOLAR_RADIATION_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_SOLAR_RADIATION_SENSOR)}
+                    if current_config.get(CONF_SOLAR_RADIATION_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="irradiance",
+                        multiple=False,
+                    )
+                ),
+                vol.Optional(
+                    CONF_CLOUD_COVERAGE_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_CLOUD_COVERAGE_SENSOR)}
+                    if current_config.get(CONF_CLOUD_COVERAGE_SENSOR)
+                    else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        multiple=False,
+                    )
+                ),
+                # Configuration options
                 vol.Optional(
                     CONF_ELEVATION,
                     default=current_config.get(CONF_ELEVATION, DEFAULT_ELEVATION),
@@ -328,6 +445,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                # Feature toggles
                 vol.Optional(
                     CONF_ENABLE_WEATHER_ENTITY,
                     default=current_config.get(CONF_ENABLE_WEATHER_ENTITY, DEFAULT_ENABLE_WEATHER_ENTITY),

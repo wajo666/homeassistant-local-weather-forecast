@@ -6,6 +6,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-12-02
+
+### ✨ Added - Advanced Weather Forecasting
+- **Advanced Forecast Calculator** (`forecast_calculator.py`)
+  - Scientific pressure trend forecasting (linear regression)
+  - Temperature modeling with diurnal cycle
+  - Hourly Zambretti forecast generation
+  - Rain probability per hour based on pressure evolution
+  - Confidence scoring for forecast quality
+  - Support for both daily and hourly forecasts
+
+- **Weather Entity Forecast Support**
+  - **Daily Forecast**: 3-day forecast with temperature trends
+    - Hourly temperature variation during the day
+    - Condition changes based on Zambretti algorithm
+    - Day/night icon distinction (sunrise/sunset aware)
+  - **Hourly Forecast**: 6-hour detailed forecast
+    - Hourly temperature evolution
+    - Hourly condition updates
+    - Hourly rain probability
+    - Dynamic day/night icons
+
+- **Realistic Weather Conditions**
+  - Dynamic icon selection based on time of day
+  - Sunrise/sunset calculation using location coordinates
+  - Night icons (clear-night, rainy-night, etc.)
+  - Day icons (sunny, cloudy, rainy, etc.)
+  - Condition mapping from Zambretti forecasts
+
+### 🔧 Enhanced - Rain Probability Calculation
+- Improved rain probability algorithm:
+  - Base probability from Zambretti (0-100%)
+  - Base probability from Negretti-Zambra (0-100%)
+  - Humidity adjustment (±25% based on humidity levels)
+  - Dewpoint spread adjustment (±25% based on fog risk)
+  - Current rain override (100% if actively raining)
+  - High/Low confidence levels
+  - Better handling of unavailable sensors
+
+### 🔧 Enhanced - Weather Icons
+- Night-time specific icons in Zambretti and Negretti-Zambra detail sensors
+- Day/night awareness based on forecast time
+- Consistent icon usage across all sensors and forecasts
+- MDI (Material Design Icons) standard compliance
+
+### 📝 Documentation
+- Updated implementation details for forecast calculator
+- Documented pressure trend forecasting model
+- Documented temperature modeling with diurnal cycle
+- Added examples of daily and hourly forecast usage
+
+### 🐛 Fixed
+- Weather entity forecast now properly generates multi-day and hourly forecasts
+- Forecast datetime calculations now timezone-aware
+- Improved error handling in forecast generation
+- Fixed temperature forecast availability in main sensor
+
+---
+
 ## [3.0.3] - 2025-12-01
 
 ### ✨ Added - Enhanced Sensors

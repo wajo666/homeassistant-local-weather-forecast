@@ -1,6 +1,7 @@
 """Sensor platform for Local Weather Forecast integration."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 import logging
 from typing import Any
@@ -31,8 +32,10 @@ from .const import (
     CONF_LANGUAGE,
     CONF_PRESSURE_TYPE,
     CONF_PRESSURE_SENSOR,
+    CONF_RAIN_RATE_SENSOR,
     CONF_TEMPERATURE_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
+    CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
     DEFAULT_LANGUAGE,
@@ -133,7 +136,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.0.3",
+            "sw_version": "3.1.0",
         }
 
     async def _get_sensor_value(
@@ -337,11 +340,13 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         pressure_trend = self._get_pressure_trend(pressure_change, lang_index)
 
         # Update state and attributes
+        # Format: [German, English, Greek, Italian, Slovak]
         titles = [
             "Lokale Wettervorhersage",
             "12hr Local Weather Forecast",
             "Τοπική πρόγνωση καιρού",
             "Previsione meteorologica locale",
+            "Lokálna predpoveď počasia",  # Slovak
         ]
         self._state = titles[lang_index]
 
@@ -532,10 +537,11 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
     def _get_pressure_trend(self, pressure_change: float, lang_index: int) -> list:
         """Get pressure trend text."""
+        # Format: [German, English, Greek, Italian, Slovak]
         trend_texts = [
-            ("fallend", "Falling", "πέφτοντας", "In diminuzione"),
-            ("steigend", "Rising", "αυξανόμενη", "In aumento"),
-            ("stabil", "Steady", "σταθερή", "Stabile"),
+            ("fallend", "Falling", "πέφτοντας", "In diminuzione", "Klesajúci"),
+            ("steigend", "Rising", "αυξανόμενη", "In aumento", "Stúpajúci"),
+            ("stabil", "Steady", "σταθερή", "Stabile", "Stabilný"),
         ]
 
         if pressure_change <= PRESSURE_TREND_FALLING:
@@ -1347,28 +1353,60 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         self._attr_unique_id = "local_forecast_enhanced"
         self._attr_name = "Local forecast Enhanced"
         self._attr_icon = "mdi:weather-partly-rainy"
+        self._startup_retry_count = 0
+        self._state = None  # Initialize state
+        self._attributes = {}
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass - schedule delayed update for startup."""
+        await super().async_added_to_hass()
+
+        # Schedule delayed update to wait for dependent sensors to load
+        async def delayed_startup_update():
+            await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
+            _LOGGER.info("Enhanced: Running delayed startup update")
+            await self.async_update()
+            self.async_write_ha_state()
+
+        self.hass.async_create_task(delayed_startup_update())
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        return self._attributes
 
     async def async_update(self) -> None:
         """Update the enhanced forecast."""
         # Get base forecasts
         main_sensor = self.hass.states.get("sensor.local_forecast")
         if not main_sensor or main_sensor.state in ("unknown", "unavailable"):
-            self._state = "Unknown"
-            self._attributes = {}
-            return
-
-        attrs = main_sensor.attributes
-        zambretti = attrs.get("forecast_zambretti", ["Unknown", 0, "A"])
-        negretti = attrs.get("forecast_neg_zam", ["Unknown", 0, "A"])
+            _LOGGER.debug("Enhanced: Main sensor unavailable, using defaults")
+            zambretti = ["Unknown", 0, "A"]
+            negretti = ["Unknown", 0, "A"]
+        else:
+            attrs = main_sensor.attributes
+            zambretti = attrs.get("forecast_zambretti", ["Unknown", 0, "A"])
+            negretti = attrs.get("forecast_neg_zam", ["Unknown", 0, "A"])
 
         # Get sensor values
         temp = await self._get_sensor_value(
             self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
         )
-        humidity_sensor = self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+        # Enhanced sensors are in options, not data!
+        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+        _LOGGER.info(f"Enhanced: Config humidity sensor = {humidity_sensor}")
         humidity = None
         if humidity_sensor:
-            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=False)
+            _LOGGER.debug(f"Enhanced: Fetching humidity from {humidity_sensor}")
+            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
+            _LOGGER.info(f"Enhanced: Humidity value = {humidity}")
+        else:
+            _LOGGER.warning("Enhanced: No humidity sensor configured!")
 
         # Calculate dew point and spread
         dewpoint = None
@@ -1377,19 +1415,31 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             dewpoint = calculate_dewpoint(temp, humidity)
             if dewpoint is not None:
                 dewpoint_spread = temp - dewpoint
+            _LOGGER.debug(f"Enhanced: Calculated dewpoint={dewpoint}, spread={dewpoint_spread}")
+        else:
+            _LOGGER.warning(f"Enhanced: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
         # Get wind gust ratio
         wind_speed = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR), 0.0, use_history=False
+            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR), 0.0, use_history=True
         )
-        wind_gust_sensor = self.hass.states.get("sensor.indoor_wind_gauge_sila_narazov")
+        # Enhanced sensors are in options, not data!
+        wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
+        _LOGGER.info(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed}")
         gust_ratio = None
-        if wind_gust_sensor and wind_speed > 0.1:
-            try:
-                wind_gust = float(wind_gust_sensor.state)
+        if wind_gust_sensor_id and wind_speed > 0.1:
+            _LOGGER.debug(f"Enhanced: Fetching wind gust from {wind_gust_sensor_id}, wind_speed={wind_speed}")
+            wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True)
+            if wind_gust is not None:
                 gust_ratio = wind_gust / wind_speed if wind_speed > 0.1 else 1.0
-            except (ValueError, TypeError):
-                pass
+                _LOGGER.info(f"Enhanced: Calculated gust_ratio={gust_ratio} (gust={wind_gust}, speed={wind_speed})")
+            else:
+                _LOGGER.warning(f"Enhanced: Wind gust sensor returned None")
+        else:
+            if not wind_gust_sensor_id:
+                _LOGGER.warning("Enhanced: No wind gust sensor configured!")
+            else:
+                _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed}), skipping gust ratio")
 
         # Calculate adjustments
         adjustments = []
@@ -1453,6 +1503,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             fog_risk = get_fog_risk(temp, dewpoint)
 
         self._state = enhanced_text
+        _LOGGER.info(f"Enhanced: Setting state to: {enhanced_text}")
         self._attributes = {
             "base_forecast": base_text,
             "zambretti_number": zambretti_num,
@@ -1468,6 +1519,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "gust_ratio": gust_ratio,
             "accuracy_estimate": "~98%" if confidence in ["high", "very_high"] else "~94%",
         }
+        # Note: Home Assistant automatically writes state after async_update() completes
 
 
 class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
@@ -1479,37 +1531,99 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         self._attr_unique_id = "local_forecast_rain_probability"
         self._attr_name = "Local forecast Rain Probability"
         self._attr_icon = "mdi:weather-rainy"
-        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_native_unit_of_measurement = "%"
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._state = None  # Initialize state
+        self._attributes = {}
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass - schedule delayed update for startup."""
+        await super().async_added_to_hass()
+
+        # Schedule delayed update to wait for dependent sensors to load
+        async def delayed_startup_update():
+            await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
+            _LOGGER.info("RainProb: Running delayed startup update")
+            await self.async_update()
+            self.async_write_ha_state()
+
+        self.hass.async_create_task(delayed_startup_update())
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        return self._attributes
+
 
     async def async_update(self) -> None:
         """Update the rain probability."""
-        # Get base forecasts
-        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-        negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+        # Try to get forecast data from weather entity
+        weather_entity = self.hass.states.get("weather.local_weather_forecast_weather")
 
-        if not zambretti_sensor or not negretti_sensor:
-            self._state = None
-            self._attributes = {}
-            return
+        zambretti_prob = 0
+        negretti_prob = 0
 
-        # Map forecast numbers to rain probability (0-100%)
-        zambretti_num = zambretti_sensor.attributes.get("number", 0)
-        negretti_num = negretti_sensor.attributes.get("number", 0)
+        if weather_entity:
+            # Get hourly forecast from weather entity
+            try:
+                # Get hourly forecasts (next 6-12 hours)
+                forecasts = weather_entity.attributes.get("forecast", [])
+                if forecasts:
+                    # Average precipitation probability from next 6 hours
+                    rain_probs = [
+                        f.get("precipitation_probability", 0)
+                        for f in forecasts[:6]
+                        if "precipitation_probability" in f
+                    ]
+                    if rain_probs:
+                        zambretti_prob = sum(rain_probs) / len(rain_probs)
+                        negretti_prob = zambretti_prob  # Use same for both since using advanced model
+                        _LOGGER.debug(f"RainProb: Using forecast data - avg={zambretti_prob}% from {len(rain_probs)} hours")
+                    else:
+                        _LOGGER.debug("RainProb: No precipitation probability in forecasts, using detail sensors")
+                        # Fallback to detail sensors
+                        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+                        negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+                        if zambretti_sensor and negretti_sensor:
+                            zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
+                            negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
+                            zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
+                            negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
+            except Exception as e:
+                _LOGGER.warning(f"RainProb: Error getting forecast data: {e}")
+        else:
+            # Fallback to detail sensors if weather entity unavailable
+            _LOGGER.debug("RainProb: Weather entity unavailable, using detail sensors")
+            zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+            negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+            if zambretti_sensor and negretti_sensor:
+                zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
+                negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
+                zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
+                negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
 
-        # Simple mapping: lower number = more rain
-        # Zambretti: 1-32, Negretti: 1-7
-        zambretti_prob = max(0, min(100, 100 - (zambretti_num * 3)))
-        negretti_prob = max(0, min(100, 100 - (negretti_num * 14)))
+        _LOGGER.info(f"RainProb: Base probabilities - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%")
 
-        # Get sensor values
+        # Get sensor values for enhancements
         temp = await self._get_sensor_value(
             self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
         )
-        humidity_sensor = self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+
+        # Enhanced sensors are in options, not data!
+        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+        _LOGGER.info(f"RainProb: Config humidity sensor = {humidity_sensor}")
         humidity = None
         if humidity_sensor:
-            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=False)
+            _LOGGER.debug(f"RainProb: Fetching humidity from {humidity_sensor}")
+            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
+            _LOGGER.info(f"RainProb: Humidity value = {humidity}")
+        else:
+            _LOGGER.warning("RainProb: No humidity sensor configured!")
 
         # Calculate dewpoint spread
         dewpoint_spread = None
@@ -1517,6 +1631,9 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             dewpoint = calculate_dewpoint(temp, humidity)
             if dewpoint is not None:
                 dewpoint_spread = temp - dewpoint
+            _LOGGER.debug(f"RainProb: Calculated dewpoint_spread={dewpoint_spread}")
+        else:
+            _LOGGER.warning(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
         # Use enhanced calculation
         probability, confidence = calculate_rain_probability_enhanced(
@@ -1526,22 +1643,31 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             None,  # cloud_coverage not available
             dewpoint_spread,
         )
+        _LOGGER.debug(f"RainProb: Enhanced calculation result - probability={probability}, confidence={confidence}")
 
         # Get current rain rate
-        rain_rate_sensor = self.hass.states.get("sensor.rain_rate_corrected")
+        rain_rate_sensor_id = self.config_entry.options.get(CONF_RAIN_RATE_SENSOR) or self.config_entry.data.get(CONF_RAIN_RATE_SENSOR)
+        _LOGGER.info(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
         current_rain = 0.0
-        if rain_rate_sensor and rain_rate_sensor.state not in ("unknown", "unavailable"):
-            try:
-                current_rain = float(rain_rate_sensor.state)
-            except (ValueError, TypeError):
-                pass
+        if rain_rate_sensor_id:
+            _LOGGER.debug(f"RainProb: Fetching rain rate from {rain_rate_sensor_id}")
+            current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, None, use_history=False)
+            if current_rain_value is not None:
+                current_rain = current_rain_value
+                _LOGGER.info(f"RainProb: Current rain rate = {current_rain}")
+            else:
+                _LOGGER.warning(f"RainProb: Rain rate sensor returned None")
+        else:
+            _LOGGER.warning("RainProb: No rain rate sensor configured!")
 
         # If currently raining, probability is 100%
         if current_rain > 0.1:
+            _LOGGER.info(f"RainProb: Currently raining ({current_rain} mm/h), setting probability to 100%")
             probability = 100
             confidence = "very_high"
 
         self._state = round(probability)
+        _LOGGER.info(f"RainProb: Setting state to: {round(probability)}%")
         self._attributes = {
             "zambretti_probability": round(zambretti_prob),
             "negretti_probability": round(negretti_prob),
@@ -1553,6 +1679,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             "current_rain_rate": current_rain,
             "factors_used": self._get_factors_used(humidity, dewpoint_spread),
         }
+        # Note: Home Assistant automatically writes state after async_update() completes
 
     def _get_factors_used(self, humidity, dewpoint_spread):
         """Get list of factors used in calculation."""
