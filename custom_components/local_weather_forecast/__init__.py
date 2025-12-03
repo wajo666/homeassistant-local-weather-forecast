@@ -126,8 +126,8 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # Only reload if something actually changed
     if sensors_changed or critical_changed:
         _LOGGER.info("Configuration changed, reloading integration")
-        await async_unload_entry(hass, entry)
-        await async_setup_entry(hass, entry)
+        # Schedule reload instead of immediate to avoid double-reload
+        hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:
         # Just update the data in memory without reload
         _LOGGER.debug("Configuration unchanged, skipping reload")

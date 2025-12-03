@@ -323,11 +323,34 @@ class ZambrettiForecaster:
         if time_diff < 60:
             return sun_entity.state == "below_horizon"
 
-        # For future times, use simple hour-based logic
-        # Typically sunrise ~7:00, sunset ~19:00
-        hour = check_time.hour
+        # For future times, use sunrise/sunset times from sun entity
+        try:
+            # Ensure check_time is timezone-aware
+            if check_time.tzinfo is None:
+                check_time = check_time.replace(tzinfo=timezone.utc)
 
-        # Night is between 19:00 and 07:00
+            # Get next sunrise and sunset
+            next_rising_str = sun_entity.attributes.get("next_rising")
+            next_setting_str = sun_entity.attributes.get("next_setting")
+
+            if next_rising_str and next_setting_str:
+                from homeassistant.util import dt as dt_util
+                next_rising = dt_util.parse_datetime(next_rising_str)
+                next_setting = dt_util.parse_datetime(next_setting_str)
+
+                if next_rising and next_setting:
+                    # If check time is between sunset and next sunrise, it's night
+                    if next_setting < next_rising:
+                        # Currently day - night is after next_setting
+                        return check_time >= next_setting
+                    else:
+                        # Currently night - day is after next_rising
+                        return check_time < next_rising
+        except (ValueError, AttributeError) as err:
+            _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
+
+        # Fallback: Night is between 19:00 and 07:00
+        hour = check_time.hour
         return hour >= 19 or hour < 7
 
 
