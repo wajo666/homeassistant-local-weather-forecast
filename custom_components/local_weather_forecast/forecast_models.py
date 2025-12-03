@@ -7,7 +7,7 @@ temperature cycles, and barometric algorithms.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from .zambretti import ZambrettiForecaster
@@ -106,7 +106,7 @@ class TemperatureModel:
         """
         self.current = current_temp
         self.change_1h = temp_change_1h
-        self.time = current_time or datetime.now()
+        self.time = current_time or datetime.now(timezone.utc)
 
     def predict(self, hours_ahead: int) -> float:
         """Predict temperature N hours ahead using diurnal cycle model.

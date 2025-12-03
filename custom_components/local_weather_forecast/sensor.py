@@ -893,10 +893,54 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             )
         )
 
+        # Schedule periodic updates every 10 minutes to keep forecast times current
+        from homeassistant.helpers.event import async_track_time_interval
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass,
+                self._periodic_update,
+                timedelta(minutes=10),
+            )
+        )
+
         # Initial update
         await self._update_from_main()
         # Write state immediately
         self.async_write_ha_state()
+
+    @callback
+    async def _periodic_update(self, now: datetime) -> None:
+        """Periodic update to refresh forecast times."""
+        if self._state and self._attributes:
+            # Recalculate forecast times with current time
+            current_time = dt_util.now()
+
+            # Check if sun is below horizon for icon selection
+            sun_state = self.hass.states.get("sun.sun")
+            is_night = sun_state and sun_state.state == "below_horizon"
+
+            # Get forecast states
+            forecast_states = self._attributes.get("forecast", [3, 3])
+
+            # Update icons based on current time of day
+            icon_now = self._get_icon_for_forecast(forecast_states[0], is_night)
+            icon_later = self._get_icon_for_forecast(forecast_states[1], is_night)
+
+            # Recalculate dynamic timing
+            first_time_data = self._calculate_interval_time(3, current_time)
+            second_time_data = self._calculate_interval_time(9, current_time)
+
+            # Update only the time-dependent attributes
+            self._attributes["first_time"] = first_time_data
+            self._attributes["second_time"] = second_time_data
+            self._attributes["icons"] = (icon_now, icon_later)
+
+            # Write updated state
+            self.async_write_ha_state()
+
+            _LOGGER.debug(
+                f"Zambretti detail periodic update: first_time={first_time_data}, second_time={second_time_data}"
+            )
 
     async def _update_from_main(self):
         """Update from main sensor."""
@@ -987,21 +1031,19 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
         # Calculate time since last update in minutes
         time_since_update = (current_time - self._last_update_time).total_seconds() / 60
 
-        # Check if forecast is old (more than 6 hours)
-        halftime = 6 * 60 - time_since_update
-        correction = 0
-
-        if halftime < 0:
-            # Add 6h correction if forecast is old
-            correction = 6 + (halftime / 60)
-
-        # Calculate time offset with correction
-        time_offset = base_hours + correction
+        # If forecast is very old (more than base_hours), reset the forecast time
+        # This prevents negative time intervals and keeps forecasts current
+        if time_since_update >= base_hours * 60:
+            # Reset the update time to current - treat forecast as starting now
+            self._last_update_time = current_time
+            time_since_update = 0
+            _LOGGER.debug(
+                f"Zambretti forecast interval passed ({time_since_update:.1f} min > {base_hours * 60} min). "
+                f"Resetting forecast reference time to current time."
+            )
 
         # Calculate minutes remaining to this interval
-        time_to_interval = time_offset * 60 - time_since_update
-
-        # Calculate target time
+        time_to_interval = base_hours * 60 - time_since_update
         target_time = current_time + timedelta(minutes=time_to_interval)
         time_string = target_time.strftime("%H:%M")
 
@@ -1137,10 +1179,54 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             )
         )
 
+        # Schedule periodic updates every 10 minutes to keep forecast times current
+        from homeassistant.helpers.event import async_track_time_interval
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass,
+                self._periodic_update,
+                timedelta(minutes=10),
+            )
+        )
+
         # Initial update - always update from main sensor
         await self._update_from_main()
         # Write state immediately
         self.async_write_ha_state()
+
+    @callback
+    async def _periodic_update(self, now: datetime) -> None:
+        """Periodic update to refresh forecast times."""
+        if self._state and self._attributes:
+            # Recalculate forecast times with current time
+            current_time = dt_util.now()
+
+            # Check if sun is below horizon for icon selection
+            sun_state = self.hass.states.get("sun.sun")
+            is_night = sun_state and sun_state.state == "below_horizon"
+
+            # Get forecast states
+            forecast_states = self._attributes.get("forecast", [3, 3])
+
+            # Update icons based on current time of day
+            icon_now = self._get_icon_for_forecast(forecast_states[0], is_night)
+            icon_later = self._get_icon_for_forecast(forecast_states[1], is_night)
+
+            # Recalculate dynamic timing
+            first_time_data = self._calculate_interval_time(3, current_time)
+            second_time_data = self._calculate_interval_time(9, current_time)
+
+            # Update only the time-dependent attributes
+            self._attributes["first_time"] = first_time_data
+            self._attributes["second_time"] = second_time_data
+            self._attributes["icons"] = (icon_now, icon_later)
+
+            # Write updated state
+            self.async_write_ha_state()
+
+            _LOGGER.debug(
+                f"Negretti detail periodic update: first_time={first_time_data}, second_time={second_time_data}"
+            )
 
     async def _update_from_main(self):
         """Update from main sensor."""
@@ -1231,21 +1317,19 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
         # Calculate time since last update in minutes
         time_since_update = (current_time - self._last_update_time).total_seconds() / 60
 
-        # Check if forecast is old (more than 6 hours)
-        halftime = 6 * 60 - time_since_update
-        correction = 0
-
-        if halftime < 0:
-            # Add 6h correction if forecast is old
-            correction = 6 + (halftime / 60)
-
-        # Calculate time offset with correction
-        time_offset = base_hours + correction
+        # If forecast is very old (more than base_hours), reset the forecast time
+        # This prevents negative time intervals and keeps forecasts current
+        if time_since_update >= base_hours * 60:
+            # Reset the update time to current - treat forecast as starting now
+            self._last_update_time = current_time
+            time_since_update = 0
+            _LOGGER.debug(
+                f"Negretti forecast interval passed ({time_since_update:.1f} min > {base_hours * 60} min). "
+                f"Resetting forecast reference time to current time."
+            )
 
         # Calculate minutes remaining to this interval
-        time_to_interval = time_offset * 60 - time_since_update
-
-        # Calculate target time
+        time_to_interval = base_hours * 60 - time_since_update
         target_time = current_time + timedelta(minutes=time_to_interval)
         time_string = target_time.strftime("%H:%M")
 

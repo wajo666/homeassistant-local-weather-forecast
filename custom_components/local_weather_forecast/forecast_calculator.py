@@ -140,7 +140,7 @@ class TemperatureModel:
         self.current_temp = current_temp
         self.change_rate_1h = change_rate_1h
         self.diurnal_amplitude = diurnal_amplitude
-        self.current_hour = datetime.now().hour
+        self.current_hour = datetime.now(timezone.utc).hour
 
     def predict(self, hours_ahead: int) -> float:
         """Predict temperature N hours ahead.
@@ -296,6 +296,10 @@ class ZambrettiForecaster:
         Returns:
             True if sun is below horizon
         """
+        # Make check_time timezone aware first if needed
+        if check_time.tzinfo is None:
+            check_time = check_time.replace(tzinfo=timezone.utc)
+
         # For daily forecasts (around noon), always return False (daytime)
         if check_time.hour >= 11 and check_time.hour <= 13:
             return False
@@ -312,14 +316,9 @@ class ZambrettiForecaster:
             return check_time.hour >= 19 or check_time.hour < 7
 
         # For current time (within 1 minute), just check state
-        now = datetime.now()
-        if check_time.tzinfo is None and now.tzinfo is None:
-            time_diff = abs((check_time - now).total_seconds())
-        elif check_time.tzinfo is not None and now.tzinfo is not None:
-            time_diff = abs((check_time - now).total_seconds())
-        else:
-            # If timezone mismatch, use hour-based logic
-            return check_time.hour >= 19 or check_time.hour < 7
+        now = datetime.now(timezone.utc)
+
+        time_diff = abs((check_time - now).total_seconds())
 
         if time_diff < 60:
             return sun_entity.state == "below_horizon"
