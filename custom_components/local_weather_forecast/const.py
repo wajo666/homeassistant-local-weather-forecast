@@ -21,7 +21,7 @@ CONF_UV_INDEX_SENSOR: Final = "uv_index_sensor"
 CONF_VISIBILITY_SENSOR: Final = "visibility_sensor"
 CONF_WIND_GUST_SENSOR: Final = "wind_gust_sensor"
 CONF_RAIN_RATE_SENSOR: Final = "rain_rate_sensor"
-CONF_PRECIPITATION_SENSOR: Final = "precipitation_sensor"
+# Note: CONF_PRECIPITATION_SENSOR removed - use CONF_RAIN_RATE_SENSOR instead (supports both mm/h and mm accumulation)
 CONF_LATITUDE: Final = "latitude"
 
 # Configuration keys - Feature flags
@@ -82,32 +82,32 @@ ZAMBRETTI_TO_CONDITION: Final = {
     # Zambretti codes A-Z mapped to HA weather conditions
     # clear-night, cloudy, exceptional, fog, hail, lightning, lightning-rainy,
     # partlycloudy, pouring, rainy, snowy, snowy-rainy, sunny, windy
-    "A": "sunny",             # Settled fine (code 0-1) ✅
-    "B": "sunny",             # Fine weather (code 2-3)
-    "C": "partlycloudy",      # Becoming fine (code 4-5)
-    "D": "partlycloudy",      # Fine, becoming less settled
-    "E": "partlycloudy",      # Fine, possible showers
-    "F": "cloudy",            # Fairly fine, improving
-    "G": "cloudy",            # Fairly fine, possible showers early
-    "H": "rainy",             # Fairly fine, showery later
-    "I": "rainy",             # Showery early, improving
-    "J": "rainy",             # Changeable, mending
-    "K": "rainy",             # Fairly fine, showers likely
-    "L": "rainy",             # Rather unsettled clearing later
-    "M": "rainy",             # Unsettled, probably improving
-    "N": "rainy",             # Showery, bright intervals
-    "O": "rainy",             # Showery, becoming more unsettled
-    "P": "pouring",           # Changeable, some rain
-    "Q": "pouring",           # Unsettled, short fine intervals
-    "R": "pouring",           # Unsettled, rain later
-    "S": "pouring",           # Unsettled, some rain
-    "T": "pouring",           # Mostly very unsettled
-    "U": "pouring",           # Occasional rain, worsening
-    "V": "pouring",           # Rain at times, very unsettled
-    "W": "pouring",           # Rain at frequent intervals
-    "X": "pouring",           # Very unsettled, rain
-    "Y": "pouring",           # Stormy, may improve
-    "Z": "lightning-rainy",   # Stormy, much rain
+    "A": "sunny",             # Settled fine (code 0) - stable, clear skies
+    "B": "partlycloudy",      # Fine weather (code 1) - mostly clear with some clouds
+    "C": "partlycloudy",      # Becoming fine (code 2) - improving conditions
+    "D": "partlycloudy",      # Fine, becoming less settled (code 3)
+    "E": "partlycloudy",      # Fine, possible showers (code 4)
+    "F": "cloudy",            # Fairly fine, improving (code 5)
+    "G": "cloudy",            # Fairly fine, possible showers early (code 6)
+    "H": "rainy",             # Fairly fine, showery later (code 7)
+    "I": "rainy",             # Showery early, improving (code 8)
+    "J": "rainy",             # Changeable, mending (code 9)
+    "K": "rainy",             # Fairly fine, showers likely (code 10)
+    "L": "rainy",             # Rather unsettled clearing later (code 11)
+    "M": "rainy",             # Unsettled, probably improving (code 12)
+    "N": "rainy",             # Showery, bright intervals (code 13)
+    "O": "rainy",             # Showery, becoming more unsettled (code 14)
+    "P": "pouring",           # Changeable, some rain (code 15)
+    "Q": "pouring",           # Unsettled, short fine intervals (code 16)
+    "R": "pouring",           # Unsettled, rain later (code 17)
+    "S": "pouring",           # Unsettled, some rain (code 18)
+    "T": "pouring",           # Mostly very unsettled (code 19)
+    "U": "pouring",           # Occasional rain, worsening (code 20)
+    "V": "pouring",           # Rain at times, very unsettled (code 21)
+    "W": "pouring",           # Rain at frequent intervals (code 22)
+    "X": "pouring",           # Very unsettled, rain (code 23)
+    "Y": "pouring",           # Stormy, may improve (code 24)
+    "Z": "lightning-rainy",   # Stormy, much rain (code 25)
 }
 
 # Forecast intervals (hours)

@@ -915,6 +915,15 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             # Recalculate forecast times with current time
             current_time = dt_util.now()
 
+            # SYNC: Re-synchronize reference time from pressure change sensor
+            # This ensures consistent timing even during periodic updates
+            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+            if pressure_change_sensor and pressure_change_sensor.last_updated:
+                # Only update if pressure sensor was updated more recently
+                if self._last_update_time is None or pressure_change_sensor.last_updated > self._last_update_time:
+                    self._last_update_time = pressure_change_sensor.last_updated
+                    _LOGGER.debug(f"Zambretti: Synced reference time to {self._last_update_time}")
+
             # Check if sun is below horizon for icon selection
             sun_state = self.hass.states.get("sun.sun")
             is_night = sun_state and sun_state.state == "below_horizon"
@@ -978,8 +987,17 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
             self._attributes = {}
             return
 
-        # Update timestamp - ALWAYS update to current time when forecast changes
+        # SYNCHRONIZED TIME: Use main sensor's last update time for consistent timing
+        # This ensures Zambretti and Negretti-Zambra detail sensors show same forecast times
         now = dt_util.now()
+
+        # Try to get pressure change sensor's last update time as reference
+        # This is when the forecast was actually calculated
+        pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+        if pressure_change_sensor and pressure_change_sensor.last_updated:
+            reference_time = pressure_change_sensor.last_updated
+        else:
+            reference_time = now
 
         # Check if forecast actually changed (different number)
         forecast_changed = False
@@ -989,8 +1007,9 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
                 forecast_changed = True
 
         # Update last_update_time if forecast changed OR if it's None
+        # Use reference_time instead of now() for consistency
         if self._last_update_time is None or forecast_changed:
-            self._last_update_time = now
+            self._last_update_time = reference_time
 
         # Map forecast number to weather states
         forecast_states = self._map_forecast_to_states(forecast_num)
@@ -1201,6 +1220,15 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             # Recalculate forecast times with current time
             current_time = dt_util.now()
 
+            # SYNC: Re-synchronize reference time from pressure change sensor
+            # This ensures consistent timing even during periodic updates
+            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+            if pressure_change_sensor and pressure_change_sensor.last_updated:
+                # Only update if pressure sensor was updated more recently
+                if self._last_update_time is None or pressure_change_sensor.last_updated > self._last_update_time:
+                    self._last_update_time = pressure_change_sensor.last_updated
+                    _LOGGER.debug(f"Negretti: Synced reference time to {self._last_update_time}")
+
             # Check if sun is below horizon for icon selection
             sun_state = self.hass.states.get("sun.sun")
             is_night = sun_state and sun_state.state == "below_horizon"
@@ -1264,8 +1292,17 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
             self._attributes = {}
             return
 
-        # Update timestamp - ALWAYS update to current time when forecast changes
+        # SYNCHRONIZED TIME: Use main sensor's last update time for consistent timing
+        # This ensures Zambretti and Negretti-Zambra detail sensors show same forecast times
         now = dt_util.now()
+
+        # Try to get pressure change sensor's last update time as reference
+        # This is when the forecast was actually calculated
+        pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+        if pressure_change_sensor and pressure_change_sensor.last_updated:
+            reference_time = pressure_change_sensor.last_updated
+        else:
+            reference_time = now
 
         # Check if forecast actually changed (different number)
         forecast_changed = False
@@ -1275,8 +1312,9 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
                 forecast_changed = True
 
         # Update last_update_time if forecast changed OR if it's None
+        # Use reference_time instead of now() for consistency
         if self._last_update_time is None or forecast_changed:
-            self._last_update_time = now
+            self._last_update_time = reference_time
 
         # Map forecast number to weather states (slightly different from Zambretti)
         forecast_states = self._map_forecast_to_states(forecast_num)
@@ -1734,13 +1772,20 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         _LOGGER.info(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
         current_rain = 0.0
         if rain_rate_sensor_id:
+            # Extended debugging
+            rain_state = self.hass.states.get(rain_rate_sensor_id)
+            if rain_state:
+                _LOGGER.debug(f"RainProb: Rain sensor state={rain_state.state}, attributes={rain_state.attributes}")
+            else:
+                _LOGGER.warning(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not found in HA registry!")
+
             _LOGGER.debug(f"RainProb: Fetching rain rate from {rain_rate_sensor_id}")
-            current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, None, use_history=False)
+            current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, 0.0, use_history=False)
             if current_rain_value is not None:
                 current_rain = current_rain_value
                 _LOGGER.info(f"RainProb: Current rain rate = {current_rain}")
             else:
-                _LOGGER.warning(f"RainProb: Rain rate sensor returned None")
+                _LOGGER.warning(f"RainProb: Rain rate sensor returned None (state={rain_state.state if rain_state else 'NOT_FOUND'})")
         else:
             _LOGGER.warning("RainProb: No rain rate sensor configured!")
 

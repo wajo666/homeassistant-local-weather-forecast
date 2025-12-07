@@ -26,7 +26,9 @@
     },
     "error": {
       "sensor_not_found": "Sensor entity not found. Please check the entity ID.",
-      "invalid_elevation": "Elevation must be between 0 and 9000 meters."
+      "invalid_elevation": "Elevation must be between 0 and 9000 meters.",
+      "sensor_validation_error": "Error validating sensor. The sensor may have been removed or is temporarily unavailable.",
+      "update_failed": "Failed to update configuration. Please try again."
     },
     "abort": {
       "already_configured": "This pressure sensor is already configured."
@@ -43,10 +45,10 @@
           "wind_speed_sensor": "Wind Speed Sensor",
           "humidity_sensor": "Humidity Sensor (Enhanced)",
           "wind_gust_sensor": "Wind Gust Sensor (Enhanced)",
-          "rain_rate_sensor": "Rain Rate Sensor (Enhanced)",
+          "rain_rate_sensor": "Rain Detection Sensor (mm)",
           "dewpoint_sensor": "Dew Point Sensor (Enhanced)",
-          "precipitation_sensor": "Precipitation Sensor (Enhanced)",
-          "solar_radiation_sensor": "Solar Radiation Sensor (Enhanced)",
+          "solar_radiation_sensor": "Solar Radiation Sensor (W/m²)",
+          "uv_index_sensor": "UV Index Sensor (0-15)",
           "cloud_coverage_sensor": "Cloud Coverage Sensor (Enhanced)",
           "elevation": "Elevation Above Sea Level",
           "pressure_type": "Pressure Type",
@@ -56,10 +58,10 @@
         "data_description": {
           "humidity_sensor": "Humidity sensor for enhanced fog risk detection, dew point calculation, and rain probability (optional)",
           "wind_gust_sensor": "Wind gust sensor for atmospheric stability detection and severe weather alerts (optional)",
-          "rain_rate_sensor": "Rain rate sensor for real-time rain probability override (optional)",
+          "rain_rate_sensor": "Rain detection sensor with device_class='precipitation' and unit='mm'. The integration automatically detects rain when sensor value > 0 (Netatmo: increments 0.101, 0.202... / Ecowitt WS90: similar). Do NOT use hourly total sensors (optional)",
           "dewpoint_sensor": "Dew point sensor to override calculated values (optional)",
-          "precipitation_sensor": "Precipitation sensor for rainfall tracking and trend analysis (optional)",
-          "solar_radiation_sensor": "Solar radiation sensor (W/m²) for accurate feels-like temperature in sunny conditions (optional)",
+          "solar_radiation_sensor": "Solar radiation sensor in W/m² for accurate feels-like temperature. If UV Index sensor is provided, solar radiation can be calculated automatically (optional)",
+          "uv_index_sensor": "UV Index sensor (0-15 scale). If Solar Radiation sensor is provided, UV Index can be calculated automatically. Used for sun protection alerts and apparent temperature (optional)",
           "cloud_coverage_sensor": "Cloud coverage sensor (%) to adjust solar radiation effects on apparent temperature (optional)",
           "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
@@ -67,7 +69,9 @@
     },
     "error": {
       "sensor_not_found": "Sensor entity not found. Please check the entity ID.",
-      "invalid_elevation": "Elevation must be between 0 and 9000 meters."
+      "invalid_elevation": "Elevation must be between 0 and 9000 meters.",
+      "sensor_validation_error": "Error validating sensor. The sensor may have been removed or is temporarily unavailable.",
+      "update_failed": "Failed to update configuration. Please try again."
     }
   }
 }

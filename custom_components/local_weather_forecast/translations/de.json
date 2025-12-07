@@ -26,7 +26,9 @@
     },
     "error": {
       "sensor_not_found": "Sensor-Entität nicht gefunden. Bitte überprüfen Sie die Entitäts-ID.",
-      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen."
+      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen.",
+      "sensor_validation_error": "Fehler beim Validieren des Sensors. Der Sensor wurde möglicherweise entfernt oder ist vorübergehend nicht verfügbar.",
+      "update_failed": "Konfigurationsaktualisierung fehlgeschlagen. Bitte versuchen Sie es erneut."
     },
     "abort": {
       "already_configured": "Dieser Drucksensor ist bereits konfiguriert."
@@ -43,10 +45,10 @@
           "wind_speed_sensor": "Windgeschwindigkeitssensor",
           "humidity_sensor": "Luftfeuchtigkeitssensor (Erweitert)",
           "wind_gust_sensor": "Windböensensor (Erweitert)",
-          "rain_rate_sensor": "Regenmengensensor (Erweitert)",
+          "rain_rate_sensor": "Regen-Erkennungssensor (mm)",
           "dewpoint_sensor": "Taupunktsensor (Erweitert)",
-          "precipitation_sensor": "Niederschlagssensor (Erweitert)",
-          "solar_radiation_sensor": "Solarstrahlungssensor (Erweitert)",
+          "solar_radiation_sensor": "Solarstrahlungssensor (W/m²)",
+          "uv_index_sensor": "UV-Index-Sensor (0-15)",
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (Erweitert)",
           "elevation": "Höhe über dem Meeresspiegel",
           "pressure_type": "Drucktyp",
@@ -56,10 +58,10 @@
         "data_description": {
           "humidity_sensor": "Luftfeuchtigkeitssensor für verbesserte Nebelerkennung, Taupunktberechnung und Regenwahrscheinlichkeit (optional)",
           "wind_gust_sensor": "Windböensensor zur Erkennung atmosphärischer Stabilität und Unwetterwarnungen (optional)",
-          "rain_rate_sensor": "Regenmengensensor für Echtzeit-Überschreibung der Regenwahrscheinlichkeit (optional)",
+          "rain_rate_sensor": "Regen-Erkennungssensor mit device_class='precipitation' und unit='mm'. Die Integration erkennt Regen automatisch wenn Sensorwert > 0 (Netatmo: Schritte 0.101, 0.202... / Ecowitt WS90: ähnlich). KEINE stündlichen Gesamtsensoren verwenden (optional)",
           "dewpoint_sensor": "Taupunktsensor zum Überschreiben berechneter Werte (optional)",
-          "precipitation_sensor": "Niederschlagssensor für Niederschlagsverfolgung und Trendanalyse (optional)",
-          "solar_radiation_sensor": "Solarstrahlungssensor (W/m²) für genaue gefühlte Temperatur bei sonnigen Bedingungen (optional)",
+          "solar_radiation_sensor": "Solarstrahlungssensor in W/m² für genaue gefühlte Temperatur. Wenn UV-Index-Sensor bereitgestellt wird, kann Solarstrahlung automatisch berechnet werden (optional)",
+          "uv_index_sensor": "UV-Index-Sensor (0-15 Skala). Wenn Solarstrahlungssensor bereitgestellt wird, kann UV-Index automatisch berechnet werden. Wird für Sonnenschutzwarnungen und gefühlte Temperatur verwendet (optional)",
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (%) zur Anpassung der Solarstrahlungseffekte auf die gefühlte Temperatur (optional)",
           "enable_weather_entity": "Erstellen Sie eine Wetter-Entität für Wetterkarten und Automatisierungen"
         }
@@ -67,7 +69,9 @@
     },
     "error": {
       "sensor_not_found": "Sensor nicht gefunden. Bitte überprüfen Sie die Entitäts-ID.",
-      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen."
+      "invalid_elevation": "Die Höhe muss zwischen 0 und 9000 Metern liegen.",
+      "sensor_validation_error": "Fehler beim Validieren des Sensors. Der Sensor wurde möglicherweise entfernt oder ist vorübergehend nicht verfügbar.",
+      "update_failed": "Konfigurationsaktualisierung fehlgeschlagen. Bitte versuchen Sie es erneut."
     }
   }
 }

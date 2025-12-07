@@ -132,25 +132,29 @@ class TemperatureModel:
         future_hour = future_time.hour
 
         # Diurnal cycle adjustment
-        # Peak at 14:00 (~+3°C), minimum at 04:00 (~-2°C)
+        # Peak at 14:00 (~+2°C), minimum at 04:00 (~-1.5°C)
         diurnal_adjustment = self._calculate_diurnal_effect(
             current_hour, future_hour
         )
 
         # Trend-based change (decay over time)
-        decay_factor = 0.9 ** hours_ahead  # 10% decay per hour
+        decay_factor = 0.75 ** hours_ahead  # 25% decay per hour (faster damping)
         trend_change = self.change_1h * hours_ahead * decay_factor
 
         # Combine effects
         predicted_temp = self.current + trend_change + diurnal_adjustment
 
-        # Realistic limits: ±15°C change in 24h
-        max_change = 15.0
-        if abs(predicted_temp - self.current) > max_change:
+        # Realistic limits: ±12°C change PER 24h (progressive for multi-day)
+        # For predictions > 24h, allow cumulative change but limit daily rate
+        max_change_per_day = 12.0
+        days_ahead = hours_ahead / 24.0
+        max_total_change = max_change_per_day * min(days_ahead, 3.0)  # Cap at 3 days
+
+        if abs(predicted_temp - self.current) > max_total_change:
             if predicted_temp > self.current:
-                predicted_temp = self.current + max_change
+                predicted_temp = self.current + max_total_change
             else:
-                predicted_temp = self.current - max_change
+                predicted_temp = self.current - max_total_change
 
         return round(predicted_temp, 1)
 
@@ -164,7 +168,7 @@ class TemperatureModel:
         Simple sinusoidal model:
         - Peak at 14:00 (2 PM)
         - Minimum at 04:00 (4 AM)
-        - Amplitude: ~2.5°C
+        - Amplitude: ~2.0°C (winter/autumn typical)
 
         Args:
             current_hour: Current hour (0-23)
@@ -176,7 +180,7 @@ class TemperatureModel:
         import math
 
         # Sinusoidal cycle: peak at 14:00, minimum at 04:00
-        amplitude = 2.5  # °C
+        amplitude = 2.0  # °C (conservative for winter)
         peak_hour = 14.0
 
         # Current position in cycle

@@ -27,6 +27,8 @@ class Forecast(TypedDict, total=False):
     condition: str
     temperature: float
     native_temperature: float
+    templow: float | None  # Daily low temperature
+    native_templow: float | None
     precipitation: float | None
     native_precipitation: float | None
     precipitation_probability: int | None
@@ -115,12 +117,14 @@ class PressureModel:
 
 
 class TemperatureModel:
-    """Model temperature with diurnal (daily) cycle.
+    """Model temperature with diurnal (daily) cycle and solar radiation effects.
 
     Combines:
     - Current temperature
-    - Temperature trend (hourly change rate)
-    - Diurnal cycle (based on solar position)
+    - Temperature trend (hourly change rate with exponential decay)
+    - Diurnal cycle (based on solar position from sun.sun entity)
+    - Solar radiation warming (when sensor available)
+    - Cloud cover reduction (when sensor available)
     - Seasonal baseline adjustment
     """
 
@@ -128,24 +132,62 @@ class TemperatureModel:
         self,
         current_temp: float,
         change_rate_1h: float,
-        diurnal_amplitude: float = 5.0
+        diurnal_amplitude: float = 3.0,
+        trend_damping: float = 0.75,
+        solar_radiation: float | None = None,
+        cloud_cover: float | None = None,
+        humidity: float | None = None,
+        hass: HomeAssistant | None = None
     ):
         """Initialize temperature model.
 
         Args:
             current_temp: Current temperature in °C
             change_rate_1h: Temperature change rate per hour
-            diurnal_amplitude: Daily temperature swing amplitude (default ±5°C)
+            diurnal_amplitude: Daily temperature swing amplitude (default ±3°C, winter/autumn typical)
+            trend_damping: Exponential decay factor for trend (0.75 = trend halves in ~3 hours, negligible after 12h)
+            solar_radiation: Current solar radiation in W/m² (None = solar effect ignored)
+            cloud_cover: Current cloud cover in % (None = estimated from humidity if available)
+            humidity: Relative humidity in % (used to estimate cloud cover if sensor unavailable)
+            hass: Home Assistant instance for sun.sun entity access
         """
         self.current_temp = current_temp
         self.change_rate_1h = change_rate_1h
         self.diurnal_amplitude = diurnal_amplitude
+        self.trend_damping = trend_damping
         self.current_hour = datetime.now(timezone.utc).hour
+        self.solar_radiation = solar_radiation
+        self.humidity = humidity
+        # Cloud cover estimation: If sensor not available, estimate from humidity
+        if cloud_cover is not None:
+            self.cloud_cover = cloud_cover
+        elif humidity is not None:
+            # Estimate cloud cover from humidity (meteorologically justified):
+            # RH <50%: 0-20% clouds (clear/mostly clear)
+            # RH 50-70%: 20-50% clouds (partly cloudy)
+            # RH 70-85%: 50-80% clouds (mostly cloudy)
+            # RH >85%: 80-100% clouds (overcast/fog)
+            if humidity < 50:
+                self.cloud_cover = humidity * 0.4  # Max 20% at 50% RH
+            elif humidity < 70:
+                self.cloud_cover = 20 + (humidity - 50) * 1.5  # 20-50%
+            elif humidity < 85:
+                self.cloud_cover = 50 + (humidity - 70) * 2.0  # 50-80%
+            else:
+                self.cloud_cover = 80 + (humidity - 85) * 1.33  # 80-100%
+            _LOGGER.debug(
+                f"Cloud cover estimated from humidity: {self.cloud_cover:.0f}% "
+                f"(RH={humidity:.1f}%)"
+            )
+        else:
+            self.cloud_cover = 0.0  # No sensor, assume clear sky
+        self.hass = hass
 
     def predict(self, hours_ahead: int) -> float:
         """Predict temperature N hours ahead.
 
-        Combines linear trend with sinusoidal diurnal cycle.
+        Combines exponentially damped trend with sinusoidal diurnal cycle
+        and solar radiation warming effect.
         Peak at 14:00, minimum at 04:00.
 
         Args:
@@ -157,8 +199,18 @@ class TemperatureModel:
         if hours_ahead == 0:
             return self.current_temp
 
-        # Linear trend component
-        trend_change = self.change_rate_1h * hours_ahead
+        # Exponentially damped trend component with cap
+        # Trend influence decreases over time to prevent unrealistic long-term accumulation
+        # Cap maximum trend contribution to ±5°C to avoid unrealistic extremes
+        trend_change = 0.0
+        current_rate = self.change_rate_1h
+
+        for hour in range(hours_ahead):
+            trend_change += current_rate
+            current_rate *= self.trend_damping  # Decay the trend influence
+
+        # Cap trend contribution to realistic limits (±5°C over forecast period)
+        trend_change = max(-5.0, min(5.0, trend_change))
 
         # Diurnal cycle component
         # Current cycle position (peak at 14:00, min at 04:00)
@@ -173,11 +225,146 @@ class TemperatureModel:
         future_diurnal = self.diurnal_amplitude * math.cos(future_phase)
         diurnal_change = future_diurnal - current_diurnal
 
-        # Combine trend and diurnal cycle
-        predicted = self.current_temp + trend_change + diurnal_change
+        # Solar radiation warming component (if sensor available)
+        solar_change = 0.0
+        if self.solar_radiation is not None and self.solar_radiation > 0:
+            # Calculate sun angle factor for future time
+            # Assumption: Solar radiation peaks at solar noon (~13:00 local)
+            # and is zero at night (18:00-06:00)
 
-        # Realistic temperature limits (-40 to +50°C)
+            # Current sun angle factor (0 at night, 1 at solar noon)
+            current_sun_factor = self._get_sun_angle_factor(self.current_hour)
+            future_sun_factor = self._get_sun_angle_factor(future_hour)
+
+            # Scale solar radiation by cloud cover
+            cloud_reduction = 1.0 - (self.cloud_cover / 100.0)
+            effective_solar = self.solar_radiation * cloud_reduction
+
+            # Solar warming: +2°C per 400 W/m² at solar noon
+            # Scale by sun angle (higher sun = more warming)
+            max_solar_warming = (effective_solar / 400.0) * 2.0
+
+            current_solar_warming = max_solar_warming * current_sun_factor
+            future_solar_warming = max_solar_warming * future_sun_factor
+
+            solar_change = future_solar_warming - current_solar_warming
+
+            _LOGGER.debug(
+                f"Solar temp adjustment: {solar_change:.1f}°C "
+                f"(radiation={effective_solar:.0f}W/m², "
+                f"sun_factor={future_sun_factor:.2f})"
+            )
+
+        # Combine all components: damped trend + diurnal cycle + solar warming
+        predicted = self.current_temp + trend_change + diurnal_change + solar_change
+
+        # Apply realistic seasonal constraints
+        # For multi-day forecasts, temperature should stay within reasonable bounds
+        # relative to current temperature
+        if hours_ahead > 24:
+            # For forecasts beyond 24 hours, limit deviation from current temp
+            max_deviation = 10.0  # ±10°C max deviation over 3 days
+            predicted = max(
+                self.current_temp - max_deviation,
+                min(self.current_temp + max_deviation, predicted)
+            )
+
+        # Absolute realistic temperature limits (-40 to +50°C)
         return max(-40.0, min(50.0, predicted))
+
+    def _get_sun_angle_factor(self, hour: int) -> float:
+        """Calculate sun angle factor (0-1) for given hour.
+
+        Uses real sun.sun entity if available for accurate sunrise/sunset times,
+        otherwise falls back to simple sine curve simulation.
+
+        Args:
+            hour: Hour of day (0-23)
+
+        Returns:
+            Sun angle factor (0.0 = night, 1.0 = solar noon)
+        """
+        # Try to use real sun entity if hass available
+        if self.hass is not None:
+            sun_entity = self.hass.states.get("sun.sun")
+
+            if sun_entity:
+                try:
+                    from homeassistant.util import dt as dt_util
+
+                    # Get sunrise and sunset times
+                    next_rising_str = sun_entity.attributes.get("next_rising")
+                    next_setting_str = sun_entity.attributes.get("next_setting")
+
+                    if next_rising_str and next_setting_str:
+                        next_rising = dt_util.parse_datetime(next_rising_str)
+                        next_setting = dt_util.parse_datetime(next_setting_str)
+
+                        if next_rising and next_setting:
+                            # Calculate for the target hour
+                            now = datetime.now(timezone.utc)
+                            target_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+
+                            # If target hour is in the past today, move to tomorrow
+                            if target_time < now:
+                                target_time = target_time + timedelta(days=1)
+
+                            # Ensure timezone awareness
+                            if target_time.tzinfo is None:
+                                target_time = target_time.replace(tzinfo=timezone.utc)
+                            if next_rising.tzinfo is None:
+                                next_rising = next_rising.replace(tzinfo=timezone.utc)
+                            if next_setting.tzinfo is None:
+                                next_setting = next_setting.replace(tzinfo=timezone.utc)
+
+                            # If time is before sunrise or after sunset, sun factor = 0
+                            sunrise_hour = next_rising.hour + next_rising.minute / 60.0
+                            sunset_hour = next_setting.hour + next_setting.minute / 60.0
+
+                            if hour < sunrise_hour or hour >= sunset_hour:
+                                return 0.0
+
+                            # Calculate solar noon (midpoint between sunrise and sunset)
+                            solar_noon = (sunrise_hour + sunset_hour) / 2.0
+                            daylight_duration = sunset_hour - sunrise_hour
+
+                            # Sun angle factor: sine curve from sunrise to sunset, peaking at solar noon
+                            # Map hour to 0-π phase (0 at sunrise, π at sunset)
+                            time_from_sunrise = hour - sunrise_hour
+                            phase = (time_from_sunrise / daylight_duration) * math.pi
+
+                            sun_factor = math.sin(phase)
+
+                            _LOGGER.debug(
+                                f"Sun factor for hour {hour}: {sun_factor:.2f} "
+                                f"(sunrise={sunrise_hour:.1f}, sunset={sunset_hour:.1f}, "
+                                f"solar_noon={solar_noon:.1f})"
+                            )
+
+                            return max(0.0, min(1.0, sun_factor))
+
+                except (ValueError, AttributeError) as err:
+                    _LOGGER.debug(f"Could not use sun entity, falling back to simulation: {err}")
+
+        # Fallback: Simple sine curve simulation
+        # Night time (no solar warming)
+        if hour >= 18 or hour < 6:
+            return 0.0
+
+        # Daytime: sine curve peaking at 13:00
+        # Map 6:00-18:00 to 0-π for half sine wave
+        time_from_sunrise = hour - 6  # 0 at 6:00, 12 at 18:00
+        phase = (time_from_sunrise / 12.0) * math.pi  # 0 to π
+
+        # Sine curve: 0 at sunrise/sunset, 1 at solar noon
+        # Shift peak to 13:00 instead of 12:00 (7 hours after 6:00 sunrise)
+        peak_offset = (13 - 6) / 12.0 * math.pi
+        adjusted_phase = phase - (math.pi / 2 - peak_offset)
+
+        sun_factor = math.sin(adjusted_phase)
+
+        # Clamp to 0-1 range
+        return max(0.0, min(1.0, sun_factor))
 
     def get_daily_range(self, hours_ahead: int = 24) -> tuple[float, float]:
         """Get predicted temperature range for next N hours.
@@ -199,15 +386,25 @@ class ZambrettiForecaster:
     to determine evolving weather conditions.
     """
 
-    def __init__(self, hass: HomeAssistant | None = None, latitude: float = 50.0):
+    def __init__(
+        self,
+        hass: HomeAssistant | None = None,
+        latitude: float = 50.0,
+        uv_index: float | None = None,
+        solar_radiation: float | None = None
+    ):
         """Initialize Zambretti forecaster.
 
         Args:
             hass: Home Assistant instance for sun entity access
             latitude: Location latitude for seasonal adjustment
+            uv_index: Current UV index (0-11+) for cloud cover correction
+            solar_radiation: Current solar radiation in W/m² for cloud cover correction
         """
         self.hass = hass
         self.latitude = latitude
+        self.uv_index = uv_index
+        self.solar_radiation = solar_radiation
 
     def forecast_hour(
         self,
@@ -272,6 +469,11 @@ class ZambrettiForecaster:
     def get_condition(self, letter_code: str, forecast_time: datetime) -> str:
         """Map Zambretti letter code to Home Assistant weather condition.
 
+        Uses UV index and solar radiation to correct cloud cover estimates:
+        - High UV during daytime + Zambretti "cloudy" → downgrade to partlycloudy
+        - Low UV during daytime + Zambretti "sunny" → upgrade to cloudy
+        - UV index provides real-time atmospheric transparency
+
         Args:
             letter_code: Zambretti letter (A-Z)
             forecast_time: Datetime to check for day/night
@@ -281,11 +483,141 @@ class ZambrettiForecaster:
         """
         condition = ZAMBRETTI_TO_CONDITION.get(letter_code, "partlycloudy")
 
+        _LOGGER.debug(
+            f"Zambretti condition mapping: letter={letter_code} → "
+            f"base={condition}, time={forecast_time.hour:02d}:00"
+        )
+
+        # UV INDEX CLOUD COVER CORRECTION (daytime only)
+        # UV index scale: 0-2 (low), 3-5 (moderate), 6-7 (high), 8-10 (very high), 11+ (extreme)
+        # Only apply during daylight hours (6:00-18:00)
+        hour = forecast_time.hour
+        is_daytime = 6 <= hour <= 18
+
+        if is_daytime and self.uv_index is not None:
+            # Expected UV index at solar noon for clear sky (varies by latitude and season)
+            # For 48°N in December: ~1.5-2.0, June: ~7-8
+            # Simple approximation: expected_uv ≈ 8 * sin(sun_elevation)
+
+            # Get sun angle factor (0-1)
+            sun_factor = self._get_sun_angle_factor_for_condition(hour)
+
+            # Expected clear-sky UV at this latitude and time
+            # Seasonal factor: 0.3 winter, 1.0 summer
+            month = forecast_time.month
+            seasonal_factor = 0.5 + 0.5 * math.cos((month - 6) * math.pi / 6)  # Peak in June
+
+            # Maximum UV for this location and season
+            max_uv = 10.0 * seasonal_factor  # e.g., 5.0 in Dec, 10.0 in Jun at 48°N
+            expected_clear_sky_uv = max_uv * sun_factor
+
+            if expected_clear_sky_uv > 1.0:  # Only meaningful during significant sunlight
+                # Calculate cloud cover from UV index
+                # UV ratio: actual/expected (1.0 = clear, 0.5 = 50% clouds, 0.2 = overcast)
+                uv_ratio = self.uv_index / expected_clear_sky_uv
+                cloud_cover_percent = max(0, min(100, (1.0 - uv_ratio) * 100))
+
+                _LOGGER.debug(
+                    f"UV cloud correction: UV={self.uv_index:.1f}, "
+                    f"expected={expected_clear_sky_uv:.1f}, "
+                    f"ratio={uv_ratio:.2f}, clouds={cloud_cover_percent:.0f}%"
+                )
+
+                # SUNNY/CLEAR → CLOUDY correction (UV much lower than expected)
+                if condition in ("sunny", "clear-night") and cloud_cover_percent > 70:
+                    _LOGGER.info(
+                        f"UV correction: {condition} → cloudy "
+                        f"(UV too low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
+                    )
+                    condition = "cloudy"
+                elif condition in ("sunny", "clear-night") and cloud_cover_percent > 40:
+                    _LOGGER.info(
+                        f"UV correction: {condition} → partlycloudy "
+                        f"(UV low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
+                    )
+                    condition = "partlycloudy"
+
+                # CLOUDY → PARTLYCLOUDY correction (UV higher than expected for clouds)
+                elif condition == "cloudy" and cloud_cover_percent < 30:
+                    _LOGGER.info(
+                        f"UV correction: cloudy → partlycloudy "
+                        f"(UV high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
+                    )
+                    condition = "partlycloudy"
+                elif condition == "cloudy" and cloud_cover_percent < 10:
+                    _LOGGER.info(
+                        f"UV correction: cloudy → sunny "
+                        f"(UV very high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
+                    )
+                    condition = "sunny"
+
+        # SOLAR RADIATION CLOUD COVER CORRECTION (alternative/additional to UV)
+        # Solar radiation scale: 0-1000+ W/m²
+        # Clear sky at solar noon: ~800-1000 W/m² (varies by season)
+        if is_daytime and self.solar_radiation is not None and self.uv_index is None:
+            # Use solar radiation if UV index not available
+            sun_factor = self._get_sun_angle_factor_for_condition(hour)
+
+            # Expected clear-sky solar radiation
+            month = forecast_time.month
+            seasonal_factor = 0.5 + 0.5 * math.cos((month - 6) * math.pi / 6)
+            max_solar = 1000.0 * seasonal_factor
+            expected_clear_sky_solar = max_solar * sun_factor
+
+            if expected_clear_sky_solar > 100:
+                solar_ratio = self.solar_radiation / expected_clear_sky_solar
+                cloud_cover_percent = max(0, min(100, (1.0 - solar_ratio) * 100))
+
+                _LOGGER.debug(
+                    f"Solar cloud correction: radiation={self.solar_radiation:.0f}W/m², "
+                    f"expected={expected_clear_sky_solar:.0f}W/m², "
+                    f"clouds={cloud_cover_percent:.0f}%"
+                )
+
+                # Apply same corrections as UV
+                if condition in ("sunny", "clear-night") and cloud_cover_percent > 70:
+                    _LOGGER.info(f"Solar correction: {condition} → cloudy")
+                    condition = "cloudy"
+                elif condition in ("sunny", "clear-night") and cloud_cover_percent > 40:
+                    _LOGGER.info(f"Solar correction: {condition} → partlycloudy")
+                    condition = "partlycloudy"
+                elif condition == "cloudy" and cloud_cover_percent < 30:
+                    _LOGGER.info(f"Solar correction: cloudy → partlycloudy")
+                    condition = "partlycloudy"
+                elif condition == "cloudy" and cloud_cover_percent < 10:
+                    _LOGGER.info(f"Solar correction: cloudy → sunny")
+                    condition = "sunny"
+
         # Convert sunny to clear-night during night hours
         if condition == "sunny" and self._is_night(forecast_time):
+            _LOGGER.debug(f"Night time detected, converting sunny → clear-night")
             return "clear-night"
 
         return condition
+
+    def _get_sun_angle_factor_for_condition(self, hour: int) -> float:
+        """Calculate sun angle factor for condition correction.
+
+        Simplified version for cloud cover correction.
+
+        Args:
+            hour: Hour of day (0-23)
+
+        Returns:
+            Sun angle factor (0.0 = night, 1.0 = solar noon)
+        """
+        # Night time
+        if hour >= 18 or hour < 6:
+            return 0.0
+
+        # Daytime: sine curve peaking at 13:00
+        time_from_sunrise = hour - 6
+        phase = (time_from_sunrise / 12.0) * math.pi
+        peak_offset = (13 - 6) / 12.0 * math.pi
+        adjusted_phase = phase - (math.pi / 2 - peak_offset)
+        sun_factor = math.sin(adjusted_phase)
+
+        return max(0.0, min(1.0, sun_factor))
 
     def _is_night(self, check_time: datetime) -> bool:
         """Check if it's night time based on sun position.
@@ -296,10 +628,6 @@ class ZambrettiForecaster:
         Returns:
             True if sun is below horizon
         """
-        # Make check_time timezone aware first if needed
-        if check_time.tzinfo is None:
-            check_time = check_time.replace(tzinfo=timezone.utc)
-
         # For daily forecasts (around noon), always return False (daytime)
         if check_time.hour >= 11 and check_time.hour <= 13:
             return False
@@ -318,6 +646,10 @@ class ZambrettiForecaster:
         # For current time (within 1 minute), just check state
         now = datetime.now(timezone.utc)
 
+        # Make check_time timezone aware first if needed
+        if check_time.tzinfo is None:
+            check_time = check_time.replace(tzinfo=timezone.utc)
+
         time_diff = abs((check_time - now).total_seconds())
 
         if time_diff < 60:
@@ -325,10 +657,6 @@ class ZambrettiForecaster:
 
         # For future times, use sunrise/sunset times from sun entity
         try:
-            # Ensure check_time is timezone-aware
-            if check_time.tzinfo is None:
-                check_time = check_time.replace(tzinfo=timezone.utc)
-
             # Get next sunrise and sunset
             next_rising_str = sun_entity.attributes.get("next_rising")
             next_setting_str = sun_entity.attributes.get("next_setting")
@@ -339,6 +667,7 @@ class ZambrettiForecaster:
                 next_setting = dt_util.parse_datetime(next_setting_str)
 
                 if next_rising and next_setting:
+
                     # If check time is between sunset and next sunrise, it's night
                     if next_setting < next_rising:
                         # Currently day - night is after next_setting
@@ -445,7 +774,8 @@ class HourlyForecastGenerator:
         zambretti: ZambrettiForecaster,
         wind_direction: int = 0,
         wind_speed: float = 0.0,
-        latitude: float = 50.0
+        latitude: float = 50.0,
+        current_rain_rate: float = 0.0
     ):
         """Initialize hourly forecast generator.
 
@@ -457,6 +787,7 @@ class HourlyForecastGenerator:
             wind_direction: Current wind direction in degrees
             wind_speed: Current wind speed in m/s
             latitude: Location latitude
+            current_rain_rate: Current precipitation rate in mm/h
         """
         self.hass = hass
         self.pressure_model = pressure_model
@@ -465,6 +796,7 @@ class HourlyForecastGenerator:
         self.wind_direction = wind_direction
         self.wind_speed = wind_speed
         self.latitude = latitude
+        self.current_rain_rate = current_rain_rate
 
     def generate(
         self,
@@ -511,21 +843,43 @@ class HourlyForecastGenerator:
                 future_time
             )
 
-            # Calculate rain probability
-            rain_prob = rain_calc.calculate(
-                current_pressure=self.pressure_model.current_pressure,
-                future_pressure=future_pressure,
-                pressure_trend=pressure_trend,
-                zambretti_code=forecast_num,
-                zambretti_letter=letter_code
-            )
+            # REAL-TIME PRECIPITATION OVERRIDE
+            # If it's currently raining (hour_offset <= 1), override Zambretti prediction
+            if hour_offset <= 1 and self.current_rain_rate > 0:
+                is_night = self.zambretti._is_night(future_time)
+
+                if self.current_rain_rate >= 7.6:  # Heavy rain (>7.6 mm/h)
+                    condition = "pouring"
+                    rain_prob = 100
+                elif self.current_rain_rate >= 2.5:  # Moderate rain (2.5-7.6 mm/h)
+                    condition = "rainy"
+                    rain_prob = 100
+                else:  # Light rain (<2.5 mm/h)
+                    condition = "rainy"
+                    rain_prob = 100
+
+                _LOGGER.debug(
+                    f"Rain override: {self.current_rain_rate}mm/h → {condition} (100%)"
+                )
+            else:
+                # Calculate rain probability from models
+                rain_prob = rain_calc.calculate(
+                    current_pressure=self.pressure_model.current_pressure,
+                    future_pressure=future_pressure,
+                    pressure_trend=pressure_trend,
+                    zambretti_code=forecast_num,
+                    zambretti_letter=letter_code
+                )
 
             # Create forecast entry
             forecast: Forecast = {
                 "datetime": future_time.isoformat(),
                 "condition": condition,
                 "temperature": round(future_temp, 1),
+                "native_temperature": round(future_temp, 1),
                 "precipitation_probability": rain_prob,
+                "precipitation": None,  # Not predicted by Zambretti
+                "native_precipitation": None,
             }
 
             forecasts.append(forecast)
@@ -586,9 +940,10 @@ class DailyForecastGenerator:
             if not day_hours:
                 continue
 
-            # Aggregate temperature (use noon or average)
+            # Aggregate temperature: use maximum as daily high, minimum as daily low
             temps = [f["temperature"] for f in day_hours]
-            daily_temp = round(sum(temps) / len(temps), 1)
+            daily_temp_max = round(max(temps), 1)
+            daily_temp_min = round(min(temps), 1)
 
             # Find most common condition (daytime hours only)
             daytime_hours = [
@@ -613,8 +968,13 @@ class DailyForecastGenerator:
             forecast: Forecast = {
                 "datetime": day_time.isoformat(),
                 "condition": daily_condition,
-                "temperature": daily_temp,
+                "temperature": daily_temp_max,
+                "native_temperature": daily_temp_max,
+                "templow": daily_temp_min,
+                "native_templow": daily_temp_min,
                 "precipitation_probability": daily_rain_prob,
+                "precipitation": None,  # Not predicted by Zambretti
+                "native_precipitation": None,
             }
 
             daily_forecasts.append(forecast)
@@ -644,7 +1004,11 @@ class ForecastCalculator:
         wind_direction: int,
         wind_speed: float,
         latitude: float,
-        days: int = 3
+        days: int = 3,
+        solar_radiation: float | None = None,
+        cloud_cover: float | None = None,
+        humidity: float | None = None,
+        current_rain_rate: float = 0.0
     ) -> list[Forecast]:
         """Generate daily forecast.
 
@@ -658,13 +1022,24 @@ class ForecastCalculator:
             wind_speed: Wind speed in m/s
             latitude: Location latitude
             days: Number of days to forecast
+            solar_radiation: Current solar radiation in W/m² (optional)
+            cloud_cover: Current cloud cover in % (optional)
+            humidity: Relative humidity in % (optional, used to estimate cloud cover)
+            current_rain_rate: Current rain rate in mm/h (optional)
 
         Returns:
             List of daily Forecast objects
         """
         # Create models
         pressure_model = PressureModel(current_pressure, pressure_change_3h)
-        temp_model = TemperatureModel(current_temp, temp_change_1h)
+        temp_model = TemperatureModel(
+            current_temp,
+            temp_change_1h,
+            hass=hass,
+            solar_radiation=solar_radiation,
+            cloud_cover=cloud_cover,
+            humidity=humidity
+        )
         zambretti = ZambrettiForecaster(hass=hass, latitude=latitude)
 
         # Create generators
@@ -675,7 +1050,8 @@ class ForecastCalculator:
             zambretti,
             wind_direction,
             wind_speed,
-            latitude
+            latitude,
+            current_rain_rate
         )
 
         daily_gen = DailyForecastGenerator(hourly_gen)
@@ -692,7 +1068,11 @@ class ForecastCalculator:
         wind_direction: int,
         wind_speed: float,
         latitude: float,
-        hours: int = 24
+        hours: int = 24,
+        solar_radiation: float | None = None,
+        cloud_cover: float | None = None,
+        humidity: float | None = None,
+        current_rain_rate: float = 0.0
     ) -> list[Forecast]:
         """Generate hourly forecast.
 
@@ -706,13 +1086,24 @@ class ForecastCalculator:
             wind_speed: Wind speed in m/s
             latitude: Location latitude
             hours: Number of hours to forecast
+            solar_radiation: Current solar radiation in W/m² (optional)
+            cloud_cover: Current cloud cover in % (optional)
+            humidity: Relative humidity in % (optional, used to estimate cloud cover)
+            current_rain_rate: Current rain rate in mm/h (optional)
 
         Returns:
             List of hourly Forecast objects
         """
         # Create models
         pressure_model = PressureModel(current_pressure, pressure_change_3h)
-        temp_model = TemperatureModel(current_temp, temp_change_1h)
+        temp_model = TemperatureModel(
+            current_temp,
+            temp_change_1h,
+            hass=hass,
+            solar_radiation=solar_radiation,
+            cloud_cover=cloud_cover,
+            humidity=humidity
+        )
         zambretti = ZambrettiForecaster(hass=hass, latitude=latitude)
 
         # Create generator
@@ -723,7 +1114,8 @@ class ForecastCalculator:
             zambretti,
             wind_direction,
             wind_speed,
-            latitude
+            latitude,
+            current_rain_rate
         )
 
         return hourly_gen.generate(hours_count=hours, interval_hours=1)

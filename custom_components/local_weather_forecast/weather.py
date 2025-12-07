@@ -8,14 +8,9 @@ from typing import Any
 from homeassistant.components.weather import (
     ATTR_CONDITION_CLEAR_NIGHT,
     ATTR_CONDITION_CLOUDY,
-    ATTR_CONDITION_FOG,
-    ATTR_CONDITION_LIGHTNING_RAINY,
     ATTR_CONDITION_PARTLYCLOUDY,
-    ATTR_CONDITION_POURING,
     ATTR_CONDITION_RAINY,
-    ATTR_CONDITION_SNOWY,
     ATTR_CONDITION_SUNNY,
-    ATTR_CONDITION_WINDY,
     Forecast,
     WeatherEntity,
     WeatherEntityFeature,
@@ -42,8 +37,10 @@ from .const import (
     CONF_HUMIDITY_SENSOR,
     CONF_LATITUDE,
     CONF_PRESSURE_SENSOR,
+    CONF_RAIN_RATE_SENSOR,
     CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
+    CONF_UV_INDEX_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
@@ -105,6 +102,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
             "model": "Zambretti/Negretti-Zambra",
             "sw_version": "3.1.0",
         }
+        self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
+        self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
+        self._last_rain_check_time = None  # Track when we last checked (for rate calculation)
+
+        # Log rain sensor configuration at startup
+        rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+        if rain_sensor_id:
+            _LOGGER.info(f"Weather: Rain sensor configured: {rain_sensor_id}")
 
     def _get_config(self, key: str) -> Any:
         """Get configuration value from options or data."""
@@ -113,6 +118,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def native_temperature(self) -> float | None:
         """Return the temperature."""
+        if not self.hass:
+            return None
         temp_sensor = self._get_config(CONF_TEMPERATURE_SENSOR)
         if temp_sensor:
             state = self.hass.states.get(temp_sensor)
@@ -126,6 +133,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def native_pressure(self) -> float | None:
         """Return the pressure."""
+        if not self.hass:
+            return None
         pressure_sensor = self._get_config(CONF_PRESSURE_SENSOR)
         if pressure_sensor:
             state = self.hass.states.get(pressure_sensor)
@@ -139,6 +148,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def humidity(self) -> float | None:
         """Return the humidity."""
+        if not self.hass:
+            return None
         humidity_sensor = self._get_config(CONF_HUMIDITY_SENSOR)
         if humidity_sensor:
             state = self.hass.states.get(humidity_sensor)
@@ -152,6 +163,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def native_wind_speed(self) -> float | None:
         """Return the wind speed."""
+        if not self.hass:
+            return None
         wind_speed_sensor = self._get_config(CONF_WIND_SPEED_SENSOR)
         if wind_speed_sensor:
             state = self.hass.states.get(wind_speed_sensor)
@@ -165,6 +178,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def wind_bearing(self) -> float | str | None:
         """Return the wind bearing."""
+        if not self.hass:
+            return None
         wind_direction_sensor = self._get_config(CONF_WIND_DIRECTION_SENSOR)
         if wind_direction_sensor:
             state = self.hass.states.get(wind_direction_sensor)
@@ -178,6 +193,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def native_wind_gust_speed(self) -> float | None:
         """Return the wind gust speed."""
+        if not self.hass:
+            return None
         wind_gust_sensor = self._get_config(CONF_WIND_GUST_SENSOR)
         if wind_gust_sensor:
             state = self.hass.states.get(wind_gust_sensor)
@@ -191,6 +208,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def native_dew_point(self) -> float | None:
         """Return the dew point temperature."""
+        if not self.hass:
+            return None
         # Check if user provided a dewpoint sensor
         dewpoint_sensor = self._get_config(CONF_DEWPOINT_SENSOR)
         if dewpoint_sensor:
@@ -210,6 +229,30 @@ class LocalWeatherForecastWeather(WeatherEntity):
         return None
 
     @property
+    def feels_like(self) -> float | None:
+        """Return the feels like temperature (alias for native_apparent_temperature).
+
+        This is an alias to ensure compatibility with templates that use
+        state_attr("weather.entity", "feels_like").
+
+        Returns:
+            Apparent temperature, or actual temperature as fallback.
+            Never returns None to prevent template errors.
+        """
+        apparent = self.native_apparent_temperature
+        if apparent is not None:
+            return apparent
+
+        # Fallback to actual temperature if apparent temperature unavailable
+        temp = self.native_temperature
+        if temp is not None:
+            return temp
+
+        # Last resort - return 0 to prevent None errors in templates
+        return 0.0
+
+
+    @property
     def native_apparent_temperature(self) -> float | None:
         """Return the apparent temperature (feels like).
 
@@ -220,6 +263,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
         - Solar radiation (optional)
         - Cloud cover (optional)
         """
+        if not self.hass:
+            return None
         temp = self.native_temperature
         if temp is None:
             return None
@@ -264,37 +309,116 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
     @property
     def condition(self) -> str | None:
-        """Return the current condition based on Zambretti forecast."""
-        # Get Zambretti detail sensor
-        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-        if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
-            attrs = zambretti_sensor.attributes
-            letter_code = attrs.get("letter_code", "A")
-
-            # Map Zambretti letter to HA condition
-            condition = ZAMBRETTI_TO_CONDITION.get(letter_code, ATTR_CONDITION_PARTLYCLOUDY)
-
-            # Check if it's night time (between sunset and sunrise)
-            if condition == ATTR_CONDITION_SUNNY and self._is_night():
-                return ATTR_CONDITION_CLEAR_NIGHT
-
-            return condition
-
-        # Fallback based on pressure
-        pressure = self.native_pressure
-        if pressure:
-            if pressure < 1000:
-                return ATTR_CONDITION_RAINY
-            elif pressure < 1013:
-                return ATTR_CONDITION_CLOUDY
-            elif pressure < 1020:
+        """Return the current condition based on Zambretti forecast and current weather."""
+        try:
+            # Safety check - if hass is not available yet, return default
+            if not self.hass:
                 return ATTR_CONDITION_PARTLYCLOUDY
-            else:
-                if self._is_night():
-                    return ATTR_CONDITION_CLEAR_NIGHT
-                return ATTR_CONDITION_SUNNY
 
-        return ATTR_CONDITION_PARTLYCLOUDY
+            # PRIORITY 1: Check if currently raining (Netatmo INCREMENT sensor detection)
+            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+            if rain_rate_sensor_id:
+                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
+                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
+                    try:
+                        from datetime import datetime, timedelta
+                        current_rain = float(rain_sensor.state)
+                        now = datetime.now()
+
+                        # Detect sensor type by device_class and unit_of_measurement
+                        attrs = rain_sensor.attributes or {}
+                        device_class = attrs.get("device_class", "")
+                        unit = attrs.get("unit_of_measurement", "")
+
+                        # Log sensor detection on first run
+                        if self._last_rain_value is None and self._last_rain_time is None:
+                            _LOGGER.info(
+                                f"Weather: Rain sensor detected as ACCUMULATION sensor (mm): "
+                                f"entity={rain_rate_sensor_id}, "
+                                f"device_class={device_class}, "
+                                f"unit={unit}, "
+                                f"current_value={current_rain}"
+                            )
+
+                        is_raining_now = False
+
+                        # For Netatmo ACCUMULATION sensors (device_class=precipitation, unit=mm):
+                        # - Value > 0 means it rained recently (last 5 minutes)
+                        # - Value resets to 0 when no rain detected for ~5 minutes
+                        if device_class == "precipitation" and unit == "mm":
+                            if current_rain > 0:
+                                # Netatmo shows last increment (0.101, 0.202, etc.)
+                                is_raining_now = True
+                                _LOGGER.info(
+                                    f"Weather: Netatmo rain detected: {current_rain} mm → RAINING"
+                                )
+                            else:
+                                # No rain detected (sensor = 0)
+                                _LOGGER.debug(f"Weather: No rain detected (sensor = {current_rain} mm)")
+                        else:
+                            # For other rain sensors (mm/h rate sensors)
+                            if current_rain > 0.1:
+                                is_raining_now = True
+                                _LOGGER.debug(f"Weather: Rain rate sensor: {current_rain} mm/h → RAINING")
+
+                        # Update last value and time for next check
+                        self._last_rain_value = current_rain
+                        self._last_rain_check_time = now
+
+                        # If it's currently raining, return rainy condition
+                        if is_raining_now:
+                            _LOGGER.debug(f"Weather: Currently raining - override to rainy")
+                            return ATTR_CONDITION_RAINY
+
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug(f"Weather: Error processing rain sensor: {e}")
+                        pass
+
+            # PRIORITY 2: Get Zambretti forecast condition
+            zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+            if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    attrs = zambretti_sensor.attributes or {}
+                    letter_code = attrs.get("letter_code", "A")
+
+                    _LOGGER.debug(
+                        f"Weather: Zambretti sensor state={zambretti_sensor.state}, "
+                        f"letter_code={letter_code}"
+                    )
+
+                    # Map Zambretti letter to HA condition
+                    condition = ZAMBRETTI_TO_CONDITION.get(letter_code, ATTR_CONDITION_PARTLYCLOUDY)
+
+                    _LOGGER.debug(f"Weather: Mapped letter {letter_code} → condition {condition}")
+
+                    # Check if it's night time (between sunset and sunrise)
+                    if condition == ATTR_CONDITION_SUNNY and self._is_night():
+                        _LOGGER.debug("Weather: Night time, converting sunny → clear-night")
+                        return ATTR_CONDITION_CLEAR_NIGHT
+
+                    return condition
+                except (AttributeError, KeyError, TypeError) as e:
+                    _LOGGER.debug(f"Weather: Error reading Zambretti sensor: {e}")
+
+            # PRIORITY 3: Fallback based on pressure
+            pressure = self.native_pressure
+            if pressure:
+                if pressure < 1000:
+                    _LOGGER.debug(f"Weather: Fallback to rainy (pressure={pressure})")
+                    return ATTR_CONDITION_RAINY
+                elif pressure < 1013:
+                    return ATTR_CONDITION_CLOUDY
+                elif pressure < 1020:
+                    return ATTR_CONDITION_PARTLYCLOUDY
+                else:
+                    if self._is_night():
+                        return ATTR_CONDITION_CLEAR_NIGHT
+                    return ATTR_CONDITION_SUNNY
+
+            return ATTR_CONDITION_PARTLYCLOUDY
+        except Exception as e:
+            _LOGGER.error(f"Error determining weather condition: {e}", exc_info=True)
+            return ATTR_CONDITION_PARTLYCLOUDY
 
     def _is_night(self, check_time: datetime | None = None) -> bool:
         """Check if it's night time based on sun position.
@@ -305,6 +429,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
         Returns:
             True if sun is below horizon (night time)
         """
+        import homeassistant.util.dt as dt_util
+
         # Get sun entity state
         sun_entity = self.hass.states.get("sun.sun")
 
@@ -315,7 +441,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 return sun_entity.state == "below_horizon"
             else:
                 # Fallback to simple time check if sun entity not available
-                current_hour = datetime.now().hour
+                current_hour = dt_util.now().hour
                 return current_hour >= 19 or current_hour < 7
         else:
             # For future times, compare with sunrise/sunset
@@ -324,16 +450,24 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 next_sunset = sun_entity.attributes.get("next_setting")
 
                 if next_sunrise and next_sunset:
-                    from datetime import timezone
-
                     try:
-                        # Parse ISO format datetime strings
-                        sunrise_dt = datetime.fromisoformat(next_sunrise.replace('Z', '+00:00'))
-                        sunset_dt = datetime.fromisoformat(next_sunset.replace('Z', '+00:00'))
+                        # Parse ISO format datetime strings with proper timezone handling
+                        sunrise_dt = dt_util.parse_datetime(next_sunrise)
+                        sunset_dt = dt_util.parse_datetime(next_sunset)
 
-                        # Make check_time timezone aware if needed
+                        if sunrise_dt is None or sunset_dt is None:
+                            # Fallback parsing
+                            sunrise_dt = datetime.fromisoformat(next_sunrise.replace('Z', '+00:00'))
+                            sunset_dt = datetime.fromisoformat(next_sunset.replace('Z', '+00:00'))
+
+                        # Make check_time timezone aware using HA's timezone
                         if check_time.tzinfo is None:
-                            check_time = check_time.replace(tzinfo=timezone.utc)
+                            check_time = dt_util.as_local(check_time)
+
+                        # Convert all to same timezone for comparison
+                        sunrise_dt = dt_util.as_local(sunrise_dt)
+                        sunset_dt = dt_util.as_local(sunset_dt)
+                        check_time = dt_util.as_local(check_time)
 
                         # If check time is before next sunrise, it's night
                         # If check time is after next sunset, it's night
@@ -344,7 +478,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         else:
                             # Crossing midnight
                             return sunset_dt < check_time < sunrise_dt
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError) as e:
+                        _LOGGER.debug(f"Error parsing sun times: {e}")
                         pass
 
             # Fallback to simple time check
@@ -353,6 +488,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
+        if not self.hass:
+            return {"attribution": "Local Weather Forecast based on Zambretti and Negretti-Zambra algorithms"}
+
         attrs = {}
 
         # Add forecast short term from main sensor
@@ -376,14 +514,21 @@ class LocalWeatherForecastWeather(WeatherEntity):
             attrs["zambretti_number"] = zambretti[1] if len(zambretti) > 1 else None
             attrs["neg_zam_number"] = negretti[1] if len(negretti) > 1 else None
 
-        # Add comfort level based on apparent temperature
-        apparent_temp = self.native_apparent_temperature
-        if apparent_temp is not None:
-            attrs["comfort_level"] = get_comfort_level(apparent_temp)
-            attrs["feels_like"] = round(apparent_temp, 1)
+        # Get temperature for comfort and fog calculations
+        temp = self.native_temperature
+
+        # Add comfort level and feels_like based on apparent temperature
+        # Use feels_like property which has built-in fallback logic
+        feels_like_temp = self.feels_like
+        if feels_like_temp is not None:
+            attrs["comfort_level"] = get_comfort_level(feels_like_temp)
+            attrs["feels_like"] = round(feels_like_temp, 1)
+        else:
+            # Should never happen due to feels_like fallbacks, but keep as safety
+            attrs["comfort_level"] = "unknown"
+            attrs["feels_like"] = 0.0
 
         # Add fog risk if we have dewpoint
-        temp = self.native_temperature
         dewpoint = self.native_dew_point
         if temp is not None and dewpoint is not None:
             spread = temp - dewpoint
@@ -432,6 +577,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             wind_dir = self.wind_bearing or 0
             wind_speed = self.native_wind_speed or 0.0
 
+            _LOGGER.debug(
+                f"📊 Daily forecast sensors: "
+                f"P={pressure}hPa, T={temperature}°C, "
+                f"Wind={wind_speed}m/s @{wind_dir}°"
+            )
+
             if pressure is None or temperature is None:
                 _LOGGER.warning("Missing pressure or temperature for advanced forecast")
                 return None
@@ -454,15 +605,107 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 except (ValueError, TypeError):
                     pass
 
+            _LOGGER.debug(
+                f"📈 Trends: ΔP={pressure_change_3h}hPa/3h, "
+                f"ΔT={temp_change_1h}°C/h"
+            )
+
+            # Get current rain rate for real-time override
+            current_rain_rate = 0.0
+            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+            _LOGGER.debug(f"🌧️ Rain rate sensor config: {rain_rate_sensor_id}")
+            if rain_rate_sensor_id:
+                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
+                _LOGGER.debug(
+                    f"🌧️ Rain rate sensor state: {rain_sensor.state if rain_sensor else 'NOT_FOUND'} "
+                    f"(entity: {rain_rate_sensor_id})"
+                )
+                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable"):
+                    try:
+                        current_rain_rate = float(rain_sensor.state)
+                        _LOGGER.debug(f"🌧️ Current rain rate: {current_rain_rate} mm/h")
+                    except (ValueError, TypeError) as err:
+                        _LOGGER.warning(f"🌧️ Failed to parse rain rate: {err}")
+            else:
+                _LOGGER.debug("🌧️ No rain rate sensor configured")
+
+            # Get solar radiation for temperature model (optional)
+            solar_radiation = None
+            solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+            if solar_sensor_id:
+                solar_state = self.hass.states.get(solar_sensor_id)
+                if solar_state and solar_state.state not in ("unknown", "unavailable"):
+                    try:
+                        solar_radiation = float(solar_state.state)
+                        _LOGGER.debug(f"☀️ Solar radiation: {solar_radiation} W/m²")
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                _LOGGER.debug("☀️ No solar radiation sensor configured")
+
+            # Get cloud coverage for temperature model (optional)
+            cloud_cover = None
+            cloud_sensor_id = self._get_config(CONF_CLOUD_COVERAGE_SENSOR)
+            if cloud_sensor_id:
+                cloud_state = self.hass.states.get(cloud_sensor_id)
+                if cloud_state and cloud_state.state not in ("unknown", "unavailable"):
+                    try:
+                        cloud_cover = float(cloud_state.state)
+                        _LOGGER.debug(f"☁️ Cloud cover: {cloud_cover}%")
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                _LOGGER.debug("☁️ No cloud coverage sensor configured")
+
+            # Get humidity for cloud cover estimation (optional)
+            humidity = self.humidity
+            if humidity is not None:
+                _LOGGER.debug(f"💧 Humidity: {humidity}%")
+            else:
+                _LOGGER.debug("💧 No humidity data available")
+
+            # Get UV index for cloud cover correction (optional, Ecowitt WS90)
+            uv_index = None
+            uv_sensor_id = self._get_config(CONF_UV_INDEX_SENSOR)
+            if uv_sensor_id:
+                uv_state = self.hass.states.get(uv_sensor_id)
+                if uv_state and uv_state.state not in ("unknown", "unavailable"):
+                    try:
+                        uv_index = float(uv_state.state)
+                        _LOGGER.debug(f"☀️ UV index: {uv_index}")
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                _LOGGER.debug("☀️ No UV index sensor configured")
+
             # Create models
             pressure_model = PressureModel(pressure, pressure_change_3h)
-            temp_model = TemperatureModel(temperature, temp_change_1h)
+            temp_model = TemperatureModel(
+                temperature,
+                temp_change_1h,
+                solar_radiation=solar_radiation,
+                cloud_cover=cloud_cover,
+                humidity=humidity,
+                hass=self.hass
+            )
 
             # Create Zambretti forecaster with hass for sun entity access
-            latitude = self._get_config(CONF_LATITUDE) or DEFAULT_LATITUDE
-            zambretti = ZambrettiForecaster(hass=self.hass, latitude=latitude)
+            # Try to get latitude from config, fall back to Home Assistant's location, then to default
+            latitude = self._get_config(CONF_LATITUDE)
+            if latitude is None:
+                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
+                _LOGGER.debug(f"📍 Using latitude from Home Assistant: {latitude}°")
+            else:
+                _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
-            # Create generators
+            zambretti = ZambrettiForecaster(
+                hass=self.hass,
+                latitude=latitude,
+                uv_index=uv_index,
+                solar_radiation=solar_radiation
+            )
+
+            # Create generators with rain rate
             hourly_gen = HourlyForecastGenerator(
                 self.hass,
                 pressure_model,
@@ -470,7 +713,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 zambretti,
                 wind_direction=int(wind_dir),
                 wind_speed=float(wind_speed),
-                latitude=latitude
+                latitude=latitude,
+                current_rain_rate=current_rain_rate
             )
 
             daily_gen = DailyForecastGenerator(hourly_gen)
@@ -479,14 +723,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
             forecasts = daily_gen.generate(days)
 
             _LOGGER.debug(
-                f"Generated {len(forecasts)} daily forecasts: "
-                f"P={pressure}hPa, T={temperature}°C, ΔP={pressure_change_3h}hPa"
+                f"✅ Generated {len(forecasts)} daily forecasts "
+                f"(P={pressure}hPa, T={temperature}°C)"
             )
 
             return forecasts
 
         except Exception as e:
-            _LOGGER.error(f"Error generating advanced daily forecast: {e}", exc_info=True)
+            _LOGGER.error(f"❌ Error generating advanced daily forecast: {e}", exc_info=True)
             return None
 
     def _generate_advanced_hourly_forecast(self, hours: int = 24) -> list[Forecast] | None:
@@ -527,15 +771,94 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 except (ValueError, TypeError):
                     pass
 
+            # Get current rain rate for real-time override
+            current_rain_rate = 0.0
+            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+            _LOGGER.debug(f"Current rain rate sensor config: {rain_rate_sensor_id}")
+            if rain_rate_sensor_id:
+                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
+                _LOGGER.debug(
+                    f"Rain rate sensor state: {rain_sensor.state if rain_sensor else 'NOT_FOUND'} "
+                    f"(entity: {rain_rate_sensor_id})"
+                )
+                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable"):
+                    try:
+                        current_rain_rate = float(rain_sensor.state)
+                        _LOGGER.debug(f"Current rain rate: {current_rain_rate} mm/h")
+                    except (ValueError, TypeError) as err:
+                        _LOGGER.warning(f"Failed to parse rain rate: {err}")
+            else:
+                _LOGGER.debug("No rain rate sensor configured")
+
+            # Get solar radiation for temperature model (optional)
+            solar_radiation = None
+            solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+            if solar_sensor_id:
+                solar_state = self.hass.states.get(solar_sensor_id)
+                if solar_state and solar_state.state not in ("unknown", "unavailable"):
+                    try:
+                        solar_radiation = float(solar_state.state)
+                        _LOGGER.debug(f"Solar radiation for hourly forecast: {solar_radiation} W/m²")
+                    except (ValueError, TypeError):
+                        pass
+
+            # Get cloud coverage for temperature model (optional)
+            cloud_cover = None
+            cloud_sensor_id = self._get_config(CONF_CLOUD_COVERAGE_SENSOR)
+            if cloud_sensor_id:
+                cloud_state = self.hass.states.get(cloud_sensor_id)
+                if cloud_state and cloud_state.state not in ("unknown", "unavailable"):
+                    try:
+                        cloud_cover = float(cloud_state.state)
+                        _LOGGER.debug(f"Cloud cover for hourly forecast: {cloud_cover}%")
+                    except (ValueError, TypeError):
+                        pass
+
+            # Get humidity for cloud cover estimation (optional)
+            humidity = self.humidity
+            if humidity is not None:
+                _LOGGER.debug(f"Humidity for hourly forecast: {humidity}%")
+
+            # Get UV index for cloud cover correction (optional, Ecowitt WS90)
+            uv_index = None
+            uv_sensor_id = self._get_config(CONF_UV_INDEX_SENSOR)
+            if uv_sensor_id:
+                uv_state = self.hass.states.get(uv_sensor_id)
+                if uv_state and uv_state.state not in ("unknown", "unavailable"):
+                    try:
+                        uv_index = float(uv_state.state)
+                        _LOGGER.debug(f"UV index for hourly forecast: {uv_index}")
+                    except (ValueError, TypeError):
+                        pass
+
             # Create models
             pressure_model = PressureModel(pressure, pressure_change_3h)
-            temp_model = TemperatureModel(temperature, temp_change_1h)
+            temp_model = TemperatureModel(
+                temperature,
+                temp_change_1h,
+                solar_radiation=solar_radiation,
+                cloud_cover=cloud_cover,
+                humidity=humidity,
+                hass=self.hass
+            )
 
             # Create Zambretti forecaster with hass for sun entity access
-            latitude = self._get_config(CONF_LATITUDE) or DEFAULT_LATITUDE
-            zambretti = ZambrettiForecaster(hass=self.hass, latitude=latitude)
+            # Try to get latitude from config, fall back to Home Assistant's location, then to default
+            latitude = self._get_config(CONF_LATITUDE)
+            if latitude is None:
+                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
+                _LOGGER.debug(f"📍 Using latitude from Home Assistant: {latitude}°")
+            else:
+                _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
-            # Create generator
+            zambretti = ZambrettiForecaster(
+                hass=self.hass,
+                latitude=latitude,
+                uv_index=uv_index,
+                solar_radiation=solar_radiation
+            )
+
+            # Create generator with rain rate
             hourly_gen = HourlyForecastGenerator(
                 self.hass,
                 pressure_model,
@@ -543,7 +866,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 zambretti,
                 wind_direction=int(wind_dir),
                 wind_speed=float(wind_speed),
-                latitude=latitude
+                latitude=latitude,
+                current_rain_rate=current_rain_rate
             )
 
             # Generate forecast (1-hour intervals)
