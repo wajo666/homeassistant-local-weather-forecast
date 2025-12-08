@@ -13,9 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    PERCENTAGE,
     UnitOfPressure,
-    UnitOfSpeed,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
@@ -48,10 +46,9 @@ from .const import (
     LAPSE_RATE,
     PRESSURE_TREND_FALLING,
     PRESSURE_TREND_RISING,
-    PRESSURE_TYPE_ABSOLUTE,
     PRESSURE_TYPE_RELATIVE,
 )
-from .forecast_data import FORECAST_TEXTS, PRESSURE_SYSTEMS, CONDITIONS
+from .forecast_data import PRESSURE_SYSTEMS, CONDITIONS
 from .zambretti import calculate_zambretti_forecast
 from .negretti_zambra import calculate_negretti_zambra_forecast
 from .calculations import (
