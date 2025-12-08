@@ -10,7 +10,7 @@
 
 This Home Assistant integration provides **advanced local weather forecasting** without relying on external services or APIs. It uses barometric pressure trends, temperature modeling, and proven meteorological algorithms to predict weather conditions.
 
-**Latest Version:** v3.1.0 (December 2025)
+**Latest Version:** v3.1.0 (UNRELEASED - Testing Phase)
 
 **Original Developer:** [@HAuser1234](https://github.com/HAuser1234)  
 **Original Repository:** [github.com/HAuser1234/homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)  
@@ -20,15 +20,17 @@ This Home Assistant integration provides **advanced local weather forecasting** 
 
 - 🎯 **~94-98% Accuracy** - Enhanced with modern sensor fusion
 - 🔌 **Fully Offline** - No external API dependencies
-- 📅 **Multi-timeframe Forecasts** - Hourly (6h) + Daily (3 days)
+- 📅 **Multi-timeframe Forecasts** - Hourly (25h) + Daily (3 days)
 - 🌍 **Multi-language Support** - English, German, Greek, Italian, Slovak
 - 🎨 **Modern UI Configuration** - Easy setup through Home Assistant UI
 - 💾 **Smart Fallbacks** - Uses historical data when sensors are unavailable
 - 🔄 **Auto-Recovery** - Restores last known values after restart
 - 🧠 **Dual Forecast Models** - Zambretti & Negretti-Zambra algorithms
-- 🌡️ **Advanced Calculations** - Feels Like, Dew Point, Fog Risk
-- 🌧️ **Enhanced Rain Prediction** - Multi-factor probability calculation
+- 🌡️ **Advanced Calculations** - Feels Like (Wind Chill), Dew Point, Fog Risk
+- 🌧️ **Enhanced Rain Prediction** - Multi-factor probability with real-time detection
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
+- 🌦️ **UV Index Integration** - Cloud cover correction & solar estimation
+- 🌧️ **Smart Rain Detection** - Automatic detection: Netatmo (mm increments) & Ecowitt (mm/h)
 
 ---
 
@@ -54,48 +56,103 @@ This Home Assistant integration provides **advanced local weather forecasting** 
 
 ---
 
-## 🌟 What's New in v3.1.0
+## 🌟 What's New in v3.1.0 (2025-12-08)
 
-### 📅 Advanced Forecast Models
+### 🔧 Critical Fixes
 
-**New Forecast Calculator** (`forecast_calculator.py`) provides scientific forecasting:
+**Dewpoint Spread Calculation Fix**
+- Enhanced sensor now uses dewpoint from weather entity for consistency
+- Weather entity respects configured dewpoint sensor priority
+- Spread calculation: `weather.temperature - weather.dew_point`
+- Ensures consistent values across all sensors
+- Example: temp=6.7°C, dewpoint=5.0°C → spread=1.7°C ✅
 
-- **Pressure Trend Forecasting** - Linear regression model predicts pressure evolution
-- **Temperature Modeling** - Diurnal cycle + pressure-based adjustments
-- **Hourly Zambretti** - Run Zambretti algorithm for each forecast hour
-- **Dynamic Rain Probability** - Evolves based on pressure trends
-- **Confidence Scoring** - Quality metrics for each forecast
+**Enhanced Sensor Automatic Updates**
+- Auto-updates when ANY monitored sensor changes (up to 9 entities)
+- Monitors: weather entity, forecast, temperature, humidity, pressure, wind, dewpoint, rain
+- Throttling: Max 1 update per 30 seconds (prevents flooding)
+- Before: Updated only at startup → stale data
+- After: Real-time updates within 30s of sensor changes ✅
 
-### 🌤️ Weather Entity Forecasts
+**Sensor Configuration Logic Fix**
+- **Only PRESSURE is required** (correct Zambretti algorithm implementation)
+- All other sensors marked as **optional enhancements**
+- Integration works with minimal setup (pressure only)
+- Add sensors gradually to unlock features
+- Temperature, wind, humidity improve accuracy but not required ✅
 
-**Daily Forecast (3 days):**
-- Temperature trends with diurnal variation
-- Hourly temperature changes during the day
-- Condition evolution based on pressure
-- Day/night icon distinction
+**2 Decimal Precision**
+- All numeric values now use **2 decimal places** consistently
+- Enhanced sensor: humidity=89.12%, dew_point=5.02°C, spread=1.70°C
+- Weather entity: feels_like=4.12°C, wind_gust=1.52 m/s
+- Template sensors: same precision throughout
+- Python code + YAML templates aligned ✅
 
-**Hourly Forecast (6 hours):**
-- Detailed hour-by-hour conditions
-- Temperature evolution
-- Rain probability per hour
-- Automatic day/night icons
+**Modern Template Format (HA 2026.6+ Ready)**
+- Migrated to modern `template:` format
+- Removed deprecated `platform: template`
+- Binary sensors and numeric sensors in single sections
+- No duplicate `- sensor:` or `- binary_sensor:` blocks
+- Compatible with Home Assistant 2026.6+ ✅
 
-### 🎨 Smart Icons
+### 🌦️ UV Index & Solar Radiation Support
 
-- **Sunrise/Sunset Aware** - Automatic day/night icons
-- **Night Icons**: `clear-night`, `rainy-night`, `cloudy-night`
-- **Day Icons**: `sunny`, `cloudy`, `rainy`, `stormy`
-- **Consistent** - Same logic across all sensors
+**UV-Based Cloud Cover Correction** - Automatically adjusts cloud estimates:
 
-### 🌧️ Enhanced Rain Prediction
+- **UV Index Sensor** - Cloud cover calculation from UV measurements
+  - Converts UVI to solar radiation (UVI 10 ≈ 1000 W/m²)
+  - Accounts for cloud attenuation
+  - Improves temperature forecasting during sunny periods
+- **Solar Radiation Sensor** - Direct solar energy measurement (W/m²)
+  - Temperature warming from solar heating
+  - Sun angle calculation using Home Assistant coordinates
+  - Automatic day/night cycle detection
+- **Dual Mode** - Works with UV only, solar only, or both sensors
+- **Automatic Detection** - Smart sensor type detection (W/m² or UVI)
+- **Fallback Logic** - Uses humidity estimates if no solar sensors available
 
-Multi-factor rain probability calculation:
-- Base probability from Zambretti (0-100%)
-- Base probability from Negretti-Zambra (0-100%)
-- Humidity adjustment (±25% based on humidity)
-- Dewpoint spread adjustment (±25% based on fog risk)
-- Current rain override (100% if actively raining)
-- High/Low confidence levels
+### 🌧️ Smart Rain Detection System
+
+**Automatic Sensor Type Detection** - Works with any rain gauge:
+
+- **Netatmo Support** - Accumulation tracking (mm per interval)
+  - Detects rain when value changes (0.101 → 0.202 mm)
+  - 15-minute auto-reset timeout after rain stops
+  - Hourly accumulation sensor support
+- **Ecowitt WS90 Support** - Can work with both modes
+  - If direct mm/h available: Real-time rain rate monitoring
+  - If only mm available: Monitors accumulation changes
+- **Single Sensor Config** - One sensor does it all
+- **Priority System** - Real-time rain > Zambretti forecast
+- **Smart Thresholds**:
+  - Light rain: 0.1-2.5 mm/h → "rainy"
+  - Moderate rain: 2.5-7.6 mm/h → "rainy"
+  - Heavy rain: >7.6 mm/h → "pouring"
+
+### 🌡️ Feels Like Temperature
+
+**Accurate Apparent Temperature** - Built into weather entity:
+
+- **Weather Entity** - Automatic `feels_like` attribute
+- **Heat Index** - For hot weather (>27°C + high humidity)
+- **Wind Chill** - For cold weather (<10°C + wind)
+- **Graceful Fallback** - Uses actual temperature if sensors unavailable
+- **No Template Required** - Works out of the box
+
+### ☀️ Solar-Aware Forecasting
+
+**Improved Temperature Predictions**:
+
+- Warmer daytime temperatures when sunny (+2°C per 400 W/m²)
+- Cloud cover reduces solar warming
+- Automatic nighttime cooling (18:00-06:00)
+- Uses Home Assistant coordinates for sun angle
+- 25-hour hourly forecast with solar integration
+
+### 📚 Documentation
+
+- **[WEATHER_CARDS.md](WEATHER_CARDS.md)** - Lovelace UI examples and configuration
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete version history
 
 ---
 
@@ -235,62 +292,6 @@ The Zambretti algorithm uses a threshold of **1 m/s (3.6 km/h)** to determine if
 
 ## 🔧 Advanced Sensor Setup
 
-### Multiple Sensors (Improved Accuracy & Reliability)
-
-If you have multiple temperature or pressure sensors, create template sensors for better accuracy:
-
-#### Temperature (Average or Minimum from Multiple Sensors)
-```yaml
-template:
-  - sensor:
-      - name: "Outdoor Temperature"
-        state: >
-          {% set sensors = [
-            'sensor.west_temperature',
-            'sensor.east_temperature'
-          ] %}
-          {% set valid = [] %}
-          {% for s in sensors %}
-            {% if states(s) not in ['unavailable', 'unknown'] %}
-              {% set valid = valid + [states(s)|float] %}
-            {% endif %}
-          {% endfor %}
-          {{ valid|min|round(1) if valid else 'unknown' }}
-        unit_of_measurement: "°C"
-        device_class: "temperature"
-        state_class: "measurement"
-```
-
-#### Pressure (Average from Multiple Sensors)
-```yaml
-template:
-  - sensor:
-      - name: "Outdoor Pressure"
-        state: >
-          {% set sensors = ['sensor.pressure_1', 'sensor.pressure_2'] %}
-          {% set valid = [] %}
-          {% for s in sensors %}
-            {% if states(s) not in ['unavailable', 'unknown'] %}
-              {% set val = states(s)|float %}
-              {% if val > 900 and val < 1100 %}
-                {% set valid = valid + [val] %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-          {{ (valid|sum / valid|length)|round(1) if valid else 'unknown' }}
-        unit_of_measurement: "hPa"
-        device_class: "atmospheric_pressure"
-        state_class: "measurement"
-```
-
-### 💡 Why Use Multiple Sensors?
-
-- **Redundancy**: If one sensor fails, forecast continues working
-- **Accuracy**: Average/minimum values reduce sensor errors
-- **Stability**: Less false positives from temporary spikes
-- **Meteorologically Correct**: Minimum temperature = shaded value (correct for forecasts)
-
----
 
 ## 🎯 Recommended Sensor Setup for Best Accuracy
 
@@ -321,7 +322,7 @@ All sensors + Extended:
   - Wind Speed sensor
   - Humidity sensor             ← Enables fog detection, enhanced rain %, dew point calc
   - Wind Gust sensor            ← Enables atmospheric stability analysis (gust ratio)
-  - Rain Rate sensor            ← Enables real-time rain override (100% when raining)
+  - Rain Rate sensor            ← Enables real-time rain override (100% probability + weather condition → "rainy" when rain > 0.1 mm/h)
   - Solar Radiation sensor      ← Enables solar warming in "feels like" temperature
   - Cloud Coverage sensor       ← Enables cloud-based comfort level refinement
   - Dewpoint sensor (optional)  ← Alternative to humidity for fog detection
@@ -343,7 +344,7 @@ All current + Advanced (prepared but not yet used in forecast):
 | **Wind Speed** | ⚠️ Optional | +3-5% accuracy (calm vs windy) | ⚠️ Uses 0 m/s (calm) default |
 | **Humidity** | ⭐ Optional (v3.1.0) | **Enables:** Fog risk levels, enhanced rain %, dew point calculation | ⚠️ Fog/dew features disabled |
 | **Wind Gust** | ⭐ Optional (v3.1.0) | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
-| **Rain Rate** | ⭐ Optional (v3.1.0) | **Enables:** Real-time override (100% probability when actively raining) | ⚠️ Uses calculated % only |
+| **Rain Rate** | ⭐ Optional (v3.1.0) | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
 | **Solar Radiation** | ⭐ Optional (v3.1.0) | **Enables:** Solar warming effect in "feels like" temperature | ⚠️ Ignores solar heating |
 | **Cloud Coverage** | ⭐ Optional (v3.1.0) | **Enables:** Cloud-based comfort level refinement | ⚠️ Uses estimated sky condition |
 | **Dewpoint** | ⭐ Optional (v3.1.0) | Alternative to humidity for fog detection (auto-calculated if humidity present) | ⚠️ Calculated from temp+humidity |
@@ -356,7 +357,6 @@ All current + Advanced (prepared but not yet used in forecast):
 - **Minimum Setup**: Pressure only → ~88% accuracy (basic Zambretti forecast)
 - **Standard Setup**: Pressure + Temperature + Wind → ~94% accuracy (wind corrections)
 - **Enhanced Setup**: All v3.1.0 sensors → ~98% accuracy (fog, rain %, stability, solar, clouds) ⭐
-- **Future Setup**: All sensors + precipitation tracking → ~99%+ accuracy (planned for v3.2+)
 
 💡 **Pro Tip**: Every optional sensor improves accuracy and unlocks additional features. Missing sensors use sensible defaults - the integration always works.
 
@@ -639,6 +639,50 @@ The integration calculates **Feels Like Temperature** using Wind Chill and Heat 
 - Used when temperature is above 27°C
 
 **Apparent Temperature (10-27°C):**
+- Australian BOM formula for moderate weather
+- Combines temperature, humidity, wind speed
+- Most accurate for comfortable temperatures
+
+### Fog Risk Detection
+
+Based on **dewpoint spread** (temperature - dew point):
+- **CRITICAL** - Spread < 1.5°C → Fog imminent
+- **HIGH** - Spread 1.5-2.5°C → Fog likely  
+- **MEDIUM** - Spread 2.5-4.0°C → Fog possible
+- **LOW** - Spread > 4.0°C → Fog unlikely
+
+### Atmospheric Stability
+
+Based on **wind gust ratio** (gust speed / wind speed):
+- **Calm** - Ratio < 1.5 → Stable atmosphere
+- **Unstable** - Ratio 1.5-2.5 → Moderate turbulence
+- **Very Unstable** - Ratio > 2.5 → High turbulence
+
+### Cloud Cover Estimation ⭐ NEW
+
+**If cloud sensor is not available**, the integration estimates cloud cover from **humidity**:
+
+| Humidity Range | Cloud Cover | Description |
+|----------------|-------------|-------------|
+| **< 50%** | 0-20% | Clear to mostly clear |
+| **50-70%** | 20-50% | Partly cloudy |
+| **70-85%** | 50-80% | Mostly cloudy |
+| **> 85%** | 80-100% | Overcast / Fog |
+
+**Meteorological Justification:**
+- High relative humidity indicates atmospheric moisture
+- Moisture condenses into clouds as humidity increases
+- >85% RH often correlates with fog/low clouds
+- Standard atmosphere model validates this relationship
+
+**Impact on Forecasts:**
+- ☀️ **Solar warming** - Reduced by estimated cloud cover
+- 🌡️ **Temperature modeling** - Cloud cover affects heating/cooling rates
+- 🌧️ **Rain probability** - High cloud cover increases rain likelihood
+
+**Note:** Direct cloud sensor (optional) provides more accurate readings when available.
+
+---
 - Australian apparent temperature formula
 - Balanced formula for moderate temperatures
 - Accounts for humidity and wind
@@ -815,6 +859,66 @@ Try:
 - Ensure sensors exist in Developer Tools → States
 - Check sensor has valid numeric values
 
+### Rain Sensor Not Triggering "Rainy" Condition
+
+**Symptoms:** It's raining but weather entity still shows "sunny" or forecast-based condition.
+
+**Causes & Solutions:**
+
+1. **Rain rate sensor unavailable:**
+   - Check sensor state in Developer Tools → States
+   - Sensor must report numeric value in `mm/h`
+   - Verify sensor is not returning `None`, `unavailable`, or `unknown`
+
+2. **Rain rate threshold:**
+   - Weather switches to "rainy" only when rain rate > **0.1 mm/h**
+   - Light drizzle (<0.1 mm/h) won't trigger override
+   - Check current rain rate value: `{{ states('sensor.your_rain_rate') }}`
+
+3. **Sensor startup delay:**
+   - Rain sensor may return `None` for 1-2 minutes after HA restart
+   - Wait for sensor to initialize and report valid values
+   - Check logs for: `"RainProb: Rain rate sensor returned None"`
+
+4. **Debug steps:**
+   ```yaml
+   # In Developer Tools → Template:
+   Rain rate: {{ states('sensor.rain_rate_corrected') }}
+   Is raining: {{ states('sensor.rain_rate_corrected') | float(0) > 0.1 }}
+   Weather condition: {{ states('weather.local_weather_forecast_weather') }}
+   ```
+
+5. **Expected behavior:**
+   - Rain rate > 0.1 mm/h → Weather condition = "rainy" (immediate override)
+   - Rain rate = 0 → Weather condition = Zambretti forecast
+   - Rain probability sensor always shows 100% when rain > 0.1 mm/h
+
+**Example log (working correctly):**
+```
+RainProb: Current rain rate = 2.5
+RainProb: Currently raining (2.5 mm/h), setting probability to 100%
+Weather: Currently raining (2.5 mm/h) - override to rainy
+```
+
+**Example log (sensor unavailable):**
+```
+RainProb: Rain rate sensor returned None
+Weather: Using Zambretti forecast - Settled Fine (sunny)
+```
+
+### Forecast Shows Different Conditions Than Reality
+
+**Remember:** This is a *forecast* integration based on barometric pressure trends:
+
+- **Stable pressure + High pressure** = Forecast shows "sunny" even if currently overcast
+- **Pressure dropping** = Forecast shows "cloudy/rainy" even if currently clear
+- **Forecast predicts 3-72 hours ahead**, not current conditions
+
+**To get real-time conditions:**
+- Use rain rate sensor (detects active rain)
+- Use cloud coverage sensor (v3.2+, planned)
+- Compare with external weather API for current conditions
+
 ---
 
 ## 🏆 Credits & Attribution
@@ -898,4 +1002,6 @@ MIT License - See [LICENSE](LICENSE) file
 
 
 **Note:** *94% accuracy claim based on [SAS IoT implementation testing](https://github.com/sassoftware/iot-zambretti-weather-forcasting)*
+
+
 

@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.weather import (
     ATTR_CONDITION_CLEAR_NIGHT,
     ATTR_CONDITION_CLOUDY,
+    ATTR_CONDITION_FOG,
     ATTR_CONDITION_PARTLYCLOUDY,
     ATTR_CONDITION_RAINY,
     ATTR_CONDITION_SUNNY,
@@ -374,7 +375,52 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         _LOGGER.debug(f"Weather: Error processing rain sensor: {e}")
                         pass
 
-            # PRIORITY 2: Get Zambretti forecast condition
+            # PRIORITY 2: Check for fog conditions (high humidity + low dewpoint spread)
+            # Fog is a visible weather phenomenon and should override forecast
+            # NOTE: Fog is primarily a nighttime/early morning phenomenon
+            from datetime import datetime as dt
+            temp = self.native_temperature
+            humidity = self.humidity
+            dewpoint = self.native_dew_point
+
+            if temp is not None and dewpoint is not None and humidity is not None:
+                dewpoint_spread = temp - dewpoint
+
+                # Check if it's fog-favorable time (night, early morning, evening)
+                # Fog typically forms during nighttime cooling and dissipates after sunrise
+                current_hour = dt.now().hour
+                is_fog_time = (
+                    self._is_night() or  # Night time (after sunset, before sunrise)
+                    current_hour <= 9 or  # Early morning (00:00-09:00)
+                    current_hour >= 18    # Evening (18:00-23:59)
+                )
+
+                # FOG CONDITIONS (meteorologically justified):
+                # - Dewpoint spread < 1.5°C = CRITICAL fog risk
+                # - Humidity > 85% = high moisture content
+                # - Fog-favorable time (not midday sun)
+                # - Combined = actual fog present
+                if dewpoint_spread < 1.5 and humidity > 85 and is_fog_time:
+                    _LOGGER.info(
+                        f"Weather: FOG detected - dewpoint spread={dewpoint_spread:.1f}°C, "
+                        f"humidity={humidity:.1f}%, hour={current_hour}"
+                    )
+                    return ATTR_CONDITION_FOG
+                # Near-fog conditions (visibility may be reduced)
+                elif dewpoint_spread < 1.0 and humidity > 80 and is_fog_time:
+                    _LOGGER.info(
+                        f"Weather: FOG detected (near saturation) - spread={dewpoint_spread:.1f}°C, "
+                        f"humidity={humidity:.1f}%, hour={current_hour}"
+                    )
+                    return ATTR_CONDITION_FOG
+                # During daytime with high humidity + low spread = just high humidity, not fog
+                elif dewpoint_spread < 1.5 and humidity > 85 and not is_fog_time:
+                    _LOGGER.debug(
+                        f"Weather: High humidity during daytime - spread={dewpoint_spread:.1f}°C, "
+                        f"humidity={humidity:.1f}%, hour={current_hour} - NOT setting fog (daytime)"
+                    )
+
+            # PRIORITY 3: Get Zambretti forecast condition
             zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
             if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable", None):
                 try:
@@ -391,6 +437,28 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                     _LOGGER.debug(f"Weather: Mapped letter {letter_code} → condition {condition}")
 
+                    # HUMIDITY-BASED CLOUD COVER CORRECTION
+                    # If high humidity but Zambretti says partly cloudy, upgrade to cloudy
+                    # This addresses the issue where high humidity (80%+) should mean more clouds
+                    humidity = self.humidity
+                    if humidity is not None:
+                        _LOGGER.debug(f"Weather: Current humidity={humidity}%")
+
+                        # Very high humidity (>85%) = overcast conditions
+                        if humidity > 85 and condition in (ATTR_CONDITION_PARTLYCLOUDY, ATTR_CONDITION_SUNNY):
+                            _LOGGER.info(
+                                f"Weather: Humidity correction: {condition} → cloudy "
+                                f"(RH={humidity:.1f}% > 85%)"
+                            )
+                            condition = ATTR_CONDITION_CLOUDY
+                        # High humidity (70-85%) = mostly cloudy if Zambretti says sunny
+                        elif humidity > 70 and condition == ATTR_CONDITION_SUNNY:
+                            _LOGGER.info(
+                                f"Weather: Humidity correction: sunny → partlycloudy "
+                                f"(RH={humidity:.1f}% > 70%)"
+                            )
+                            condition = ATTR_CONDITION_PARTLYCLOUDY
+
                     # Check if it's night time (between sunset and sunrise)
                     if condition == ATTR_CONDITION_SUNNY and self._is_night():
                         _LOGGER.debug("Weather: Night time, converting sunny → clear-night")
@@ -400,7 +468,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 except (AttributeError, KeyError, TypeError) as e:
                     _LOGGER.debug(f"Weather: Error reading Zambretti sensor: {e}")
 
-            # PRIORITY 3: Fallback based on pressure
+            # PRIORITY 4: Fallback based on pressure
             pressure = self.native_pressure
             if pressure:
                 if pressure < 1000:
@@ -522,7 +590,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         feels_like_temp = self.feels_like
         if feels_like_temp is not None:
             attrs["comfort_level"] = get_comfort_level(feels_like_temp)
-            attrs["feels_like"] = round(feels_like_temp, 1)
+            attrs["feels_like"] = round(feels_like_temp, 2)
         else:
             # Should never happen due to feels_like fallbacks, but keep as safety
             attrs["comfort_level"] = "unknown"
@@ -532,12 +600,147 @@ class LocalWeatherForecastWeather(WeatherEntity):
         dewpoint = self.native_dew_point
         if temp is not None and dewpoint is not None:
             spread = temp - dewpoint
-            attrs["fog_risk"] = get_fog_risk(spread, dewpoint)
-            attrs["dewpoint_spread"] = round(spread, 1)
+            attrs["fog_risk"] = get_fog_risk(temp, dewpoint)
+            attrs["dewpoint_spread"] = round(spread, 2)
+            attrs["dew_point"] = round(dewpoint, 2)
+
+        # Add wind classification (Beaufort Scale) and atmospheric stability
+        wind_speed = self.native_wind_speed
+        if wind_speed is not None:
+            attrs["wind_beaufort_scale"] = self._get_beaufort_number(wind_speed)
+            attrs["wind_type"] = self._get_beaufort_wind_type(wind_speed)
+
+        # Add wind gust and gust ratio if available
+        wind_gust_sensor_id = self._get_config(CONF_WIND_GUST_SENSOR)
+        if wind_gust_sensor_id and wind_speed and wind_speed > 0.1:
+            wind_gust_state = self.hass.states.get(wind_gust_sensor_id)
+            if wind_gust_state and wind_gust_state.state not in ("unknown", "unavailable"):
+                try:
+                    wind_gust = float(wind_gust_state.state)
+                    attrs["wind_gust"] = round(wind_gust, 2)
+                    gust_ratio = wind_gust / wind_speed
+                    attrs["gust_ratio"] = round(gust_ratio, 2)
+                    attrs["atmosphere_stability"] = self._get_atmosphere_stability(wind_speed, gust_ratio)
+                except (ValueError, TypeError):
+                    pass
+
+        # Add enhanced forecast details from Enhanced sensor
+        enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+        if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
+            enhanced_attrs = enhanced_sensor.attributes or {}
+
+            # Add confidence and adjustments
+            if "confidence" in enhanced_attrs:
+                attrs["forecast_confidence"] = enhanced_attrs["confidence"]
+            if "adjustments" in enhanced_attrs:
+                attrs["forecast_adjustments"] = enhanced_attrs["adjustments"]
+            if "adjustment_details" in enhanced_attrs:
+                attrs["forecast_adjustment_details"] = enhanced_attrs["adjustment_details"]
+
+        # Add rain probability if available
+        rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+        if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable"):
+            try:
+                attrs["rain_probability"] = int(float(rain_prob_sensor.state))
+                rain_attrs = rain_prob_sensor.attributes or {}
+                if "confidence" in rain_attrs:
+                    attrs["rain_confidence"] = rain_attrs["confidence"]
+            except (ValueError, TypeError):
+                pass
+
+        # Add humidity if available
+        humidity = self.humidity
+        if humidity is not None:
+            attrs["humidity"] = round(humidity, 2)
+
+        # Add visibility estimate based on fog risk
+        if "fog_risk" in attrs:
+            fog_risk = attrs["fog_risk"]
+            if fog_risk == "high":
+                attrs["visibility_estimate"] = "Znížená viditeľnosť (<1 km)"
+            elif fog_risk == "medium":
+                attrs["visibility_estimate"] = "Možná znížená viditeľnosť (1-5 km)"
+            elif fog_risk == "low":
+                attrs["visibility_estimate"] = "Dobrá viditeľnosť (5-10 km)"
+            else:
+                attrs["visibility_estimate"] = "Veľmi dobrá viditeľnosť (>10 km)"
 
         attrs["attribution"] = "Local Weather Forecast based on Zambretti and Negretti-Zambra algorithms"
 
         return attrs
+
+    def _get_beaufort_number(self, wind_speed: float) -> int:
+        """Get Beaufort scale number from wind speed (m/s)."""
+        if wind_speed < 0.5:
+            return 0  # Calm
+        elif wind_speed < 1.6:
+            return 1  # Light air
+        elif wind_speed < 3.4:
+            return 2  # Light breeze
+        elif wind_speed < 5.5:
+            return 3  # Gentle breeze
+        elif wind_speed < 8.0:
+            return 4  # Moderate breeze
+        elif wind_speed < 10.8:
+            return 5  # Fresh breeze
+        elif wind_speed < 13.9:
+            return 6  # Strong breeze
+        elif wind_speed < 17.2:
+            return 7  # High wind
+        elif wind_speed < 20.8:
+            return 8  # Gale
+        elif wind_speed < 24.5:
+            return 9  # Strong gale
+        elif wind_speed < 28.5:
+            return 10  # Storm
+        elif wind_speed < 32.7:
+            return 11  # Violent storm
+        else:
+            return 12  # Hurricane
+
+    def _get_beaufort_wind_type(self, wind_speed: float) -> str:
+        """Get wind type description from Beaufort scale (Slovak)."""
+        beaufort = self._get_beaufort_number(wind_speed)
+
+        descriptions = {
+            0: "Ticho",
+            1: "Slabý vánok",
+            2: "Vánok",
+            3: "Slabý vietor",
+            4: "Mierny vietor",
+            5: "Čerstvý vietor",
+            6: "Silný vietor",
+            7: "Prudký vietor",
+            8: "Búrka",
+            9: "Silná búrka",
+            10: "Veľká búrka",
+            11: "Orkán",
+            12: "Hurikán",
+        }
+
+        return descriptions.get(beaufort, "Neznámy")
+
+    def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
+        """Determine atmospheric stability based on wind speed and gust ratio."""
+        if gust_ratio is None:
+            return "unknown"
+
+        # For low wind speeds (< 3 m/s), gust ratio is not reliable indicator
+        if wind_speed < 3.0:
+            if wind_speed < 1.0:
+                return "stable"
+            else:
+                return "moderate"
+
+        # For moderate to strong winds (≥ 3 m/s), use gust ratio
+        if gust_ratio < 1.3:
+            return "stable"
+        elif gust_ratio < 1.6:
+            return "moderate"
+        elif gust_ratio < 2.0:
+            return "unstable"
+        else:
+            return "very_unstable"
 
     async def async_forecast_daily(self) -> list[Forecast] | None:
         """Return the daily forecast using advanced models."""

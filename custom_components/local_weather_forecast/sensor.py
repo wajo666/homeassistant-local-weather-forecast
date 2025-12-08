@@ -27,6 +27,7 @@ from homeassistant.components.recorder import get_instance, history
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_HUMIDITY_SENSOR,
     CONF_LANGUAGE,
@@ -1483,6 +1484,44 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         """When entity is added to hass - schedule delayed update for startup."""
         await super().async_added_to_hass()
 
+        # Track weather entity and main sensor changes for automatic updates
+        entities_to_track = [
+            "weather.local_weather_forecast_weather",  # Weather entity
+            "sensor.local_forecast",  # Main forecast sensor
+        ]
+
+        # Track ALL configured sensors for automatic updates
+        # Only PRESSURE is truly required (in config.data)
+        # All others are optional enhancements (in config.options)
+        sensors_to_check = [
+            (CONF_PRESSURE_SENSOR, True),       # Only required sensor (config.data)
+            (CONF_TEMPERATURE_SENSOR, False),   # Optional - for sea level pressure conversion
+            (CONF_HUMIDITY_SENSOR, False),      # Optional - for dew point, fog detection
+            (CONF_WIND_SPEED_SENSOR, False),    # Optional - for wind factor, Beaufort scale
+            (CONF_WIND_DIRECTION_SENSOR, False),# Optional - for wind factor adjustment
+            (CONF_WIND_GUST_SENSOR, False),     # Optional - for atmosphere stability
+            (CONF_DEWPOINT_SENSOR, False),      # Optional - alternative to temp+humidity
+            (CONF_RAIN_RATE_SENSOR, False),     # Optional - for rain probability enhancement
+        ]
+
+        for sensor_key, use_data in sensors_to_check:
+            if use_data:
+                sensor_id = self.config_entry.data.get(sensor_key)
+            else:
+                sensor_id = self.config_entry.options.get(sensor_key) or self.config_entry.data.get(sensor_key)
+
+            if sensor_id:
+                entities_to_track.append(sensor_id)
+                _LOGGER.debug(f"Enhanced: Tracking sensor {sensor_key}: {sensor_id}")
+
+        # Set up state change tracking
+        _LOGGER.info(f"Enhanced: Tracking {len(entities_to_track)} entities for automatic updates")
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, entities_to_track, self._handle_sensor_update
+            )
+        )
+
         # Schedule delayed update to wait for dependent sensors to load
         async def delayed_startup_update():
             await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
@@ -1491,6 +1530,24 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             self.async_write_ha_state()
 
         self.hass.async_create_task(delayed_startup_update())
+
+    @callback
+    async def _handle_sensor_update(self, event):
+        """Handle source sensor state changes."""
+        # Throttle updates to prevent flooding
+        now = dt_util.now()
+        if self._last_update_time is not None:
+            time_since_last_update = (now - self._last_update_time).total_seconds()
+            if time_since_last_update < self._update_throttle_seconds:
+                _LOGGER.debug(
+                    f"Enhanced: Skipping update, only {time_since_last_update:.1f}s since last update"
+                )
+                return
+
+        self._last_update_time = now
+        _LOGGER.debug(f"Enhanced: Sensor update triggered by {event.data.get('entity_id')}")
+        await self.async_update()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> str | None:
@@ -1501,6 +1558,110 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         return self._attributes
+
+    def _get_beaufort_number(self, wind_speed: float) -> int:
+        """Get Beaufort scale number from wind speed (m/s).
+
+        Args:
+            wind_speed: Wind speed in m/s
+
+        Returns:
+            Beaufort number (0-12)
+        """
+        if wind_speed < 0.5:
+            return 0  # Calm
+        elif wind_speed < 1.6:
+            return 1  # Light air
+        elif wind_speed < 3.4:
+            return 2  # Light breeze
+        elif wind_speed < 5.5:
+            return 3  # Gentle breeze
+        elif wind_speed < 8.0:
+            return 4  # Moderate breeze
+        elif wind_speed < 10.8:
+            return 5  # Fresh breeze
+        elif wind_speed < 13.9:
+            return 6  # Strong breeze
+        elif wind_speed < 17.2:
+            return 7  # High wind
+        elif wind_speed < 20.8:
+            return 8  # Gale
+        elif wind_speed < 24.5:
+            return 9  # Strong gale
+        elif wind_speed < 28.5:
+            return 10  # Storm
+        elif wind_speed < 32.7:
+            return 11  # Violent storm
+        else:
+            return 12  # Hurricane
+
+    def _get_beaufort_wind_type(self, wind_speed: float) -> str:
+        """Get wind type description from Beaufort scale (multilingual).
+
+        Args:
+            wind_speed: Wind speed in m/s
+
+        Returns:
+            Wind type description (Slovak/English)
+        """
+        beaufort = self._get_beaufort_number(wind_speed)
+
+        # Multilingual descriptions: [Slovak, English]
+        descriptions = {
+            0: ["Ticho", "Calm"],
+            1: ["Slabý vánok", "Light air"],
+            2: ["Vánok", "Light breeze"],
+            3: ["Slabý vietor", "Gentle breeze"],
+            4: ["Mierny vietor", "Moderate breeze"],
+            5: ["Čerstvý vietor", "Fresh breeze"],
+            6: ["Silný vietor", "Strong breeze"],
+            7: ["Prudký vietor", "High wind"],
+            8: ["Búrka", "Gale"],
+            9: ["Silná búrka", "Strong gale"],
+            10: ["Veľká búrka", "Storm"],
+            11: ["Orkán", "Violent storm"],
+            12: ["Hurikán", "Hurricane"],
+        }
+
+        lang_index = 0  # Default Slovak, could be made configurable
+        return descriptions.get(beaufort, ["Neznámy", "Unknown"])[lang_index]
+
+    def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
+        """Determine atmospheric stability based on wind speed and gust ratio.
+
+        Args:
+            wind_speed: Wind speed in m/s
+            gust_ratio: Ratio of gust speed to average wind speed
+
+        Returns:
+            Stability description (Slovak/English): "stable", "moderate", "unstable", "very_unstable"
+        """
+        if gust_ratio is None:
+            return "unknown"
+
+        # For low wind speeds (< 3 m/s), gust ratio is not reliable indicator
+        if wind_speed < 3.0:
+            # Use only wind speed for very light conditions
+            if wind_speed < 1.0:
+                return "stable"  # Calm = stable
+            else:
+                return "moderate"  # Light breeze = moderate
+
+        # For moderate to strong winds (≥ 3 m/s), use gust ratio
+        # Meteorologically justified thresholds:
+        # - Ratio 1.0-1.3: Stable (smooth airflow)
+        # - Ratio 1.3-1.6: Moderate (normal turbulence)
+        # - Ratio 1.6-2.0: Unstable (significant turbulence)
+        # - Ratio > 2.0: Very unstable (severe turbulence, convection, storms)
+
+        if gust_ratio < 1.3:
+            return "stable"
+        elif gust_ratio < 1.6:
+            return "moderate"
+        elif gust_ratio < 2.0:
+            return "unstable"
+        else:
+            return "very_unstable"
 
     async def async_update(self) -> None:
         """Update the enhanced forecast."""
@@ -1515,31 +1676,69 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             zambretti = attrs.get("forecast_zambretti", ["Unknown", 0, "A"])
             negretti = attrs.get("forecast_neg_zam", ["Unknown", 0, "A"])
 
-        # Get sensor values
-        temp = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
-        )
-        # Enhanced sensors are in options, not data!
-        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
-        _LOGGER.info(f"Enhanced: Config humidity sensor = {humidity_sensor}")
-        humidity = None
-        if humidity_sensor:
-            _LOGGER.debug(f"Enhanced: Fetching humidity from {humidity_sensor}")
-            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
-            _LOGGER.info(f"Enhanced: Humidity value = {humidity}")
-        else:
-            _LOGGER.warning("Enhanced: No humidity sensor configured!")
-
-        # Calculate dew point and spread
+        # Get sensor values from weather entity first for consistency
+        # Weather entity handles dewpoint sensor priority: uses sensor if exists, else calculates
+        temp = None
         dewpoint = None
-        dewpoint_spread = None
-        if temp is not None and humidity is not None:
+        humidity = None
+
+        weather_entity = self.hass.states.get("weather.local_weather_forecast_weather")
+        if weather_entity and weather_entity.state not in ("unknown", "unavailable"):
+            # Get temperature from weather entity
+            temp_attr = weather_entity.attributes.get("temperature")
+            if temp_attr is not None:
+                try:
+                    temp = float(temp_attr)
+                    _LOGGER.debug(f"Enhanced: Using temperature from weather entity: {temp}°C")
+                except (ValueError, TypeError):
+                    pass
+
+            # Get dewpoint from weather entity (already handles dewpoint sensor priority)
+            dewpoint_attr = weather_entity.attributes.get("dew_point")
+            if dewpoint_attr is not None:
+                try:
+                    dewpoint = float(dewpoint_attr)
+                    _LOGGER.debug(f"Enhanced: Using dew_point from weather entity: {dewpoint}°C")
+                except (ValueError, TypeError):
+                    pass
+
+            # Get humidity from weather entity
+            humidity_attr = weather_entity.attributes.get("humidity")
+            if humidity_attr is not None:
+                try:
+                    humidity = float(humidity_attr)
+                    _LOGGER.debug(f"Enhanced: Using humidity from weather entity: {humidity}%")
+                except (ValueError, TypeError):
+                    pass
+
+        # Fallback: use configured sensors if weather entity not available
+        if temp is None:
+            temp = await self._get_sensor_value(
+                self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
+            )
+            _LOGGER.debug(f"Enhanced: Fallback - temperature from configured sensor: {temp}°C")
+
+        if humidity is None:
+            humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+            if humidity_sensor:
+                _LOGGER.debug(f"Enhanced: Fallback - fetching humidity from {humidity_sensor}")
+                humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
+                _LOGGER.info(f"Enhanced: Fallback - humidity value = {humidity}")
+            else:
+                _LOGGER.warning("Enhanced: No humidity sensor configured!")
+
+        # Calculate dewpoint if not available from weather entity
+        if dewpoint is None and temp is not None and humidity is not None:
             dewpoint = calculate_dewpoint(temp, humidity)
-            if dewpoint is not None:
-                dewpoint_spread = temp - dewpoint
-            _LOGGER.debug(f"Enhanced: Calculated dewpoint={dewpoint}, spread={dewpoint_spread}")
+            _LOGGER.debug(f"Enhanced: Fallback - calculated dewpoint: {dewpoint}°C")
+
+        # Calculate spread
+        dewpoint_spread = None
+        if temp is not None and dewpoint is not None:
+            dewpoint_spread = temp - dewpoint
+            _LOGGER.info(f"Enhanced: ✓ SPREAD: {temp}°C - {dewpoint}°C = {dewpoint_spread:.1f}°C")
         else:
-            _LOGGER.warning(f"Enhanced: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
+            _LOGGER.warning(f"Enhanced: ✗ Cannot calculate spread - temp={temp}, dewpoint={dewpoint}, humidity={humidity}")
 
         # Get wind gust ratio
         wind_speed = await self._get_sensor_value(
@@ -1549,6 +1748,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
         _LOGGER.info(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed}")
         gust_ratio = None
+        wind_gust = None
         if wind_gust_sensor_id and wind_speed > 0.1:
             _LOGGER.debug(f"Enhanced: Fetching wind gust from {wind_gust_sensor_id}, wind_speed={wind_speed}")
             wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True)
@@ -1562,6 +1762,13 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 _LOGGER.warning("Enhanced: No wind gust sensor configured!")
             else:
                 _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed}), skipping gust ratio")
+
+        # Determine wind type based on Beaufort scale
+        wind_type = self._get_beaufort_wind_type(wind_speed)
+        wind_beaufort_number = self._get_beaufort_number(wind_speed)
+
+        # Determine atmospheric stability based on gust ratio and wind speed
+        atmosphere_stability = self._get_atmosphere_stability(wind_speed, gust_ratio)
 
         # Calculate adjustments
         adjustments = []
@@ -1589,13 +1796,21 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 adjustment_details.append(f"Medium fog risk (spread {dewpoint_spread:.1f}°C)")
 
         # Atmospheric stability (gust ratio)
-        if gust_ratio is not None:
+        # Only evaluate for significant wind speeds (>3 m/s)
+        # Low wind speeds naturally have higher gust ratios without indicating instability
+        # Example: 0.8 m/s wind with 1.1 m/s gusts = ratio 1.375 = NORMAL, not unstable
+        if gust_ratio is not None and wind_speed > 3.0:
             if gust_ratio > 2.0:
                 adjustments.append("very_unstable")
                 adjustment_details.append(f"Very unstable atmosphere (gust ratio {gust_ratio:.2f})")
             elif gust_ratio > 1.6:
                 adjustments.append("unstable")
                 adjustment_details.append(f"Unstable atmosphere (gust ratio {gust_ratio:.2f})")
+        elif gust_ratio is not None and wind_speed <= 3.0:
+            _LOGGER.debug(
+                f"Enhanced: Skipping gust ratio check for low wind speed "
+                f"(wind={wind_speed:.1f} m/s, gust_ratio={gust_ratio:.2f})"
+            )
 
         # Build enhanced forecast text
         base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
@@ -1634,11 +1849,16 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "adjustment_details": adjustment_details,
             "confidence": confidence,
             "consensus": consensus,
-            "humidity": humidity,
-            "dew_point": dewpoint,
-            "dewpoint_spread": dewpoint_spread,
+            "humidity": round(humidity, 2) if humidity is not None else None,
+            "dew_point": round(dewpoint, 2) if dewpoint is not None else None,
+            "dewpoint_spread": round(dewpoint_spread, 2) if dewpoint_spread is not None else None,
             "fog_risk": fog_risk,
-            "gust_ratio": gust_ratio,
+            "wind_speed": round(wind_speed, 2) if wind_speed is not None else None,
+            "wind_gust": round(wind_gust, 2) if wind_gust is not None else None,
+            "gust_ratio": round(gust_ratio, 2) if gust_ratio is not None else None,
+            "wind_type": wind_type,
+            "wind_beaufort_scale": wind_beaufort_number,
+            "atmosphere_stability": atmosphere_stability,
             "accuracy_estimate": "~98%" if confidence in ["high", "very_high"] else "~94%",
         }
         # Note: Home Assistant automatically writes state after async_update() completes

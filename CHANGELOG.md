@@ -6,34 +6,203 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2025-12-02
+## [3.1.0] - 2025-12-08 (Testing Phase)
 
-### ✨ Added - Advanced Weather Forecasting
+### 🔧 Fixed - Sensor Data Consistency & Auto-Updates
+
+- **2 Decimal Precision for Numeric Values** (2025-12-08)
+  - All numeric sensor values now consistently use 2 decimal places
+  - **Enhanced sensor** (`sensor.local_forecast_enhanced`):
+    - `humidity`: 89.12% (was 89.1%)
+    - `dew_point`: 5.02°C (was 5.0°C)
+    - `dewpoint_spread`: 1.70°C (was 1.7°C)
+    - `wind_speed`: 1.11 m/s (was 1.1 m/s)
+    - `wind_gust`: 1.52 m/s (was 1.5 m/s)
+    - `gust_ratio`: 1.35 (unchanged - already 2 decimal)
+  - **Weather entity** (`weather.local_weather_forecast_weather`):
+    - `feels_like`: 4.12°C (was 4.1°C)
+    - `dew_point`: 5.02°C (was 5.0°C)
+    - `dewpoint_spread`: 1.48°C (was 1.5°C)
+    - `humidity`: 89.12% (was 89%)
+    - `wind_gust`: 1.52 m/s (was 1.5 m/s)
+  - Python code: Uses `round(value, 2)` consistently
+  - Improves display consistency and accuracy across all sensors
+
+- **Modern Template Format Migration** (2025-12-08)
+  - Migrated to modern `template:` format (HA 2026.6+ ready)
+  - Removed deprecated `platform: template` format
+  - Changes in sensor configuration:
+    - Old: `platform: template` with `sensors:` dict
+    - New: `- sensor:` or `- binary_sensor:` list format
+    - Old: `friendly_name:` and `value_template:`
+    - New: `name:` and `state:`
+  - Rules enforced:
+    - Only ONE `- binary_sensor:` section (all binary sensors in single list)
+    - Only ONE `- sensor:` section (all numeric sensors in single list)
+    - No duplicate sensor sections allowed
+  - Benefits:
+    - Compatible with Home Assistant 2026.6+
+    - No deprecated warnings
+    - Cleaner YAML structure
+    - Future-proof configuration
+
+- **Dewpoint Spread Calculation Fix** (2025-12-08)
+  - Enhanced sensor now uses dewpoint from weather entity (respects dewpoint sensor if configured)
+  - Ensures consistency: spread calculation uses same temp/dewpoint values visible in weather entity
+  - Before: Enhanced sensor calculated own dewpoint → inconsistent spread values
+  - After: Spread = weather.temp - weather.dewpoint → accurate values
+  - Example: temp=6.7°C, dewpoint=5.0°C → spread=1.7°C (was showing 1.6°C before)
+
+- **Enhanced Sensor Automatic Updates** (2025-12-08)
+  - Enhanced sensor now automatically updates when ANY monitored sensor changes
+  - Before: Updated only once at Home Assistant startup
+  - After: Tracks up to 9 entities and updates within 30 seconds of any change
+  - Monitored entities:
+    - `weather.local_weather_forecast_weather` (consolidated source)
+    - `sensor.local_forecast` (main forecast text)
+    - Temperature sensor (for dewpoint spread, feels like)
+    - Humidity sensor (for adjustments, fog risk)
+    - Pressure sensor (for forecast changes)
+    - Wind speed sensor (for wind type, Beaufort scale)
+    - Wind direction sensor (for wind factor adjustment)
+    - Wind gust sensor (for gust ratio, stability)
+    - Dewpoint sensor (if configured, alternative to calculation)
+    - Rain rate sensor (for rain probability)
+  - Throttling: Maximum 1 update per 30 seconds (prevents flooding)
+
+- **Sensor Configuration Logic Fix** (2025-12-08)
+  - **Only PRESSURE sensor is truly required** (as per Zambretti algorithm)
+  - All other sensors are now correctly marked as **optional enhancements**
+  - Before: Temperature, Wind Speed, Wind Direction marked as required
+  - After: Only Pressure required; others improve forecast accuracy but are optional
+  - Sensors in `config.data` (required at setup): Pressure only
+  - Sensors in `config.options` (optional enhancements):
+    - Temperature (for sea level pressure conversion, feels like)
+    - Humidity (for dew point, fog detection, adjustments)
+    - Wind Speed (for wind factor, Beaufort scale, wind type)
+    - Wind Direction (for wind factor adjustment)
+    - Wind Gust (for atmosphere stability analysis)
+    - Dewpoint (alternative to temp+humidity calculation)
+    - Rain Rate (for rain probability enhancement)
+  - Integration now works with minimal configuration (pressure only)
+  - Users can gradually add sensors to unlock more features
+
+### ✨ Added - Advanced Weather Forecasting & Sensor Integration
+
 - **Advanced Forecast Calculator** (`forecast_calculator.py`)
   - Scientific pressure trend forecasting (linear regression)
+  - **Solar-Aware Temperature Model**
+    - Integrates solar radiation sensor (W/m²) OR UV index sensor
+    - Cloud cover adjustment for solar warming
+    - Sun angle calculation (day/night cycle) using Home Assistant coordinates
+    - Realistic daytime heating (+2°C per 400 W/m² at solar noon)
+    - UV index correlation with solar radiation (UVI 10 ≈ 1000 W/m²)
+    - Automatic nighttime cooling (no solar effect 18:00-06:00)
+    - Graceful fallback when solar sensors unavailable
   - Temperature modeling with diurnal cycle
   - Hourly Zambretti forecast generation
   - Rain probability per hour based on pressure evolution
   - Confidence scoring for forecast quality
   - Support for both daily and hourly forecasts
 
+- **Humidity-Based Cloud Cover Correction**
+  - Current weather condition now respects humidity levels
+  - High humidity (>85%) upgrades `partlycloudy`/`sunny` → `cloudy`
+  - Moderate humidity (70-85%) upgrades `sunny` → `partlycloudy`
+  - Meteorologically accurate: RH >85% = 80-100% cloud cover
+  - Fixes issue where Zambretti showed "partly cloudy" at 85% humidity
+
+- **Fog Detection**
+  - Automatic fog detection based on meteorological conditions
+  - Sets `weather.condition = fog` when fog is present
+  - PRIORITY 2 detection (after rain, before Zambretti forecast)
+  - Conditions: Dewpoint spread < 1.5°C AND humidity > 85%
+  - Alternative: Dewpoint spread < 1.0°C AND humidity > 80%
+  - Time-aware: Only sets fog during night/early morning/evening (not midday)
+  - Meteorologically accurate (WMO standards)
+  - Enables fog-specific automations and alerts
+
+- **Weather Entity Extended Attributes**
+  - 21+ comprehensive attributes in weather entity detail view
+  - **Wind classification:** `wind_type`, `wind_beaufort_scale`, `wind_gust`, `gust_ratio`, `atmosphere_stability`
+  - **Fog & visibility:** `fog_risk`, `dew_point`, `dewpoint_spread`, `visibility_estimate`
+  - **Rain probability:** `rain_probability`, `rain_confidence`
+  - **Forecast details:** `forecast_confidence`, `forecast_adjustments`, `forecast_adjustment_details`
+  - **Comfort:** `feels_like`, `comfort_level`, `humidity`
+  - Click on weather card to see all details!
+
+- **Wind Gust Ratio Fix for Low Wind Speeds**
+  - Atmospheric stability check now requires wind > 3 m/s
+  - Prevents false "unstable atmosphere" warnings with light winds
+  - Example: 0.8 m/s wind with 1.3 m/s gusts = ratio 1.625 = NORMAL (not unstable)
+  - Gust ratio thresholds (>1.6 unstable, >2.0 very unstable) now only apply to moderate+ winds
+  - Meteorologically accurate: Light winds naturally have higher gust ratios
+  - **NEW: Beaufort Wind Scale Classification** - `wind_type` attribute shows wind description
+    - 0-12 scale: "Ticho" to "Hurikán" (Slovak) / "Calm" to "Hurricane" (English)
+    - `wind_beaufort_scale` attribute shows Beaufort number (0-12)
+  - **NEW: Atmospheric Stability** - `atmosphere_stability` attribute
+    - Intelligent evaluation: stable/moderate/unstable/very_unstable
+    - Based on wind speed + gust ratio combination
+    - Ignores gust ratio for winds < 3 m/s (meteorologically correct)
+
+- **Comprehensive Sensor Support in Config Flow**
+  - **Rain Detection Sensor** (optional):
+    - `rain_rate_sensor`: Smart rain detection (device_class='precipitation', unit='mm')
+    - Automatically detects sensor type: Accumulation (Netatmo) or Rate (Ecowitt)
+    - Netatmo: Monitors value changes (0.101, 0.202 mm increments)
+    - Ecowitt WS90: Direct mm/h readings
+    - 15-minute auto-reset timeout after rain stops
+    - Works with daily/hourly accumulation sensors
+  - **Solar Radiation Sensors** (optional, choose one or both):
+    - `solar_radiation_sensor`: Solar radiation sensor (W/m²)
+    - `uv_index_sensor`: UV index sensor (0-15) - automatically converts to W/m² for forecast
+  - **Cloud Coverage Sensor** (optional):
+    - `cloud_coverage_sensor`: Cloud coverage percentage (0-100%)
+  - All sensors optional with intelligent fallback logic
+
+- **Intelligent Rain Detection System**
+  - **Single Rain Sensor Configuration**:
+    - Smart auto-detection based on sensor behavior
+    - **Accumulation Mode** (Netatmo, Ecowitt): Detects mm increments (0.101, 0.202, etc.)
+    - **Rate Mode** (Ecowitt WS90): Direct mm/h intensity readings
+    - Works with device_class='precipitation' and unit='mm'
+  - **Smart Detection**:
+    - Auto-detects sensor type from value patterns
+    - Accumulation sensors: Monitors value changes over 15-minute window
+    - Rate sensors: Direct mm/h reading (if sensor provides it)
+    - Gracefully handles both sensor types transparently
+  - **Rain Override Logic**:
+    - Overrides Zambretti prediction when rain detected
+    - Shows "rainy" for light/moderate rain (0.1-7.6 mm/h)
+    - Shows "pouring" for heavy rain (≥7.6 mm/h)
+    - Sets rain probability to 100% when actively raining
+    - Auto-clears after 15 minutes of no rain (accumulation sensors)
+
 - **Weather Entity Forecast Support**
   - **Daily Forecast**: 3-day forecast with temperature trends
-    - Hourly temperature variation during the day
+    - Hourly temperature variation during the day (solar-aware)
     - Condition changes based on Zambretti algorithm
     - Day/night icon distinction (sunrise/sunset aware)
-  - **Hourly Forecast**: 6-hour detailed forecast
-    - Hourly temperature evolution
+  - **Hourly Forecast**: 25-hour detailed forecast
+    - Hourly temperature evolution (solar radiation integrated)
     - Hourly condition updates
     - Hourly rain probability
     - Dynamic day/night icons
+    - Cloud cover estimation from humidity or sensor
 
 - **Realistic Weather Conditions**
   - Dynamic icon selection based on time of day
-  - Sunrise/sunset calculation using location coordinates
+  - Sunrise/sunset calculation using Home Assistant coordinates
   - Night icons (clear-night, rainy-night, etc.)
   - Day icons (sunny, cloudy, rainy, etc.)
   - Condition mapping from Zambretti forecasts
+
+- **Feels Like Temperature**
+  - Calculated `feels_like` attribute in weather entity
+  - Heat index for hot weather (>27°C)
+  - Wind chill for cold weather (<10°C)
+  - Accounts for humidity and wind speed
+  - Graceful degradation if sensors unavailable
 
 ### 🔧 Enhanced - Rain Probability Calculation
 - Improved rain probability algorithm:
@@ -44,24 +213,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Current rain override (100% if actively raining)
   - High/Low confidence levels
   - Better handling of unavailable sensors
+  - Works with both rain rate and accumulation sensors
 
-### 🔧 Enhanced - Weather Icons
+### 🔧 Enhanced - Weather Icons & Forecast Display
 - Night-time specific icons in Zambretti and Negretti-Zambra detail sensors
-- Day/night awareness based on forecast time
+- Day/night awareness based on forecast time and location
 - Consistent icon usage across all sensors and forecasts
 - MDI (Material Design Icons) standard compliance
+- Solar-aware temperature forecasts (warmer during sunny periods)
+- Cloud cover integration (reduces solar warming when cloudy)
 
 ### 📝 Documentation
 - Updated implementation details for forecast calculator
 - Documented pressure trend forecasting model
-- Documented temperature modeling with diurnal cycle
+- Documented temperature modeling with diurnal cycle and solar integration
+- Documented rain sensor configuration (rate vs accumulation)
+- Documented UV index usage as alternative to solar radiation
 - Added examples of daily and hourly forecast usage
+- Updated sensor configuration guide
 
 ### 🐛 Fixed
 - Weather entity forecast now properly generates multi-day and hourly forecasts
 - Forecast datetime calculations now timezone-aware
 - Improved error handling in forecast generation
 - Fixed temperature forecast availability in main sensor
+- Fixed rain detection for accumulation-type sensors (Netatmo)
+- Fixed feels_like calculation with proper fallback values
+- Improved sensor state handling and history retrieval
+- Better logging for rain detection and sensor diagnostics
 
 ---
 
@@ -342,4 +521,6 @@ This version achieves complete feature parity with the original YAML implementat
 - [v3.0.0](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/v3.0.0) - Major Release
 - [v2.0.2](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/2.0.2)
 - [v2.0.1](https://github.com/wajo666/homeassistant-local-weather-forecast/releases/tag/2.0.1)
+
+
 
