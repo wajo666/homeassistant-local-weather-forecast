@@ -1,82 +1,41 @@
-# Weather Card Examples
+# Weather Card Examples for Lovelace UI
 
-## ⚠️ Important: Attribute Formats
-
-All forecast attributes use **list/array and tuple formats** internally for easy programmatic access.
-
-**Note:** Home Assistant UI displays these as comma-separated strings, but they are proper lists/tuples in templates!
-
-### Main Sensor Attributes (sensor.local_forecast):
-- `forecast_zambretti` = `["Fine Weather!", 1, "B"]` 
-  - **Displays as:** `"Fine Weather!, 1, B"`
-  - **Access:** `forecast_zambretti[0]` → `"Fine Weather!"`
-- `forecast_neg_zam` = `["Fine", 1, "B"]`
-  - **Displays as:** `"Fine, 1, B"`
-- `forecast_short_term` = `["Sunny", "High Pressure"]`
-  - **Displays as:** `"Sunny, High Pressure"`
-- `forecast_pressure_trend` = `["Rising", 1]`
-  - **Displays as:** `"Rising, 1"`
-- `forecast_temp_short` = `[18.5, 0]`
-  - **Displays as:** `"18.5, 0"` (where interval: 0=6h, 1=12h)
-- `wind_direction` = `[0, 45, "NE", 1]`
-  - **Displays as:** `"0, 45, NE, 1"` (wind_fak, degrees, text, speed_fak)
-
-### Detail Sensor Attributes (zambretti_detail / neg_zam_detail):
-- `forecast` = `[1, 2]`
-  - **Displays as:** `"1, 2"` (state_6h, state_12h where 0=sunny to 6=lightning)
-- `rain_prob` = `[30, 60]`
-  - **Displays as:** `"30, 60"` (probability_6h%, probability_12h%)
-- `icons` = `("mdi:weather-sunny", "mdi:weather-cloudy")`
-  - **Displays as:** `"mdi:weather-sunny, mdi:weather-cloudy"` (tuple: icon_now, icon_later)
-- `first_time` = `["15:30", 180.5]`
-  - **Displays as:** `"15:30, 180.5"` (time_string, minutes_to_change)
-- `second_time` = `["21:30", 540.5]`
-  - **Displays as:** `"21:30, 540.5"` (time_string, minutes_to_change)
-
-### How to Access in Templates:
-```yaml
-# ✅ CORRECT - Direct array/list access (works in templates!)
-{{ state_attr("sensor.local_forecast", "forecast_zambretti")[0] }}  # Returns: "Fine Weather!"
-{{ state_attr("sensor.local_forecast", "forecast_zambretti")[1] }}  # Returns: 1
-{{ state_attr("sensor.local_forecast_zambretti_detail", "rain_prob")[0] }}  # Returns: 30
-{{ state_attr("sensor.local_forecast_zambretti_detail", "icons")[0] }}  # Returns: "mdi:weather-sunny"
-
-# ❌ WRONG - Don't use string split (won't work correctly!)
-{{ state_attr("sensor.local_forecast", "forecast_zambretti").split(', ')[0] }}  # DON'T DO THIS!
-```
-
-### Checking if Attribute is Valid:
-```yaml
-{% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-{% if fc and fc is iterable and fc is not string %}
-  {{ fc[0] }}  # Safe to access as list
-{% endif %}
-```
-
-### Why the Difference?
-- **Internal Format:** Python lists and tuples (proper data structures)
-- **UI Display:** Home Assistant converts to strings for visual display only
-- **Template Access:** Works as lists/tuples - array indexing is fully supported
-- **This is by design:** HA's UI simplifies display, but functionality remains
+**📦 Version:** v3.1.0 (2025-12-08)  
+**🎨 Purpose:** Lovelace UI card examples for Local Weather Forecast integration
 
 ---
 
-## 📋 Entity IDs Reference
+## 📋 Quick Start: Available Sensors
 
-After installation, your sensors will have these entity IDs (matching original YAML exactly):
-- **Main Forecast:** `sensor.local_forecast` (friendly name: "Local forecast")
-- **Pressure:** `sensor.local_forecast_pressure` (friendly name: "Local forecast Pressure")
-- **Temperature:** `sensor.local_forecast_temperature` (friendly name: "Local forecast temperature")
-- **Pressure Change:** `sensor.local_forecast_pressurechange` (friendly name: "Local forecast PressureChange")
-- **Temperature Change:** `sensor.local_forecast_temperaturechange` (friendly name: "Local forecast TemperatureChange")
-- **Zambretti Details:** `sensor.local_forecast_zambretti_detail` (friendly name: "Local forecast zambretti detail")
-- **Negretti-Zambra Details:** `sensor.local_forecast_neg_zam_detail` (friendly name: "Local forecast neg_zam detail")
+Use these entity IDs in your Lovelace cards:
 
-**Note:** Entity IDs are now 100% identical to original YAML implementation!
+**Main Sensors:**
+- `sensor.local_forecast` - Forecast text
+- `sensor.local_forecast_enhanced` - Enhanced forecast with fog/stability
+- `sensor.local_forecast_rain_probability` - Rain probability
+- `weather.local_weather_forecast_weather` - Weather entity
+
+**Supporting Sensors:**
+- `sensor.local_forecast_pressure` - Pressure
+- `sensor.local_forecast_temperature` - Temperature
+- `sensor.local_forecast_pressurechange` - Pressure trend
+- `sensor.local_forecast_temperaturechange` - Temperature trend
 
 ---
 
-## 📋 Simple Entities Card (No custom cards needed)
+## 💡 Template Tips
+
+**Array attributes** (use `[index]` to access):
+```yaml
+{{ state_attr("sensor.local_forecast", "forecast_zambretti")[0] }}  # "Fine Weather!"
+{{ state_attr("sensor.local_forecast_enhanced", "dew_point") }}  # 5.02
+```
+
+---
+
+## 📋 Card 1: Simple Entities Card
+
+**No custom cards needed!**
 
 ```yaml
 type: entities
@@ -84,26 +43,23 @@ title: Local Weather Forecast
 entities:
   - entity: sensor.local_forecast
     name: Forecast
-  - entity: sensor.local_forecast_zambretti_detail
-    name: Zambretti Forecast
+  - entity: sensor.local_forecast_enhanced
+    name: Enhanced Forecast
   - entity: sensor.local_forecast_pressure
-    name: Sea Level Pressure
+    name: Pressure
   - entity: sensor.local_forecast_temperature
     name: Temperature
-  - entity: sensor.local_forecast_pressurechange
-    name: Pressure Trend (3h)
-  - entity: sensor.local_forecast_temperaturechange
-    name: Temperature Trend (1h)
+  - entity: sensor.local_forecast_rain_probability
+    name: Rain Probability
 ```
 
 ---
 
-## 🎨 Mushroom Cards (Recommended - Beautiful UI)
+## 🎨 Card 2: Mushroom Cards (Beautiful UI)
 
-### Requirements:
-Install via HACS:
-1. [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom)
-2. [Vertical Stack In Card](https://github.com/ofekashery/vertical-stack-in-card)
+**Requirements:** Install via HACS:
+- [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom)
+- [Vertical Stack In Card](https://github.com/ofekashery/vertical-stack-in-card)
 
 ### Basic Mushroom Card:
 
@@ -117,787 +73,733 @@ cards:
       {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Weather Forecast{% endif %}
     subtitle: 'Local Weather Forecast'
   
-  # Current conditions + Next 6h + Next 12h
+  # Current conditions
   - type: horizontal-stack
     cards:
-      # Current
+      # Now
       - type: custom:mushroom-template-card
         primary: "Now"
         secondary: |
           {% set st = state_attr("sensor.local_forecast", "forecast_short_term") %}
           {{states("sensor.local_forecast_temperature")}}°C
-          {% if st and st is iterable and st is not string %}{{st[0]}} - {{st[1]}}{% endif %}
-        icon: mdi:weather-cloudy-clock
+          {% if st and st is iterable and st is not string %}{{st[0]}}{% endif %}
+        icon: |
+          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
+          {% if det and det is iterable and det is not string %}{{det[0]}}{% else %}mdi:weather-partly-cloudy{% endif %}
         icon_color: blue
         layout: vertical
-        multiline_secondary: true
-      
-      # ~6 hours
-      - type: custom:mushroom-template-card
-        primary: "~6h"
-        secondary: |
-          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if det and det is iterable and det is not string %}{{det[0]}}% rain{% else %}?% rain{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 0 %}
-          ↗ ~{{temp_fc[0]}}°C
-          {% else %}
-          {% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}
-          {% set est_temp = current_temp + (temp_change * 6) %}
-          {% if temp_change > 0.1 %}↗ ~{{est_temp | round(1)}}°C{% elif temp_change < -0.1 %}↘ ~{{est_temp | round(1)}}°C{% else %}→ ~{{est_temp | round(1)}}°C{% endif %}
-          {% endif %}
-        icon: |
-          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if det and det is iterable and det is not string %}{{det[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: amber
-        layout: vertical
-        multiline_secondary: true
-      
-      # ~12 hours
-      - type: custom:mushroom-template-card
-        primary: "~12h"
-        secondary: |
-          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if det and det is iterable and det is not string %}{{det[1]}}% rain{% else %}?% rain{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 1 %}
-          ↗ ~{{temp_fc[0]}}°C
-          {% else %}
-          {% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}
-          {% set est_temp = current_temp + (temp_change * 12) %}
-          {% if temp_change > 0.1 %}↗ ~{{est_temp | round(1)}}°C{% elif temp_change < -0.1 %}↘ ~{{est_temp | round(1)}}°C{% else %}→ ~{{est_temp | round(1)}}°C{% endif %}
-          {% endif %}
-        icon: |
-          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if det and det is iterable and det is not string %}{{det[1]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: orange
-        layout: vertical
-        multiline_secondary: true
-  
-  # Detailed forecast text
-  - type: custom:mushroom-template-card
-    primary: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading forecast...{% endif %}
-    secondary: |
-      {% set pt = state_attr("sensor.local_forecast", "forecast_pressure_trend") %}
-      {% if pt and pt is iterable and pt is not string %}Pressure: {{pt[0]}}{% else %}Pressure: ...{% endif %}
-      Change: {{states("sensor.local_forecast_pressurechange")}} hPa/3h
-    icon: mdi:weather-cloudy-arrow-right
-    icon_color: grey
-    multiline_secondary: true
-  
-  # Pressure details
-  - type: custom:mushroom-chips-card
-    chips:
-      - type: template
-        icon: mdi:gauge
-        content: '{{states("sensor.local_forecast_pressure")}} hPa'
-      - type: template
-        icon: mdi:thermometer
-        content: '{{states("sensor.local_forecast_temperature")}}°C'
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 0 %}mdi:trending-up
-          {% elif change < 0 %}mdi:trending-down
-          {% else %}mdi:trending-neutral
-          {% endif %}
-        content: '{{states("sensor.local_forecast_pressurechange")}} hPa'
-        icon_color: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 2 %}green
-          {% elif change < -2 %}red
-          {% else %}grey
-          {% endif %}
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 0 %}mdi:thermometer-chevron-up
-          {% elif change < 0 %}mdi:thermometer-chevron-down
-          {% else %}mdi:thermometer-lines
-          {% endif %}
-        content: '{{states("sensor.local_forecast_temperaturechange")}}°C'
-        icon_color: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 1 %}red
-          {% elif change < -1 %}blue
-          {% else %}grey
-          {% endif %}
-```
-
----
-
-## 🌟 Advanced Mushroom Card (Full Featured)
-
-```yaml
-type: custom:vertical-stack-in-card
-cards:
-  # Header with dynamic icon based on forecast
-  - type: custom:mushroom-title-card
-    title: 'Weather Forecast'
-    subtitle: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
-  
-  # Main info row
-  - type: horizontal-stack
-    cards:
-      # Current conditions
-      - type: custom:mushroom-template-card
-        primary: 'Now'
-        secondary: |
-          {% set st = state_attr("sensor.local_forecast", "forecast_short_term") %}
-          {% if st and st is iterable and st is not string %}{{st[0]}}{% endif %} ({{states("sensor.local_forecast_temperature")}}°C)
-          {% set pt = state_attr("sensor.local_forecast", "forecast_pressure_trend") %}
-          {% if pt and pt is iterable and pt is not string %}Trend: {{pt[0]}}{% endif %}
-        icon: mdi:weather-cloudy-clock
-        icon_color: |
-          {% set pressure = states("sensor.local_forecast_pressure") | float(1013) %}
-          {% if pressure < 1000 %}red
-          {% elif pressure < 1020 %}amber
-          {% else %}green
-          {% endif %}
-        layout: vertical
-        multiline_secondary: true
         tap_action:
           action: more-info
           entity: sensor.local_forecast
       
-      # First interval forecast (calculated time)
+      # Next 6h
       - type: custom:mushroom-template-card
-        primary: |
-          {% set ft = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}
-          {% if ft and ft is iterable and ft is not string %}{{ft[0]}}{% else %}~3h{% endif %}
+        primary: "6h"
         secondary: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[0]}}% rain{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 0 %}
-          🌡️ ~{{temp_fc[0]}}°C
-          {% else %}
-          {% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}
-          {% set ft = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}
-          {% if ft and ft is iterable and ft is not string %}
-          {% set hours = (ft[1] | float(180)) / 60 %}
-          {% else %}
-          {% set hours = 3 %}
-          {% endif %}
-          {% set est_temp = current_temp + (temp_change * hours) %}
-          {% if temp_change > 0.1 %}🌡️ ↗ ~{{est_temp | round(1)}}°C{% elif temp_change < -0.1 %}🌡️ ↘ ~{{est_temp | round(1)}}°C{% else %}🌡️ → ~{{est_temp | round(1)}}°C{% endif %}
-          {% endif %}
+          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
+          {% if det and det is iterable and det is not string %}{{det[0]}}% rain{% else %}N/A{% endif %}
         icon: |
           {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[0] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}green{% endif %}
+          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:help{% endif %}
+        icon_color: orange
         layout: vertical
-        multiline_secondary: true
       
-      # Second interval forecast (calculated time)
+      # Next 12h
       - type: custom:mushroom-template-card
-        primary: |
-          {% set st = state_attr("sensor.local_forecast_zambretti_detail", "second_time") %}
-          {% if st and st is iterable and st is not string %}{{st[0]}}{% else %}~9h{% endif %}
+        primary: "12h"
         secondary: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[1]}}% rain{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 1 %}
-          🌡️ ~{{temp_fc[0]}}°C
-          {% else %}
-          {% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}
-          {% set st = state_attr("sensor.local_forecast_zambretti_detail", "second_time") %}
-          {% if st and st is iterable and st is not string %}
-          {% set hours = (st[1] | float(540)) / 60 %}
-          {% else %}
-          {% set hours = 9 %}
-          {% endif %}
-          {% set est_temp = current_temp + (temp_change * hours) %}
-          {% if temp_change > 0.1 %}🌡️ ↗ ~{{est_temp | round(1)}}°C{% elif temp_change < -0.1 %}🌡️ ↘ ~{{est_temp | round(1)}}°C{% else %}🌡️ → ~{{est_temp | round(1)}}°C{% endif %}
-          {% endif %}
+          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
+          {% if det and det is iterable and det is not string %}{{det[1]}}% rain{% else %}N/A{% endif %}
         icon: |
           {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[1] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}green{% endif %}
+          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:help{% endif %}
+        icon_color: green
         layout: vertical
-        multiline_secondary: true
   
-  # Forecast text
+  # Pressure & Temperature trends
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.local_forecast_pressure
+        name: Pressure
+        icon: mdi:gauge
+      
+      - type: custom:mushroom-entity-card
+        entity: sensor.local_forecast_pressurechange
+        name: Trend (3h)
+        icon: |
+          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
+          {% if change > 0.5 %}mdi:trending-up
+          {% elif change < -0.5 %}mdi:trending-down
+          {% else %}mdi:trending-neutral{% endif %}
+```
+
+---
+
+## 🌟 Card 3: Advanced Mushroom Card (v3.1.0 Enhanced Features)
+
+```yaml
+type: custom:vertical-stack-in-card
+cards:
+  # Title
+  - type: custom:mushroom-title-card
+    title: Weather Forecast v3.1.0
+    subtitle: 'Enhanced with Fog Risk & Stability'
+  
+  # Main forecast card
   - type: custom:mushroom-template-card
     primary: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading forecast...{% endif %}
+      {{states("sensor.local_forecast_enhanced")}}
     secondary: |
-      {% set pt = state_attr("sensor.local_forecast", "forecast_pressure_trend") %}
-      {% if pt and pt is iterable and pt is not string %}Pressure {{pt[0]}}{% else %}Pressure ...{% endif %}
-      {{states("sensor.local_forecast_pressurechange")}} hPa in 3h
-    icon: mdi:weather-cloudy-arrow-right
-    icon_color: grey
-    multiline_secondary: true
-  
-  # Metrics chips
-  - type: custom:mushroom-chips-card
-    alignment: center
-    chips:
-      - type: template
-        icon: mdi:gauge
-        content: '{{states("sensor.local_forecast_pressure")}} hPa'
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_pressure
-      - type: template
-        icon: mdi:thermometer
-        content: '{{states("sensor.local_forecast_temperature")}}°C'
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_temperature
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 0 %}mdi:trending-up
-          {% elif change < 0 %}mdi:trending-down
-          {% else %}mdi:trending-neutral
-          {% endif %}
-        content: '{{states("sensor.local_forecast_pressurechange")}} hPa'
-        icon_color: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 2 %}green
-          {% elif change < -2 %}red
-          {% else %}grey
-          {% endif %}
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_pressurechange
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 0 %}mdi:thermometer-chevron-up
-          {% elif change < 0 %}mdi:thermometer-chevron-down
-          {% else %}mdi:thermometer-lines
-          {% endif %}
-        content: '{{states("sensor.local_forecast_temperaturechange")}}°C/h'
-        icon_color: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 1 %}red
-          {% elif change < -1 %}blue
-          {% else %}grey
-          {% endif %}
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_temperaturechange
-  
-  # Alternative forecast model
-  - type: custom:mushroom-template-card
-    primary: 'Negretti-Zambra Alternative'
-    secondary: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_neg_zam") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
-    icon: mdi:weather-cloudy
-    icon_color: purple
+      Confidence: {{state_attr("sensor.local_forecast_enhanced", "confidence") | capitalize}}
+      Rain: {{states("sensor.local_forecast_rain_probability")}}%
+    icon: |
+      {% set condition = states("weather.local_weather_forecast_weather") %}
+      {% if condition == "sunny" %}mdi:weather-sunny
+      {% elif condition == "cloudy" %}mdi:weather-cloudy
+      {% elif condition == "rainy" %}mdi:weather-rainy
+      {% elif condition == "fog" %}mdi:weather-fog
+      {% else %}mdi:weather-partly-cloudy{% endif %}
+    icon_color: |
+      {% set rain = states("sensor.local_forecast_rain_probability") | int(0) %}
+      {% if rain > 70 %}red
+      {% elif rain > 40 %}orange
+      {% elif rain > 20 %}yellow
+      {% else %}blue{% endif %}
     multiline_secondary: true
     tap_action:
       action: more-info
-      entity: sensor.local_forecast_neg_zam_detail
+      entity: weather.local_weather_forecast_weather
+  
+  # Fog Risk & Dew Point
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Fog Risk
+        secondary: |
+          {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | capitalize}}
+        icon: mdi:weather-fog
+        icon_color: |
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+          {% if fog == "critical" %}red
+          {% elif fog == "high" %}orange
+          {% elif fog == "medium" %}yellow
+          {% elif fog == "low" %}blue
+          {% else %}green{% endif %}
+        layout: vertical
+      
+      - type: custom:mushroom-template-card
+        primary: Dew Point
+        secondary: |
+          {{state_attr("sensor.local_forecast_enhanced", "dew_point")}}°C
+          Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread")}}°C
+        icon: mdi:water-thermometer
+        icon_color: cyan
+        layout: vertical
+  
+  # Wind Classification
+  - type: custom:mushroom-template-card
+    primary: |
+      🌬️ {{state_attr("sensor.local_forecast_enhanced", "wind_type") | default("Unknown")}}
+    secondary: |
+      Beaufort: {{state_attr("sensor.local_forecast_enhanced", "wind_beaufort_scale")}}/12
+      Speed: {{state_attr("sensor.local_forecast_enhanced", "wind_speed")}} m/s
+      {% set gust = state_attr("sensor.local_forecast_enhanced", "wind_gust") %}
+      {% if gust %}Gusts: {{gust}} m/s{% endif %}
+    icon: mdi:weather-windy-variant
+    icon_color: |
+      {% set beaufort = state_attr("sensor.local_forecast_enhanced", "wind_beaufort_scale") | int(0) %}
+      {% if beaufort >= 8 %}red
+      {% elif beaufort >= 6 %}orange
+      {% elif beaufort >= 3 %}yellow
+      {% else %}green{% endif %}
+    multiline_secondary: true
+  
+  # Atmospheric Stability
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Stability
+        secondary: |
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
+          {% if stability == "stable" %}Stable
+          {% elif stability == "moderate" %}Moderate
+          {% elif stability == "unstable" %}Unstable
+          {% elif stability == "very_unstable" %}Very Unstable
+          {% else %}Unknown{% endif %}
+        icon: mdi:weather-partly-cloudy
+        icon_color: |
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
+          {% if stability == "very_unstable" %}red
+          {% elif stability == "unstable" %}orange
+          {% elif stability == "moderate" %}yellow
+          {% else %}green{% endif %}
+        layout: vertical
+      
+      - type: custom:mushroom-template-card
+        primary: Gust Ratio
+        secondary: |
+          {{state_attr("sensor.local_forecast_enhanced", "gust_ratio") | default("N/A")}}
+        icon: mdi:chart-line
+        icon_color: purple
+        layout: vertical
 ```
 
 ---
 
-## 🎯 Two-Row Comparison Card (Zambretti + Negretti-Zambra)
+## 📱 Card 4: Compact Mobile Card
+
+```yaml
+type: vertical-stack
+cards:
+  # Header
+  - type: markdown
+    content: |
+      ## 🌤️ Weather Forecast
+      **{{states("sensor.local_forecast")}}**
+  
+  # Quick Stats
+  - type: glance
+    entities:
+      - entity: sensor.local_forecast_temperature
+        name: Temp
+      - entity: sensor.local_forecast_pressure
+        name: Pressure
+      - entity: sensor.local_forecast_rain_probability
+        name: Rain %
+      - entity: sensor.local_forecast_enhanced
+        name: Forecast
+    show_state: true
+  
+  # Trends
+  - type: entities
+    entities:
+      - entity: sensor.local_forecast_pressurechange
+        name: Pressure Trend (3h)
+        icon: mdi:trending-up
+      - entity: sensor.local_forecast_temperaturechange
+        name: Temperature Trend (1h)
+        icon: mdi:thermometer
+```
+
+---
+
+## 📊 Card 5: Comparison Card (Zambretti vs Negretti)
+
+```yaml
+type: entities
+title: Forecast Comparison
+entities:
+  - type: section
+    label: Zambretti Method
+  - entity: sensor.local_forecast_zambretti_detail
+    name: Zambretti Forecast
+  - type: attribute
+    entity: sensor.local_forecast_zambretti_detail
+    attribute: rain_prob
+    name: Rain Probability (6h / 12h)
+  
+  - type: section
+    label: Negretti-Zambra Method
+  - entity: sensor.local_forecast_neg_zam_detail
+    name: Negretti Forecast
+  - type: attribute
+    entity: sensor.local_forecast_neg_zam_detail
+    attribute: rain_prob
+    name: Rain Probability (6h / 12h)
+  
+  - type: section
+    label: Consensus
+  - entity: sensor.local_forecast_enhanced
+    name: Enhanced Forecast
+  - type: attribute
+    entity: sensor.local_forecast_enhanced
+    attribute: confidence
+    name: Confidence Level
+  - type: attribute
+    entity: sensor.local_forecast_enhanced
+    attribute: consensus
+    name: Methods Agree
+```
+
+---
+
+## 🌐 Card 6: Weather Entity Card
+
+```yaml
+type: weather-forecast
+entity: weather.local_weather_forecast_weather
+forecast_type: daily
+```
+
+**With hourly forecast:**
+```yaml
+type: weather-forecast
+entity: weather.local_weather_forecast_weather
+forecast_type: hourly
+```
+
+---
+
+## 🌟 Card 7: Complete Weather Analysis Dashboard (Slovak)
+
+**Kompletná karta so VŠETKÝMI dostupnými informáciami zorganizovanými do logických celkov**
 
 ```yaml
 type: custom:vertical-stack-in-card
 cards:
-  # Zambretti Forecast Row (Current + 6h + 12h with times)
+  # ========================================================================
+  # HLAVIČKA
+  # ========================================================================
   - type: custom:mushroom-title-card
-    title: 'Zambretti Forecast'
-    subtitle: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
+    title: Predpoveď počasia v3.1.0
+    subtitle: Kompletná atmosférická analýza
   
-  - type: horizontal-stack
-    cards:
-      # Current - Zambretti
-      - type: custom:mushroom-template-card
-        primary: 'Teraz'
-        secondary: |
-          {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-          {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading{% endif %}
-          {{states("sensor.local_forecast_temperature")}}°C
-          {{states("sensor.local_forecast_pressure")}} hPa
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set pressure = states("sensor.local_forecast_pressure") | float(1013) %}
-          {% if pressure < 1000 %}red
-          {% elif pressure < 1020 %}amber
-          {% else %}green
-          {% endif %}
-        layout: vertical
-        multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast
-      
-      # 6h forecast with calculated time
-      - type: custom:mushroom-template-card
-        primary: |
-          {% set ft = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}
-          {% if ft and ft is iterable and ft is not string %}{{ft[0]}}{% else %}~6h{% endif %}
-        secondary: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[0]}}%{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 0 %}🌡️ {{temp_fc[0]}}°C{% else %}{% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}{% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}{% set ft = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}{% if ft and ft is iterable and ft is not string %}{% set hours = (ft[1] | float(180)) / 60 %}{% else %}{% set hours = 3 %}{% endif %}{% set est_temp = current_temp + (temp_change * hours) %}🌡️ {{est_temp | round(1)}}°C{% endif %}
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[0] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}green{% endif %}
-        layout: vertical
-        multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_zambretti_detail
-      
-      # 12h forecast with calculated time
-      - type: custom:mushroom-template-card
-        primary: |
-          {% set st = state_attr("sensor.local_forecast_zambretti_detail", "second_time") %}
-          {% if st and st is iterable and st is not string %}{{st[0]}}{% else %}~12h{% endif %}
-        secondary: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[1]}}%{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 1 %}🌡️ {{temp_fc[0]}}°C{% else %}{% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}{% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}{% set st = state_attr("sensor.local_forecast_zambretti_detail", "second_time") %}{% if st and st is iterable and st is not string %}{% set hours = (st[1] | float(540)) / 60 %}{% else %}{% set hours = 9 %}{% endif %}{% set est_temp = current_temp + (temp_change * hours) %}🌡️ {{est_temp | round(1)}}°C{% endif %}
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[1] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}green{% endif %}
-        layout: vertical
-        multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_zambretti_detail
-  
-  # Divider
+  # ========================================================================
+  # AKTUÁLNE POČASIE A PREDPOVEĎ
+  # ========================================================================
   - type: custom:mushroom-template-card
-    primary: ''
-    icon: mdi:dots-horizontal
-    icon_color: grey
-    card_mod:
-      style: |
-        ha-card {
-          box-shadow: none;
-          margin: -16px 0;
-        }
+    primary: Aktuálne počasie
+    secondary: |
+      {{states("weather.local_weather_forecast_weather") | replace('_', ' ') | title}}
+      {{state_attr("weather.local_weather_forecast_weather", "temperature")}}°C
+      Pocitovo: {{state_attr("weather.local_weather_forecast_weather", "feels_like")}}°C
+    icon: |
+      {% set condition = states("weather.local_weather_forecast_weather") %}
+      {% if condition == "fog" %}mdi:weather-fog
+      {% elif condition == "rainy" %}mdi:weather-rainy
+      {% elif condition == "pouring" %}mdi:weather-pouring
+      {% elif condition == "cloudy" %}mdi:weather-cloudy
+      {% elif condition == "partlycloudy" %}mdi:weather-partly-cloudy
+      {% elif condition == "sunny" %}mdi:weather-sunny
+      {% elif condition == "clear-night" %}mdi:weather-night
+      {% else %}mdi:help-circle{% endif %}
+    icon_color: |
+      {% set condition = states("weather.local_weather_forecast_weather") %}
+      {% if condition == "fog" %}grey
+      {% elif condition in ["rainy", "pouring"] %}blue
+      {% elif condition == "cloudy" %}grey
+      {% else %}orange{% endif %}
+    multiline_secondary: true
+    tap_action:
+      action: more-info
+      entity: weather.local_weather_forecast_weather
   
-  # Negretti-Zambra Forecast Row (Current + 6h + 12h with times)
-  - type: custom:mushroom-title-card
-    title: 'Negretti-Zambra Forecast'
-    subtitle: |
-      {% set fc = state_attr("sensor.local_forecast", "forecast_neg_zam") %}
-      {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
+  # ========================================================================
+  # PREDPOVEĎ ZAMBRETTI A NEGRETTI-ZAMBRA
+  # ========================================================================
+  - type: custom:mushroom-template-card
+    primary: 📊 Predpoveď
+    secondary: |
+      {{states("sensor.local_forecast_enhanced")}}
+      
+      Zambretti: {{state_attr("sensor.local_forecast", "forecast_zambretti")[0] if state_attr("sensor.local_forecast", "forecast_zambretti") else "N/A"}}
+      Negretti: {{state_attr("sensor.local_forecast", "forecast_neg_zam")[0] if state_attr("sensor.local_forecast", "forecast_neg_zam") else "N/A"}}
+    icon: mdi:weather-partly-cloudy
+    icon_color: blue
+    multiline_secondary: true
+    tap_action:
+      action: more-info
+      entity: sensor.local_forecast_enhanced
   
+  # Confidence & Adjustments
   - type: horizontal-stack
     cards:
-      # Current - Negretti-Zambra
       - type: custom:mushroom-template-card
-        primary: 'Teraz'
+        primary: Presnosť
         secondary: |
-          {% set fc = state_attr("sensor.local_forecast", "forecast_neg_zam") %}
-          {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading{% endif %}
-          {{states("sensor.local_forecast_temperature")}}°C
-          {{states("sensor.local_forecast_pressure")}} hPa
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_neg_zam_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
+          Confidence: {{state_attr("sensor.local_forecast_enhanced", "confidence") | capitalize}}
+          Accuracy: {{state_attr("sensor.local_forecast_enhanced", "accuracy_estimate")}}
+          Consensus: {{state_attr("sensor.local_forecast_enhanced", "consensus")}}
+        icon: mdi:check-circle
+        icon_color: |
+          {% set conf = state_attr("sensor.local_forecast_enhanced", "confidence") %}
+          {% if conf == "very_high" %}green
+          {% elif conf == "high" %}blue
+          {% elif conf == "medium" %}orange
+          {% else %}red{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Úpravy
+        secondary: |
+          {{state_attr("sensor.local_forecast_enhanced", "adjustment_details") | default("Žiadne úpravy")}}
+        icon: mdi:tune
         icon_color: purple
         layout: vertical
         multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast
-      
-      # 6h forecast with calculated time
-      - type: custom:mushroom-template-card
-        primary: |
-          {% set ft = state_attr("sensor.local_forecast_neg_zam_detail", "first_time") %}
-          {% if ft and ft is iterable and ft is not string %}{{ft[0]}}{% else %}~6h{% endif %}
-        secondary: |
-          {% set rp = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[0]}}%{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 0 %}🌡️ {{temp_fc[0]}}°C{% else %}{% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}{% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}{% set ft = state_attr("sensor.local_forecast_neg_zam_detail", "first_time") %}{% if ft and ft is iterable and ft is not string %}{% set hours = (ft[1] | float(180)) / 60 %}{% else %}{% set hours = 3 %}{% endif %}{% set est_temp = current_temp + (temp_change * hours) %}🌡️ {{est_temp | round(1)}}°C{% endif %}
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_neg_zam_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[0] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}purple{% endif %}
-        layout: vertical
-        multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_neg_zam_detail
-      
-      # 12h forecast with calculated time
-      - type: custom:mushroom-template-card
-        primary: |
-          {% set st = state_attr("sensor.local_forecast_neg_zam_detail", "second_time") %}
-          {% if st and st is iterable and st is not string %}{{st[0]}}{% else %}~12h{% endif %}
-        secondary: |
-          {% set rp = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
-          {% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-          {% if rp and rp is iterable and rp is not string %}☔ {{rp[1]}}%{% else %}☔ ?%{% endif %}
-          {% if temp_fc and temp_fc is iterable and temp_fc is not string and temp_fc[1] == 1 %}🌡️ {{temp_fc[0]}}°C{% else %}{% set temp_change = states("sensor.local_forecast_temperaturechange") | float(0) %}{% set current_temp = states("sensor.local_forecast_temperature") | float(0) %}{% set st = state_attr("sensor.local_forecast_neg_zam_detail", "second_time") %}{% if st and st is iterable and st is not string %}{% set hours = (st[1] | float(540)) / 60 %}{% else %}{% set hours = 9 %}{% endif %}{% set est_temp = current_temp + (temp_change * hours) %}🌡️ {{est_temp | round(1)}}°C{% endif %}
-        icon: |
-          {% set icons = state_attr("sensor.local_forecast_neg_zam_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: |
-          {% set rp = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}
-            {% set rain = rp[1] | int(0) %}
-            {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-          {% else %}purple{% endif %}
-        layout: vertical
-        multiline_secondary: true
-        tap_action:
-          action: more-info
-          entity: sensor.local_forecast_neg_zam_detail
   
-  # Pressure trend chips at the bottom
-  - type: custom:mushroom-chips-card
-    alignment: center
-    chips:
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 0 %}mdi:trending-up
-          {% elif change < 0 %}mdi:trending-down
-          {% else %}mdi:trending-neutral
-          {% endif %}
-        content: '{{states("sensor.local_forecast_pressurechange")}} hPa/3h'
+  # ========================================================================
+  # DÁŽĎ A ZRÁŽKY
+  # ========================================================================
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Pravdepodobnosť dažďa
+        secondary: |
+          {{states("sensor.local_forecast_rain_probability")}}%
+          Confidence: {{state_attr("sensor.local_forecast_rain_probability", "confidence") | capitalize}}
+          
+          Zambretti: {{state_attr("sensor.local_forecast_rain_probability", "zambretti_probability")}}%
+          Negretti: {{state_attr("sensor.local_forecast_rain_probability", "negretti_probability")}}%
+        icon: mdi:weather-rainy
         icon_color: |
-          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-          {% if change > 2 %}green
-          {% elif change < -2 %}red
-          {% else %}grey
-          {% endif %}
+          {% set prob = states("sensor.local_forecast_rain_probability") | int(0) %}
+          {% if prob >= 70 %}red
+          {% elif prob >= 40 %}orange
+          {% elif prob >= 20 %}yellow
+          {% else %}blue{% endif %}
+        layout: vertical
+        multiline_secondary: true
         tap_action:
           action: more-info
-          entity: sensor.local_forecast_pressure
-      - type: template
-        icon: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 0 %}mdi:thermometer-chevron-up
-          {% elif change < 0 %}mdi:thermometer-chevron-down
-          {% else %}mdi:thermometer-lines
+          entity: sensor.local_forecast_rain_probability
+      
+      - type: custom:mushroom-template-card
+        primary: Aktuálny dážď
+        secondary: |
+          {% set rain = state_attr("sensor.local_forecast_rain_probability", "current_rain_rate") %}
+          {% if rain and rain > 0 %}
+            {{rain}} mm/h - Prší!
+          {% else %}
+            Bez zrážok
           {% endif %}
-        content: '{{states("sensor.local_forecast_temperaturechange")}}°C/h'
+        icon: mdi:weather-pouring
         icon_color: |
-          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
-          {% if change > 1 %}red
-          {% elif change < -1 %}blue
-          {% else %}grey
+          {% set rain = state_attr("sensor.local_forecast_rain_probability", "current_rain_rate") %}
+          {% if rain and rain > 10 %}red
+          {% elif rain and rain > 2.5 %}orange
+          {% elif rain and rain > 0.1 %}yellow
+          {% else %}blue{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========================================================================
+  # TEPLOTA A TLAK
+  # ========================================================================
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Teplota
+        secondary: |
+          Aktuálna: {{states("sensor.local_forecast_temperature")}}°C
+          Trend: {{states("sensor.local_forecast_temperaturechange")}}°C/h
+          
+          {% set temp_forecast = state_attr("sensor.local_forecast", "forecast_temp_short") %}
+          {% if temp_forecast and temp_forecast[0] != "unavailable" %}
+          Predpoveď: {{temp_forecast[0]}}°C
           {% endif %}
+        icon: mdi:thermometer
+        icon_color: |
+          {% set temp = states("sensor.local_forecast_temperature") | float(0) %}
+          {% if temp > 30 %}red
+          {% elif temp > 20 %}orange
+          {% elif temp > 10 %}green
+          {% elif temp > 0 %}blue
+          {% else %}purple{% endif %}
+        layout: vertical
+        multiline_secondary: true
         tap_action:
           action: more-info
           entity: sensor.local_forecast_temperature
-```
-
----
-
-## 📱 Compact Mobile Card
-
-```yaml
-type: custom:mushroom-template-card
-primary: |
-  {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-  {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading forecast...{% endif %}
-secondary: |
-  {{states("sensor.local_forecast_temperature")}}°C | {{states("sensor.local_forecast_pressure")}} hPa
-  {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-  {% if rp and rp is iterable and rp is not string %}Rain: {{rp[0]}}% (6h) | {{rp[1]}}% (12h){% else %}Rain: ?% (6h) | ?% (12h){% endif %}
-icon: |
-  {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-  {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-icon_color: |
-  {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-  {% if rp and rp is iterable and rp is not string %}
-    {% set rain = rp[0] | int(0) %}
-    {% if rain > 70 %}blue{% elif rain > 40 %}amber{% else %}green{% endif %}
-  {% else %}green{% endif %}
-multiline_secondary: true
-tap_action:
-  action: more-info
-  entity: sensor.local_forecast
-```
-
----
-
-## 🎯 Mini Card (Sidebar/Badge)
-
-```yaml
-type: custom:mushroom-template-card
-primary: '{{states("sensor.local_forecast_temperature")}}°C'
-secondary: |
-  {% set st = state_attr("sensor.local_forecast", "forecast_short_term") %}
-  {% if st and st is iterable and st is not string %}{{st[0]}}{% else %}Loading...{% endif %}
-icon: |
-  {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-  {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-icon_color: blue
-layout: horizontal
-tap_action:
-  action: more-info
-  entity: sensor.local_forecast
-```
-
----
-
-## 📊 Comparison Card (Both Forecast Models)
-
-```yaml
-type: custom:vertical-stack-in-card
-cards:
-  - type: custom:mushroom-title-card
-    title: 'Forecast Comparison'
+      
+      - type: custom:mushroom-template-card
+        primary: Tlak
+        secondary: |
+          Aktuálny: {{states("sensor.local_forecast_pressure")}} hPa
+          Trend: {{states("sensor.local_forecast_pressurechange")}} hPa/3h
+          
+          {% set trend = state_attr("sensor.local_forecast", "pressure_trend") %}
+          {% if trend %}{{trend[0]}}{% endif %}
+        icon: mdi:gauge
+        icon_color: |
+          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
+          {% if change > 3 %}red
+          {% elif change > 1 %}orange
+          {% elif change < -3 %}purple
+          {% elif change < -1 %}blue
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_pressure
+  
+  # Badges pre zmenu tlaku a teploty (s trendovými šípkami)
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Zmena teploty
+        secondary: |
+          {{states("sensor.local_forecast_temperaturechange")}} °C/1h
+        icon: |
+          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
+          {% if change > 0.5 %}mdi:thermometer-chevron-up
+          {% elif change < -0.5 %}mdi:thermometer-chevron-down
+          {% else %}mdi:thermometer{% endif %}
+        icon_color: |
+          {% set change = states("sensor.local_forecast_temperaturechange") | float(0) %}
+          {% if change > 2 %}red
+          {% elif change > 0.5 %}orange
+          {% elif change < -2 %}blue
+          {% elif change < -0.5 %}cyan
+          {% else %}green{% endif %}
+        layout: vertical
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_temperaturechange
+      
+      - type: custom:mushroom-template-card
+        primary: Zmena tlaku
+        secondary: |
+          {{states("sensor.local_forecast_pressurechange")}} hPa/3h
+        icon: |
+          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
+          {% if change > 0.5 %}mdi:trending-up
+          {% elif change < -0.5 %}mdi:trending-down
+          {% else %}mdi:trending-neutral{% endif %}
+        icon_color: |
+          {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
+          {% if change > 3 %}red
+          {% elif change > 1 %}orange
+          {% elif change < -3 %}purple
+          {% elif change < -1 %}blue
+          {% else %}green{% endif %}
+        layout: vertical
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_pressurechange
+  
+  # ========================================================================
+  # VIETOR A ATMOSFÉRICKÁ STABILITA
+  # ========================================================================
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: |
+          🌬️ {{state_attr("sensor.local_forecast_enhanced", "wind_type") | default("Vietor")}}
+        secondary: |
+          Beaufort: {{state_attr("sensor.local_forecast_enhanced", "wind_beaufort_scale") | default(0)}}/12
+          Rýchlosť: {{state_attr("sensor.local_forecast_enhanced", "wind_speed") | default(0)}} m/s
+          {% set gust = state_attr("sensor.local_forecast_enhanced", "wind_gust") %}
+          {% if gust %}Nárazy: {{gust}} m/s{% endif %}
+          
+          {% set bearing = state_attr("weather.local_weather_forecast_weather", "wind_bearing") %}
+          {% if bearing %}Smer: {{bearing}}°{% endif %}
+        icon: mdi:weather-windy
+        icon_color: |
+          {% set beaufort = state_attr("sensor.local_forecast_enhanced", "wind_beaufort_scale") | int(0) %}
+          {% if beaufort >= 8 %}red
+          {% elif beaufort >= 6 %}orange
+          {% elif beaufort >= 4 %}yellow
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Stabilita atmosféry
+        secondary: |
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
+          {% if stability == "stable" %}✅ Stabilná
+          {% elif stability == "moderate" %}⚠️ Mierne nestabilná
+          {% elif stability == "unstable" %}⚠️ Nestabilná
+          {% elif stability == "very_unstable" %}🌪️ Veľmi nestabilná
+          {% else %}Neznáma{% endif %}
+          
+          {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") %}
+          {% if ratio %}Gust ratio: {{ratio}}{% endif %}
+        icon: mdi:weather-tornado
+        icon_color: |
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
+          {% if stability == "very_unstable" %}red
+          {% elif stability == "unstable" %}orange
+          {% elif stability == "moderate" %}yellow
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========================================================================
+  # HMLA A VIDITEĽNOSŤ
+  # ========================================================================
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: |
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+          {% if fog == "critical" %}🚨 KRITICKÁ HMLA
+          {% elif fog == "high" %}⚠️ Vysoké riziko
+          {% elif fog == "medium" %}⚡ Stredné riziko
+          {% elif fog == "low" %}💡 Nízke riziko
+          {% else %}✅ Žiadne riziko{% endif %}
+        secondary: |
+          Rosný bod: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | default("N/A")}}°C
+          Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | default("N/A")}}°C
+          Vlhkosť: {{state_attr("sensor.local_forecast_enhanced", "humidity") | default("N/A")}}%
+          
+          {% set visibility = state_attr("weather.local_weather_forecast_weather", "visibility_estimate") %}
+          {% if visibility %}Viditeľnosť: {{visibility}}{% endif %}
+        icon: mdi:weather-fog
+        icon_color: |
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
+          {% if fog == "critical" %}red
+          {% elif fog == "high" %}orange
+          {% elif fog == "medium" %}yellow
+          {% elif fog == "low" %}blue
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Komfort
+        secondary: |
+          Pocitovo: {{state_attr("weather.local_weather_forecast_weather", "feels_like") | default("N/A")}}°C
+          
+          {% set comfort = state_attr("weather.local_weather_forecast_weather", "comfort_level") %}
+          {% if comfort == "very_hot" %}🔥 Veľmi horúco
+          {% elif comfort == "hot" %}🌡️ Horúco
+          {% elif comfort == "warm" %}☀️ Teplo
+          {% elif comfort == "comfortable" %}✅ Príjemne
+          {% elif comfort == "cool" %}🌤️ Chladno
+          {% elif comfort == "cold" %}❄️ Zima
+          {% elif comfort == "very_cold" %}🥶 Veľmi zima
+          {% else %}{{comfort}}{% endif %}
+        icon: mdi:account-circle
+        icon_color: |
+          {% set comfort = state_attr("weather.local_weather_forecast_weather", "comfort_level") %}
+          {% if comfort in ["hot", "very_hot"] %}red
+          {% elif comfort == "warm" %}orange
+          {% elif comfort == "comfortable" %}green
+          {% elif comfort == "cool" %}blue
+          {% elif comfort in ["cold", "very_cold"] %}purple
+          {% else %}grey{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========================================================================
+  # PREDPOVEĎ NA 6H A 12H (ZAMBRETTI DETAIL)
+  # ========================================================================
+  - type: markdown
+    content: |
+      ### 📅 Časová predpoveď (Zambretti)
   
   - type: horizontal-stack
     cards:
-      # Zambretti
       - type: custom:mushroom-template-card
-        primary: 'Zambretti'
+        primary: 6 hodín
         secondary: |
-          {% set fc = state_attr("sensor.local_forecast", "forecast_zambretti") %}
-          {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
-          {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}Rain: {{rp[0]}}%{% else %}Rain: ?%{% endif %}
+          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
+          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
+          {% set first_time = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}
+          
+          {% if det and det is iterable %}Dážď: {{det[0]}}%{% endif %}
+          {% if first_time and first_time is iterable %}Čas: {{first_time[0]}}{% endif %}
         icon: |
           {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: blue
+          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-partly-cloudy{% endif %}
+        icon_color: orange
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_zambretti_detail
       
-      # Negretti-Zambra
       - type: custom:mushroom-template-card
-        primary: 'Negretti-Zambra'
+        primary: 12 hodín
         secondary: |
-          {% set fc = state_attr("sensor.local_forecast", "forecast_neg_zam") %}
-          {% if fc and fc is iterable and fc is not string %}{{fc[0]}}{% else %}Loading...{% endif %}
-          {% set rp = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
-          {% if rp and rp is iterable and rp is not string %}Rain: {{rp[0]}}%{% else %}Rain: ?%{% endif %}
+          {% set det = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
+          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
+          {% set second_time = state_attr("sensor.local_forecast_zambretti_detail", "second_time") %}
+          
+          {% if det and det is iterable %}Dážď: {{det[1]}}%{% endif %}
+          {% if second_time and second_time is iterable %}Čas: {{second_time[0]}}{% endif %}
+        icon: |
+          {% set icons = state_attr("sensor.local_forecast_zambretti_detail", "icons") %}
+          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:weather-partly-cloudy{% endif %}
+        icon_color: green
+        layout: vertical
+        multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_zambretti_detail
+  
+  # ========================================================================
+  # PREDPOVEĎ NA 6H A 12H (NEGRETTI DETAIL)
+  # ========================================================================
+  - type: markdown
+    content: |
+      ### 📅 Časová predpoveď (Negretti-Zambra)
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: 6 hodín
+        secondary: |
+          {% set det = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
+          {% set first_time = state_attr("sensor.local_forecast_neg_zam_detail", "first_time") %}
+          
+          {% if det and det is iterable %}Dážď: {{det[0]}}%{% endif %}
+          {% if first_time and first_time is iterable %}Čas: {{first_time[0]}}{% endif %}
         icon: |
           {% set icons = state_attr("sensor.local_forecast_neg_zam_detail", "icons") %}
-          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-cloudy{% endif %}
-        icon_color: purple
+          {% if icons and icons is iterable and icons is not string %}{{icons[0]}}{% else %}mdi:weather-partly-cloudy{% endif %}
+        icon_color: orange
         layout: vertical
         multiline_secondary: true
-```
-
----
-
-## 🛠️ Installation Steps
-
-### 1. Install Custom Cards (for Mushroom examples):
-
-**Via HACS:**
-1. Open HACS → Frontend
-2. Search "Mushroom"
-3. Install "Mushroom Cards"
-4. Search "Vertical Stack In Card"
-5. Install it
-6. Restart Home Assistant
-
-**Manual:**
-```bash
-# Download and place in www/community/
-# Add to resources in Lovelace
-```
-
-### 2. Add Card to Dashboard:
-
-1. Edit Dashboard
-2. Add Card → Manual
-3. Paste one of the YAML configs above
-4. Save
-
-### 3. Customize:
-
-- Change colors (`icon_color`)
-- Adjust thresholds (rain %, pressure)
-- Add/remove sections
-- Change icons (`mdi:*`)
-
----
-
-## 💡 Tips
-
-### Dynamic Icons Based on Conditions:
-```yaml
-icon: |
-  {% set pressure = states("sensor.local_forecast_pressure") | float(1013) %}
-  {% if pressure < 1000 %}mdi:weather-pouring
-  {% elif pressure < 1010 %}mdi:weather-rainy
-  {% elif pressure < 1020 %}mdi:weather-partly-cloudy
-  {% else %}mdi:weather-sunny
-  {% endif %}
-```
-
-### Color Based on Pressure Trend:
-```yaml
-icon_color: |
-  {% set change = states("sensor.local_forecast_pressurechange") | float(0) %}
-  {% if change > 3 %}green
-  {% elif change > 1 %}lime
-  {% elif change > -1 %}grey
-  {% elif change > -3 %}orange
-  {% else %}red
-  {% endif %}
-```
-
-### Rain Probability Warning:
-```yaml
-secondary: |
-  {% set rp = state_attr("sensor.local_forecast_zambretti_detail", "rain_prob") %}
-  {% if rp and rp is iterable and rp is not string %}
-    {% set rain = rp[0] | int(0) %}
-    {% if rain > 70 %}⚠️ High rain chance!
-    {% elif rain > 40 %}☔ Possible rain
-    {% else %}✅ Low rain chance
-    {% endif %}
-    {{rain}}% in 6h
-  {% else %}
-    Rain data unavailable
-  {% endif %}
-```
-
-### Using Forecast States Directly:
-```yaml
-# Access forecast states (0-6: sunny, partly cloudy, partly rainy, cloudy, rainy, pouring, lightning)
-{% set forecast_states = state_attr("sensor.local_forecast_zambretti_detail", "forecast") %}
-{% if forecast_states and forecast_states is iterable and forecast_states is not string %}
-  {% set state_6h = forecast_states[0] %}
-  {% set state_12h = forecast_states[1] %}
-  {% if state_6h >= 4 %}
-    ☔ Expect rain in 6h
-  {% endif %}
-{% endif %}
-```
-
-### Display Forecast Timing:
-```yaml
-# Show exact time and minutes to forecast
-{% set first_time = state_attr("sensor.local_forecast_zambretti_detail", "first_time") %}
-{% if first_time and first_time is iterable and first_time is not string %}
-  Next change at {{first_time[0]}} (in {{first_time[1] | round(0)}} min)
-{% endif %}
-```
-
-### Using Temperature Forecast:
-```yaml
-# Display short-term temperature prediction
-{% set temp_fc = state_attr("sensor.local_forecast", "forecast_temp_short") %}
-{% if temp_fc and temp_fc is iterable and temp_fc is not string %}
-  {% if temp_fc[1] == 0 %}
-    Expected temp in 6h: {{temp_fc[0]}}°C
-  {% elif temp_fc[1] == 1 %}
-    Expected temp in 12h: {{temp_fc[0]}}°C
-  {% endif %}
-{% endif %}
-```
-
----
-
-## 📸 Card Preview Ideas
-
-### Weather Station Style:
-```yaml
-# Large numbers, minimal text
-primary: '{{states("sensor.local_forecast_pressure")}} hPa'
-secondary: '{{states("sensor.local_forecast_temperature")}}°C'
-```
-
-### Forecast Timeline:
-```yaml
-# Show progression: Now → 6h → 12h
-horizontal-stack with 3 cards showing timeline
-```
-
-### Alarm Style:
-```yaml
-# Red/Yellow/Green based on conditions
-Use conditional cards for severe weather
-```
-
----
-
-## 🎨 Example: Full Dashboard Section
-
-```yaml
-# Add to your dashboard
-views:
-  - title: Weather
-    cards:
-      # Main forecast
-      - type: custom:vertical-stack-in-card
-        cards:
-          # ... (use Advanced Mushroom Card from above)
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_neg_zam_detail
       
-      # Pressure graph (if you have history)
-      - type: history-graph
-        entities:
-          - entity: sensor.local_forecast_pressure
-        hours_to_show: 24
-      
-      # Temperature graph
-      - type: history-graph
-        entities:
-          - entity: sensor.local_forecast_temperature
-        hours_to_show: 24
+      - type: custom:mushroom-template-card
+        primary: 12 hodín
+        secondary: |
+          {% set det = state_attr("sensor.local_forecast_neg_zam_detail", "rain_prob") %}
+          {% set second_time = state_attr("sensor.local_forecast_neg_zam_detail", "second_time") %}
+          
+          {% if det and det is iterable %}Dážď: {{det[1]}}%{% endif %}
+          {% if second_time and second_time is iterable %}Čas: {{second_time[0]}}{% endif %}
+        icon: |
+          {% set icons = state_attr("sensor.local_forecast_neg_zam_detail", "icons") %}
+          {% if icons and icons is iterable and icons is not string %}{{icons[1]}}{% else %}mdi:weather-partly-cloudy{% endif %}
+        icon_color: green
+        layout: vertical
+        multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_neg_zam_detail
+  
+  # ========================================================================
+  # DENNÁ PREDPOVEĎ (WEATHER ENTITY)
+  # ========================================================================
+  - type: weather-forecast
+    entity: weather.local_weather_forecast_weather
+    forecast_type: daily
+    show_current: false
 ```
 
 ---
 
-**Choose based on your needs:**
-- 🎯 **Simple**: Entities Card
-- 🎨 **Beautiful**: Basic Mushroom Card
-- 🌟 **Full Featured**: Advanced Mushroom Card
-- 📱 **Mobile**: Compact Card
-- 📊 **Compare**: Comparison Card
+## 🎯 Card Selection Guide
 
+| Card Type | Use Case | Complexity | Features |
+|-----------|----------|------------|----------|
+| **Simple Entities** | Basic info | ⭐ Easy | No custom cards needed |
+| **Basic Mushroom** | Nice looking | ⭐⭐ Medium | Current + 6h + 12h forecast |
+| **Advanced Mushroom** | Full features | ⭐⭐⭐ Advanced | Fog risk, wind type, stability |
+| **Compact Mobile** | Mobile view | ⭐ Easy | Quick stats, small screen |
+| **Comparison** | Method details | ⭐⭐ Medium | Compare Zambretti vs Negretti |
+| **Weather Entity** | Standard HA | ⭐ Easy | Daily/hourly forecast |
+| **Complete Dashboard (SK)** | All data | ⭐⭐⭐⭐ Expert | ALL sensors organized by category |
 
+---
 
+## 📚 Additional Resources
 
+- **[README.md](README.md)** - Installation and configuration
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
+---
 
-
+**Last updated:** 2025-12-08  
+**Version:** v3.1.0
 

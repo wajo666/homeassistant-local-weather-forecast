@@ -71,6 +71,7 @@ def calculate_zambretti_forecast(
 
 def _map_zambretti_to_forecast(z: int) -> int | None:
     """Map Zambretti number to forecast index."""
+    _LOGGER.debug(f"Zambretti z-number: {z}")
     mapping = {
         1: 0, 10: 0, 20: 0,
         2: 1, 11: 1, 21: 1,
@@ -88,6 +89,7 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
         16: 18,
         17: 22,
         19: 25, 32: 25,
+        22: 5,  # FIXED: Missing z=22 mapping - Settling fair
         23: 5,
         24: 6,
         25: 8,
@@ -98,7 +100,10 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
         30: 19,
         31: 24,
     }
-    return mapping.get(z)
+    result = mapping.get(z)
+    if result is None:
+        _LOGGER.warning(f"Unmapped Zambretti number: {z} - returning None")
+    return result
 
 
 def _map_zambretti_to_letter(z: int) -> str:
@@ -120,6 +125,7 @@ def _map_zambretti_to_letter(z: int) -> str:
         16: "S",
         17: "W",
         19: "Z", 32: "Z",
+        22: "F",  # FIXED: Missing z=22 letter mapping
         23: "F",
         24: "G",
         25: "I",
@@ -131,4 +137,3 @@ def _map_zambretti_to_letter(z: int) -> str:
         31: "Y",
     }
     return mapping.get(z, "A")
-
