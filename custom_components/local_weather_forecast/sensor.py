@@ -133,7 +133,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.1",
+            "sw_version": "3.1.2",
         }
 
     async def _wait_for_entity(
@@ -774,10 +774,28 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
 
-        # Restore previous state
+        # Restore previous state AND history
         if (last_state := await self.async_get_last_state()) is not None:
             try:
                 self._state = float(last_state.state)
+
+                # Restore history from attributes
+                if last_state.attributes.get("history"):
+                    restored_history = []
+                    for entry in last_state.attributes["history"]:
+                        try:
+                            # entry format: [timestamp_iso, pressure_value]
+                            timestamp = datetime.fromisoformat(entry[0])
+                            pressure = float(entry[1])
+                            restored_history.append((timestamp, pressure))
+                        except (ValueError, TypeError, IndexError):
+                            continue
+
+                    if restored_history:
+                        self._history = restored_history
+                        _LOGGER.info(
+                            f"PressureChange: Restored {len(self._history)} historical values from previous session"
+                        )
             except (ValueError, TypeError):
                 pass
 
@@ -790,18 +808,19 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
             )
         )
 
-        # Add initial pressure value to history
-        pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
-        if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable"):
-            try:
-                pressure = float(pressure_sensor.state)
-                timestamp = datetime.now()
-                self._history.append((timestamp, pressure))
-                _LOGGER.debug(
-                    f"Pressure change sensor initialized with {pressure} hPa at {timestamp}"
-                )
-            except (ValueError, TypeError):
-                pass
+        # Add initial pressure value to history (only if history is empty)
+        if not self._history:
+            pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
+            if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable"):
+                try:
+                    pressure = float(pressure_sensor.state)
+                    timestamp = datetime.now()
+                    self._history.append((timestamp, pressure))
+                    _LOGGER.debug(
+                        f"Pressure change sensor initialized with {pressure} hPa at {timestamp}"
+                    )
+                except (ValueError, TypeError):
+                    pass
 
     @callback
     async def _handle_pressure_update(self, event):
@@ -836,6 +855,21 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
         """Return the state."""
         return self._state
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        # Save history in ISO format for persistence across restarts
+        history_data = [
+            [ts.isoformat(), pressure]
+            for ts, pressure in self._history
+        ]
+        return {
+            "history": history_data,
+            "history_count": len(self._history),
+            "oldest_reading": self._history[0][0].isoformat() if self._history else None,
+            "newest_reading": self._history[-1][0].isoformat() if self._history else None,
+        }
+
 
 class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
     """Temperature change statistics sensor."""
@@ -856,10 +890,28 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
 
-        # Restore previous state
+        # Restore previous state AND history
         if (last_state := await self.async_get_last_state()) is not None:
             try:
                 self._state = float(last_state.state)
+
+                # Restore history from attributes
+                if last_state.attributes.get("history"):
+                    restored_history = []
+                    for entry in last_state.attributes["history"]:
+                        try:
+                            # entry format: [timestamp_iso, temperature_value]
+                            timestamp = datetime.fromisoformat(entry[0])
+                            temperature = float(entry[1])
+                            restored_history.append((timestamp, temperature))
+                        except (ValueError, TypeError, IndexError):
+                            continue
+
+                    if restored_history:
+                        self._history = restored_history
+                        _LOGGER.info(
+                            f"TemperatureChange: Restored {len(self._history)} historical values from previous session"
+                        )
             except (ValueError, TypeError):
                 pass
 
@@ -872,18 +924,19 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
             )
         )
 
-        # Add initial temperature value to history
-        temp_sensor = self.hass.states.get("sensor.local_forecast_temperature")
-        if temp_sensor and temp_sensor.state not in ("unknown", "unavailable"):
-            try:
-                temperature = float(temp_sensor.state)
-                timestamp = datetime.now()
-                self._history.append((timestamp, temperature))
-                _LOGGER.debug(
-                    f"Temperature change sensor initialized with {temperature}°C at {timestamp}"
-                )
-            except (ValueError, TypeError):
-                pass
+        # Add initial temperature value to history (only if history is empty)
+        if not self._history:
+            temp_sensor = self.hass.states.get("sensor.local_forecast_temperature")
+            if temp_sensor and temp_sensor.state not in ("unknown", "unavailable"):
+                try:
+                    temperature = float(temp_sensor.state)
+                    timestamp = datetime.now()
+                    self._history.append((timestamp, temperature))
+                    _LOGGER.debug(
+                        f"Temperature change sensor initialized with {temperature}°C at {timestamp}"
+                    )
+                except (ValueError, TypeError):
+                    pass
 
     @callback
     async def _handle_temperature_update(self, event):
@@ -917,6 +970,21 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
     def native_value(self) -> float | None:
         """Return the state."""
         return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        # Save history in ISO format for persistence across restarts
+        history_data = [
+            [ts.isoformat(), temperature]
+            for ts, temperature in self._history
+        ]
+        return {
+            "history": history_data,
+            "history_count": len(self._history),
+            "oldest_reading": self._history[0][0].isoformat() if self._history else None,
+            "newest_reading": self._history[-1][0].isoformat() if self._history else None,
+        }
 
 
 class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):

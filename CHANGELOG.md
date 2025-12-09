@@ -6,6 +6,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2025-12-09
+
+### ✨ Added
+
+- **History Persistence for Change Sensors** (2025-12-09)
+  - **PressureChange sensor** now saves and restores historical data across Home Assistant restarts
+  - **TemperatureChange sensor** now saves and restores historical data across Home Assistant restarts
+  - **Problem solved**: Previously, sensors lost all historical data on restart and had to wait 3 hours (pressure) or 1 hour (temperature) to recalculate accurate change values
+  - **Solution**: History is now saved in `extra_state_attributes` and automatically restored on startup
+  - **Benefits**:
+    - ✅ Accurate pressure/temperature change values **immediately** after restart
+    - ✅ No need to wait for new 3-hour/1-hour data collection period
+    - ✅ Historical readings preserved with timestamps (up to 180 minutes for pressure, 60 minutes for temperature)
+    - ✅ Maintains forecast accuracy even after Home Assistant reboots
+  - **New sensor attributes** (visible in Developer Tools → States):
+    - `history`: Array of [timestamp_iso, value] pairs - full historical data in ISO 8601 format
+    - `history_count`: Number of historical readings currently stored (e.g., "35")
+    - `oldest_reading`: ISO timestamp of oldest reading in history (e.g., "2025-12-09T12:00:00")
+    - `newest_reading`: ISO timestamp of newest reading in history (e.g., "2025-12-09T15:00:00")
+  - **Startup logging**: Log messages show restored history count on each restart
+    - Example: `PressureChange: Restored 42 historical values from previous session`
+    - Example: `TemperatureChange: Restored 18 historical values from previous session`
+  - **Behavior**: Only adds new initial reading if history is empty (prevents duplicates)
+  - **Technical details**: Uses `datetime.fromisoformat()` for timestamp parsing, validates all entries before restoring
+
+
+---
+
 ## [3.1.1] - 2025-12-09
 
 ### ✨ Added - Auto-Detection & Improvements
