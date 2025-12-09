@@ -28,7 +28,6 @@ from .const import (
     CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_HUMIDITY_SENSOR,
-    CONF_LANGUAGE,
     CONF_PRESSURE_TYPE,
     CONF_PRESSURE_SENSOR,
     CONF_RAIN_RATE_SENSOR,
@@ -37,12 +36,10 @@ from .const import (
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
-    DEFAULT_LANGUAGE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
     GRAVITY_CONSTANT,
     KELVIN_OFFSET,
-    LANGUAGE_INDEX,
     LAPSE_RATE,
     PRESSURE_TREND_FALLING,
     PRESSURE_TREND_RISING,
@@ -56,6 +53,8 @@ from .calculations import (
     calculate_rain_probability_enhanced,
     get_fog_risk,
 )
+from .language import get_language_index, get_wind_type, get_adjustment_text, get_atmosphere_stability_text, get_fog_risk_text
+from .unit_conversion import UnitConverter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,16 +133,60 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.0",
+            "sw_version": "3.1.1",
         }
+
+    async def _wait_for_entity(
+        self,
+        entity_id: str,
+        timeout: int = 30,
+        retry_interval: float = 1.0
+    ) -> bool:
+        """
+        Wait for an entity to become available.
+
+        Args:
+            entity_id: Entity ID to wait for
+            timeout: Maximum seconds to wait
+            retry_interval: Seconds between checks
+
+        Returns:
+            True if entity became available, False if timeout
+        """
+        if not entity_id:
+            return False
+
+        elapsed = 0
+        while elapsed < timeout:
+            state = self.hass.states.get(entity_id)
+            if state and state.state not in ("unknown", "unavailable"):
+                _LOGGER.debug(f"Entity {entity_id} is now available (waited {elapsed}s)")
+                return True
+
+            await asyncio.sleep(retry_interval)
+            elapsed += retry_interval
+
+        _LOGGER.warning(f"Entity {entity_id} did not become available after {timeout}s")
+        return False
 
     async def _get_sensor_value(
         self,
         sensor_id: str,
-        default: float = 0.0,
-        use_history: bool = True
-    ) -> float:
-        """Get sensor value with fallback to history if unavailable."""
+        default: float | None = 0.0,
+        use_history: bool = True,
+        sensor_type: str = None
+    ) -> float | None:
+        """Get sensor value with automatic unit conversion and fallback to history if unavailable.
+
+        Args:
+            sensor_id: Entity ID of the sensor
+            default: Default value if sensor unavailable
+            use_history: Whether to use historical data as fallback
+            sensor_type: Type for unit conversion (pressure, temperature, wind_speed, humidity)
+
+        Returns:
+            Sensor value converted to required unit
+        """
         if not sensor_id:
             return default
 
@@ -158,14 +201,29 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             return default
 
         try:
-            return float(state.state)
+            value = float(state.state)
+
+            # Apply unit conversion if sensor type specified
+            if sensor_type:
+                unit = state.attributes.get("unit_of_measurement")
+                if unit:
+                    converted_value = UnitConverter.convert_sensor_value(value, sensor_type, unit)
+                    if converted_value != value:
+                        _LOGGER.debug(
+                            f"Converted {sensor_id}: {value} {unit} → {converted_value:.2f} "
+                            f"{UnitConverter.REQUIRED_UNITS.get(sensor_type, '')}"
+                        )
+                    return converted_value
+
+            return value
+
         except (ValueError, TypeError):
             # Check if this is an optional sensor (wind direction/speed)
-            sensor_type = "sensor"
+            sensor_label = "sensor"
             if "wind" in sensor_id.lower():
-                sensor_type = "optional wind sensor"
+                sensor_label = "optional wind sensor"
             _LOGGER.warning(
-                f"Could not convert {sensor_type} {sensor_id} state '{state.state}' to float, using default {default}"
+                f"Could not convert {sensor_label} {sensor_id} state '{state.state}' to float, using default {default}"
             )
             if use_history:
                 return await self._get_historical_value(sensor_id, default)
@@ -203,7 +261,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
                         for state in reversed(states[sensor_id]):
                             if state.state not in ("unknown", "unavailable", None):
                                 try:
-                                    value = float(state.state)
+                                    value = float(str(state.state))
                                     _LOGGER.info(
                                         f"Retrieved historical value {value} for {sensor_id}"
                                     )
@@ -283,21 +341,22 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
     async def async_update(self) -> None:
         """Update the sensor."""
         config = self.config_entry.data
-        language = config.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
-        lang_index = LANGUAGE_INDEX.get(language, 1)
 
-        # Get sensor values with history fallback
+        # Get language index from centralized helper
+        lang_index = get_language_index(self.hass)
+
+        # Get sensor values with automatic unit conversion
         pressure = await self._get_sensor_value(
-            config.get(CONF_PRESSURE_SENSOR), default=1013.25
+            config.get(CONF_PRESSURE_SENSOR), default=1013.25, sensor_type="pressure"
         )
         temperature = await self._get_sensor_value(
-            config.get(CONF_TEMPERATURE_SENSOR), default=15.0
+            config.get(CONF_TEMPERATURE_SENSOR), default=15.0, sensor_type="temperature"
         )
         wind_direction = await self._get_sensor_value(
             config.get(CONF_WIND_DIRECTION_SENSOR), default=0.0
         )
         wind_speed = await self._get_sensor_value(
-            config.get(CONF_WIND_SPEED_SENSOR), default=0.0
+            config.get(CONF_WIND_SPEED_SENSOR), default=0.0, sensor_type="wind_speed"
         )
 
         elevation = config.get(CONF_ELEVATION, DEFAULT_ELEVATION)
@@ -704,7 +763,9 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
         super().__init__(hass, config_entry)
         self._attr_unique_id = "local_forecast_pressurechange"  # Match original YAML entity_id (no underscore!)
         self._attr_name = "Local forecast PressureChange"
+        self._attr_device_class = SensorDeviceClass.ATMOSPHERIC_PRESSURE
         self._attr_native_unit_of_measurement = UnitOfPressure.HPA
+        self._attr_state_class = SensorStateClass.MEASUREMENT  # Enable statistics recording
         self._attr_icon = "mdi:trending-up"
         self._state = 0.0
         self._history = []
@@ -784,7 +845,9 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
         super().__init__(hass, config_entry)
         self._attr_unique_id = "local_forecast_temperaturechange"  # Match original YAML entity_id (no underscore!)
         self._attr_name = "Local forecast TemperatureChange"
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_state_class = SensorStateClass.MEASUREMENT  # Enable statistics recording
         self._attr_icon = "mdi:thermometer-lines"
         self._state = 0.0
         self._history = []
@@ -1599,29 +1662,11 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             wind_speed: Wind speed in m/s
 
         Returns:
-            Wind type description (Slovak/English)
+            Wind type description based on Home Assistant UI language
         """
         beaufort = self._get_beaufort_number(wind_speed)
+        return get_wind_type(self.hass, beaufort)
 
-        # Multilingual descriptions: [Slovak, English]
-        descriptions = {
-            0: ["Ticho", "Calm"],
-            1: ["Slabý vánok", "Light air"],
-            2: ["Vánok", "Light breeze"],
-            3: ["Slabý vietor", "Gentle breeze"],
-            4: ["Mierny vietor", "Moderate breeze"],
-            5: ["Čerstvý vietor", "Fresh breeze"],
-            6: ["Silný vietor", "Strong breeze"],
-            7: ["Prudký vietor", "High wind"],
-            8: ["Búrka", "Gale"],
-            9: ["Silná búrka", "Strong gale"],
-            10: ["Veľká búrka", "Storm"],
-            11: ["Orkán", "Violent storm"],
-            12: ["Hurikán", "Hurricane"],
-        }
-
-        lang_index = 0  # Default Slovak, could be made configurable
-        return descriptions.get(beaufort, ["Neznámy", "Unknown"])[lang_index]
 
     def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
         """Determine atmospheric stability based on wind speed and gust ratio.
@@ -1711,7 +1756,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Fallback: use configured sensors if weather entity not available
         if temp is None:
             temp = await self._get_sensor_value(
-                self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
+                self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0, sensor_type="temperature"
             )
             _LOGGER.debug(f"Enhanced: Fallback - temperature from configured sensor: {temp}°C")
 
@@ -1719,15 +1764,17 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
             if humidity_sensor:
                 _LOGGER.debug(f"Enhanced: Fallback - fetching humidity from {humidity_sensor}")
-                humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
+                humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
                 _LOGGER.info(f"Enhanced: Fallback - humidity value = {humidity}")
             else:
                 _LOGGER.warning("Enhanced: No humidity sensor configured!")
 
         # Calculate dewpoint if not available from weather entity
         if dewpoint is None and temp is not None and humidity is not None:
-            dewpoint = calculate_dewpoint(temp, humidity)
-            _LOGGER.debug(f"Enhanced: Fallback - calculated dewpoint: {dewpoint}°C")
+            # Type guard - ensure we have valid float values
+            if isinstance(temp, (int, float)) and isinstance(humidity, (int, float)):
+                dewpoint = calculate_dewpoint(temp, humidity)
+                _LOGGER.debug(f"Enhanced: Fallback - calculated dewpoint: {dewpoint}°C")
 
         # Calculate spread
         dewpoint_spread = None
@@ -1739,26 +1786,26 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
         # Get wind gust ratio
         wind_speed = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR), 0.0, use_history=True
+            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR), 0.0, use_history=True, sensor_type="wind_speed"
         )
         # Enhanced sensors are in options, not data!
         wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
-        _LOGGER.info(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed}")
+        _LOGGER.info(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed} m/s")
         gust_ratio = None
         wind_gust = None
         if wind_gust_sensor_id and wind_speed > 0.1:
-            _LOGGER.debug(f"Enhanced: Fetching wind gust from {wind_gust_sensor_id}, wind_speed={wind_speed}")
-            wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True)
-            if wind_gust is not None:
-                gust_ratio = wind_gust / wind_speed if wind_speed > 0.1 else 1.0
-                _LOGGER.info(f"Enhanced: Calculated gust_ratio={gust_ratio} (gust={wind_gust}, speed={wind_speed})")
+            _LOGGER.debug(f"Enhanced: Fetching wind gust from {wind_gust_sensor_id}, wind_speed={wind_speed} m/s")
+            wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True, sensor_type="wind_speed")
+            if wind_gust is not None and isinstance(wind_gust, (int, float)) and wind_speed > 0.1:
+                gust_ratio = wind_gust / wind_speed
+                _LOGGER.info(f"Enhanced: Calculated gust_ratio={gust_ratio:.2f} (gust={wind_gust} m/s, speed={wind_speed} m/s)")
             else:
                 _LOGGER.warning(f"Enhanced: Wind gust sensor returned None")
         else:
             if not wind_gust_sensor_id:
                 _LOGGER.warning("Enhanced: No wind gust sensor configured!")
             else:
-                _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed}), skipping gust ratio")
+                _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed} m/s), skipping gust ratio")
 
         # Determine wind type based on Beaufort scale
         wind_type = self._get_beaufort_wind_type(wind_speed)
@@ -1775,22 +1822,22 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         if humidity is not None:
             if humidity > 85:
                 adjustments.append("high_humidity")
-                adjustment_details.append(f"High humidity ({humidity:.1f}%)")
+                adjustment_details.append(get_adjustment_text(self.hass, "high_humidity", f"{humidity:.1f}"))
             elif humidity < 40:
                 adjustments.append("low_humidity")
-                adjustment_details.append(f"Low humidity ({humidity:.1f}%)")
+                adjustment_details.append(get_adjustment_text(self.hass, "low_humidity", f"{humidity:.1f}"))
 
         # Dewpoint spread adjustment (fog/precipitation risk)
         if dewpoint_spread is not None:
             if dewpoint_spread < 1.5:
                 adjustments.append("critical_fog_risk")
-                adjustment_details.append(f"CRITICAL fog risk (spread {dewpoint_spread:.1f}°C)")
+                adjustment_details.append(get_adjustment_text(self.hass, "critical_fog_risk", f"{dewpoint_spread:.1f}"))
             elif dewpoint_spread < 2.5:
                 adjustments.append("high_fog_risk")
-                adjustment_details.append(f"High fog risk (spread {dewpoint_spread:.1f}°C)")
+                adjustment_details.append(get_adjustment_text(self.hass, "high_fog_risk", f"{dewpoint_spread:.1f}"))
             elif dewpoint_spread < 4:
                 adjustments.append("medium_fog_risk")
-                adjustment_details.append(f"Medium fog risk (spread {dewpoint_spread:.1f}°C)")
+                adjustment_details.append(get_adjustment_text(self.hass, "medium_fog_risk", f"{dewpoint_spread:.1f}"))
 
         # Atmospheric stability (gust ratio)
         # Only evaluate for significant wind speeds (>3 m/s)
@@ -1799,10 +1846,10 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         if gust_ratio is not None and wind_speed > 3.0:
             if gust_ratio > 2.0:
                 adjustments.append("very_unstable")
-                adjustment_details.append(f"Very unstable atmosphere (gust ratio {gust_ratio:.2f})")
+                adjustment_details.append(get_adjustment_text(self.hass, "very_unstable", f"{gust_ratio:.2f}"))
             elif gust_ratio > 1.6:
                 adjustments.append("unstable")
-                adjustment_details.append(f"Unstable atmosphere (gust ratio {gust_ratio:.2f})")
+                adjustment_details.append(get_adjustment_text(self.hass, "unstable", f"{gust_ratio:.2f}"))
         elif gust_ratio is not None and wind_speed <= 3.0:
             _LOGGER.debug(
                 f"Enhanced: Skipping gust ratio check for low wind speed "
@@ -1849,13 +1896,13 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "humidity": round(humidity, 2) if humidity is not None else None,
             "dew_point": round(dewpoint, 2) if dewpoint is not None else None,
             "dewpoint_spread": round(dewpoint_spread, 2) if dewpoint_spread is not None else None,
-            "fog_risk": fog_risk,
+            "fog_risk": get_fog_risk_text(self.hass, fog_risk),  # Translated
             "wind_speed": round(wind_speed, 2) if wind_speed is not None else None,
             "wind_gust": round(wind_gust, 2) if wind_gust is not None else None,
             "gust_ratio": round(gust_ratio, 2) if gust_ratio is not None else None,
             "wind_type": wind_type,
             "wind_beaufort_scale": wind_beaufort_number,
-            "atmosphere_stability": atmosphere_stability,
+            "atmosphere_stability": get_atmosphere_stability_text(self.hass, atmosphere_stability),  # Translated
             "accuracy_estimate": "~98%" if confidence in ["high", "very_high"] else "~94%",
         }
         # Note: Home Assistant automatically writes state after async_update() completes
@@ -1950,7 +1997,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
         # Get sensor values for enhancements
         temp = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0
+            self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0, sensor_type="temperature"
         )
 
         # Enhanced sensors are in options, not data!
@@ -1959,7 +2006,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         humidity = None
         if humidity_sensor:
             _LOGGER.debug(f"RainProb: Fetching humidity from {humidity_sensor}")
-            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True)
+            humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
             _LOGGER.info(f"RainProb: Humidity value = {humidity}")
         else:
             _LOGGER.warning("RainProb: No humidity sensor configured!")
@@ -1967,10 +2014,12 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         # Calculate dewpoint spread
         dewpoint_spread = None
         if temp is not None and humidity is not None:
-            dewpoint = calculate_dewpoint(temp, humidity)
-            if dewpoint is not None:
-                dewpoint_spread = temp - dewpoint
-            _LOGGER.debug(f"RainProb: Calculated dewpoint_spread={dewpoint_spread}")
+            # Type guard - ensure we have valid float values
+            if isinstance(temp, (int, float)) and isinstance(humidity, (int, float)):
+                dewpoint = calculate_dewpoint(temp, humidity)
+                if dewpoint is not None:
+                    dewpoint_spread = temp - dewpoint
+                    _LOGGER.debug(f"RainProb: Calculated dewpoint_spread={dewpoint_spread}")
         else:
             _LOGGER.warning(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
@@ -1989,6 +2038,12 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         _LOGGER.info(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
         current_rain = 0.0
         if rain_rate_sensor_id:
+            # Wait for entity to become available (useful during HA restart)
+            rain_state = self.hass.states.get(rain_rate_sensor_id)
+            if not rain_state or rain_state.state in ("unknown", "unavailable"):
+                _LOGGER.info(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not yet available, waiting...")
+                await self._wait_for_entity(rain_rate_sensor_id, timeout=15, retry_interval=0.5)
+
             # Extended debugging
             rain_state = self.hass.states.get(rain_rate_sensor_id)
             if rain_state:
@@ -1997,10 +2052,10 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 _LOGGER.warning(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not found in HA registry!")
 
             _LOGGER.debug(f"RainProb: Fetching rain rate from {rain_rate_sensor_id}")
-            current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, 0.0, use_history=False)
+            current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, 0.0, use_history=False, sensor_type="precipitation")
             if current_rain_value is not None:
                 current_rain = current_rain_value
-                _LOGGER.info(f"RainProb: Current rain rate = {current_rain}")
+                _LOGGER.info(f"RainProb: Current rain rate = {current_rain} mm/h")
             else:
                 _LOGGER.warning(f"RainProb: Rain rate sensor returned None (state={rain_state.state if rain_state else 'NOT_FOUND'})")
         else:

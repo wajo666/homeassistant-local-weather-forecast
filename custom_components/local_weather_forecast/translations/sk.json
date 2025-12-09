@@ -10,17 +10,15 @@
           "wind_direction_sensor": "Senzor smeru vetra (voliteľný)",
           "wind_speed_sensor": "Senzor rýchlosti vetra (voliteľný)",
           "elevation": "Nadmorská výška",
-          "pressure_type": "Typ tlaku",
-          "language": "Jazyk predpovede"
+          "pressure_type": "Typ tlaku"
         },
         "data_description": {
-          "pressure_sensor": "Barometrický tlakový senzor (povinný). Musí poskytovať hodnoty v hPa (hektopascaloch).",
-          "temperature_sensor": "Teplotný senzor (potrebný ak tlak nie je na úrovni mora). Musí poskytovať hodnoty v °C (Celsius).",
+          "pressure_sensor": "Barometrický tlakový senzor (povinný). Podporuje hPa, mbar, inHg, mmHg - automaticky konvertované.",
+          "temperature_sensor": "Teplotný senzor (potrebný ak tlak nie je na úrovni mora). Podporuje °C, °F, K - automaticky konvertované.",
           "wind_direction_sensor": "Smer vetra v stupňoch (0-360°). Zlepšuje presnosť predpovede, najmä pri detekcii frontov.",
-          "wind_speed_sensor": "Rýchlosť vetra v km/h alebo m/s. Zlepšuje presnosť predpovede pomocou faktoru vetra.",
+          "wind_speed_sensor": "Senzor rýchlosti vetra. Podporuje m/s, km/h, mph, ft/s, knots - automaticky konvertované. Zlepšuje presnosť predpovede pomocou faktoru vetra.",
           "elevation": "Nadmorská výška vášho miesta v metroch (na prepočet tlaku na hladinu mora).",
-          "pressure_type": "Vyberte, či váš senzor poskytuje absolútny staničný tlak (QFE) alebo relatívny tlak na hladinu mora (QNH). Väčšina senzorov poskytuje absolútny tlak.",
-          "language": "Jazyk pre texty predpovede"
+          "pressure_type": "Vyberte, či váš senzor poskytuje absolútny staničný tlak (QFE) alebo relatívny tlak na hladinu mora (QNH). Väčšina senzorov poskytuje absolútny tlak."
         }
       }
     },
@@ -52,14 +50,13 @@
           "cloud_coverage_sensor": "Senzor oblačnosti (rozšírený)",
           "elevation": "Nadmorská výška",
           "pressure_type": "Typ tlaku",
-          "language": "Jazyk predpovede",
           "enable_weather_entity": "Povoliť weather entitu"
         },
         "data_description": {
-          "humidity_sensor": "Senzor vlhkosti pre detekciu rizika hmly, výpočet rosného bodu a pravdepodobnosť dažďa (voliteľné)",
-          "wind_gust_sensor": "Senzor nárazov vetra pre detekciu stability atmosféry a varovanie pred búrkami (voliteľné)",
-          "rain_rate_sensor": "Senzor detekcie dažďa s device_class='precipitation' a unit='mm'. Integrácia automaticky detekuje dážď keď hodnota senzora > 0 (Netatmo: prírastky 0.101, 0.202... / Ecowitt WS90: podobne). NEPOUŽÍVAJTE hodinové súčty (voliteľné)",
-          "dewpoint_sensor": "Senzor rosného bodu na prepísanie vypočítaných hodnôt (voliteľné - vypočíta sa automaticky z teploty a vlhkosti)",
+          "humidity_sensor": "Senzor vlhkosti pre detekciu rizika hmly, výpočet rosného bodu a pravdepodobnosť dažďa. Podporuje % jednotky (voliteľné)",
+          "wind_gust_sensor": "Senzor nárazov vetra. Podporuje m/s, km/h, mph, ft/s, knots - automaticky konvertované. Používa sa pre detekciu stability atmosféry a varovanie pred búrkami (voliteľné)",
+          "rain_rate_sensor": "Senzor detekcie dažďa s device_class='precipitation'. Podporuje mm, in - automaticky konvertované. Integrácia automaticky detekuje dážď keď hodnota senzora > 0 (Netatmo: prírastky 0.101, 0.202... / Ecowitt WS90: podobne). NEPOUŽÍVAJTE hodinové súčty (voliteľné)",
+          "dewpoint_sensor": "Senzor rosného bodu. Podporuje °C, °F, K - automaticky konvertované. Prepíše vypočítané hodnoty (voliteľné)",
           "solar_radiation_sensor": "Senzor slnečného žiarenia v W/m² pre presný pocit teploty. Ak je poskytnutý UV Index senzor, slnečné žiarenie sa môže vypočítať automaticky (voliteľné)",
           "uv_index_sensor": "Senzor UV indexu (0-15 stupnica). Ak je poskytnutý senzor slnečného žiarenia, UV index sa môže vypočítať automaticky. Používa sa pre upozornenia na ochranu pred slnkom a pocitovú teplotu (voliteľné)",
           "cloud_coverage_sensor": "Senzor oblačnosti (%) na úpravu vplyvu slnečného žiarenia na pocitovú teplotu (voliteľné)",

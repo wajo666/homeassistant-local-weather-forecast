@@ -6,11 +6,224 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2025-12-09
+
+### ✨ Added - Auto-Detection & Improvements
+
+- **Centralized Language Handling** (2025-12-09)
+  - **NEW**: Created `language.py` module for centralized language detection and translation
+  - Single source of truth for language mapping (HA language code → forecast_data.py index)
+  - Eliminates duplicate language detection code in `sensor.py` and `weather.py`
+  - All translations now in `forecast_data.py` with consistent array order: [German, English, Greek, Italian, Slovak]
+  - Helper functions: `get_language_index()`, `get_wind_type()`, `get_visibility_estimate()`, `get_comfort_level_text()`, `get_fog_risk_text()`, `get_atmosphere_stability_text()`, `get_adjustment_text()`
+  - **Complete multilingual support for all UI texts:**
+    - Wind types (Beaufort scale 0-12)
+    - Visibility estimates (fog risk based)
+    - Comfort levels (very_cold to very_hot)
+    - Fog risk levels (none to critical)
+    - Atmosphere stability (stable, moderate, unstable, very_unstable)
+    - Adjustment details (humidity, fog risk, atmosphere stability warnings)
+  - **Fixed**: "Fine, Possibly showers. High humidity (97.0%), CRITICAL fog risk (spread 0.4°C)" now displays in user's language
+  - **Fixed**: All hardcoded English texts in sensor states and attributes now translated
+  - **Unit conversion in translated texts** - automatic conversion based on HA unit system:
+    - Temperature spreads in adjustment texts: °C → °F for imperial users
+    - Properly scales temperature DIFFERENCES (× 1.8 only, no +32 offset)
+    - Example metric: "CRITICAL fog risk (spread 0.4°C)"
+    - Example imperial: "CRITICAL fog risk (spread 0.7°F)"
+    - Uses consistent conversion logic throughout the integration
+  - Improved maintainability - all language logic in one place
+  - Consistent language behavior across all components
+  - Example Slovak metric: "Pekné počasie, možné prehánky. Vysoká vlhkosť (97.0%), KRITICKÉ riziko hmly (spread 0.4°C)"
+  - Example Slovak imperial: "Pekné počasie, možné prehánky. Vysoká vlhkosť (97.0%), KRITICKÉ riziko hmly (spread 0.7°F)"
+
+- **Automatic Unit Conversion** (2025-12-09)
+  - **NEW**: Sensors can now use any standard unit - automatic conversion to required units
+  - **Integrated into all sensor readings and weather entity** - Pressure, Temperature, Wind Speed, Wind Gust, Humidity, Rain Rate, Dew Point
+  - **Weather entity properties**: All native properties (temperature, pressure, wind_speed, wind_gust_speed, dew_point) now convert units
+  - **Pressure sensors**: Supports hPa, mbar, inHg, mmHg, kPa, Pa, psi → converts to hPa
+    - Example: 29.92 inHg → automatically converted to 1013.25 hPa
+  - **Temperature sensors**: Supports °C, °F, K → converts to °C
+    - Example: 68°F → automatically converted to 20°C
+  - **Wind speed sensors**: Supports m/s, km/h, mph, knots, ft/s → converts to m/s
+    - Example: 36 km/h → automatically converted to 10 m/s
+  - **Rain rate sensors**: Supports mm, mm/h, in, in/h → converts to mm or mm/h
+    - Example: 0.5 in/h → automatically converted to 12.7 mm/h (USA rain gauges)
+  - **Reverse conversion implemented**: `format_for_ui()` can convert SI units back to user's preferred units
+    - Example: 1013.25 hPa → 29.92 inHg for imperial users
+    - Utility function for future UI enhancements
+  - Config flow logs detected units: "Pressure sensor: sensor.barometer | Value: 29.92 inHg | Will be converted to hPa"
+  - Debug logging shows conversion: "Converted sensor.barometer: 29.92 inHg → 1013.25 hPa"
+  - Works with USA (inHg, °F, mph, in/h), European (hPa, °C, km/h, mm/h), and other unit systems
+  - No more manual unit checking or template sensors required!
+
+- **Automatic Language Detection from Home Assistant UI** (2025-12-09)
+  - **BREAKING CHANGE**: Removed manual language selection from integration config
+  - Language is now automatically detected from Home Assistant UI settings
+  - Supports languages: Slovak (sk), English (en), German (de), Italian (it), Greek (el/gr)
+  - Wind type names (Beaufort scale) now use HA UI language:
+    - Slovak: "Ticho", "Slabý vánok", "Búrka", "Hurikán", etc.
+    - English: "Calm", "Light air", "Gale", "Hurricane", etc.
+    - German: "Windstille", "Leiser Zug", "Sturm", "Orkan", etc.
+    - Italian: "Calmo", "Bava di vento", "Burrasca", "Uragano", etc.
+    - Greek: "Νηνεμία", "Ελαφρύ αεράκι", "Θύελλα", "Τυφώνας", etc.
+  - Forecast texts automatically use correct language
+  - Change language in HA: `Settings → System → General → Language`
+  - No migration needed - existing installations will use HA UI language automatically
+
+- **Rain Rate Sensor Startup Reliability** (2025-12-09)
+  - Added entity availability waiting during Home Assistant restart
+  - Fixes "entity not available" errors for WeatherFlow stations and similar sensors
+  - Waits up to 15 seconds with 0.5s intervals for rain sensor availability
+  - Prevents integration failures during HA boot sequence
+  - New helper method: `_wait_for_entity()` for graceful sensor loading
+
+
+- **Weather Entity - Complete Details Card** (2025-12-09)
+  - **NEW**: Card 8 in WEATHER_CARDS.md - displays ALL weather entity attributes
+  - Shows 25+ attributes that are hidden in standard HA weather UI
+  - Organized into sections: Current Conditions, Wind & Atmospheric, Fog & Visibility, Rain, Forecasts, Quality
+  - Includes: feels_like, comfort_level, wind_gust, gust_ratio, atmosphere_stability, fog_risk, visibility_estimate
+  - Also displays: dew_point, dewpoint_spread, rain_probability, forecast confidence, adjustments
+  - Solves limitation of standard HA weather UI showing only 5 basic attributes
+  - Custom Mushroom card layout with color-coded indicators
+  - All data already available in weather entity attributes, now easily accessible in UI
+
+### 🔧 Fixed
+
+- **Type Safety Improvements - All Files** (2025-12-09)
+  - **sensor.py**: Fixed 4 type warnings
+    - Line 264: Added explicit `str()` conversion for State objects before `float()` conversion
+    - Line 172-178: Changed `_get_sensor_value()` return type from `float` to `float | None` to match actual behavior
+    - Lines 1767, 2009: Added type guards for `calculate_dewpoint()` calls
+    - Type guards: `isinstance(temp, (int, float)) and isinstance(humidity, (int, float))`
+  - **weather.py**: Fixed 6 type warnings
+    - Line 26: Added `DeviceInfo` import from `homeassistant.helpers.entity`
+    - Line 102: Changed device_info from dict to proper `DeviceInfo` type
+    - Lines 754-756, 764-766: Fixed `async_add_executor_job` calls to pass function and arguments separately
+    - Lines 929, 1080: Added explicit type annotations for `forecasts` variables
+  - **config_flow.py**: 4 false positive warnings remain (TypedDict → FlowResult)
+    - These are IDE false positives - `async_create_entry()` and `async_show_form()` correctly return `FlowResult`
+    - Runtime behavior is correct
+  - Improves code safety - ensures values are valid before mathematical operations
+  - No functional changes - purely type safety improvements
+  - Better IDE/type checker compatibility (PyCharm, mypy, pyright)
+  - Backward compatible - code logic unchanged
+
+- **Translation Descriptions - Updated for Automatic Unit Conversion** (2025-12-09)
+  - **Updated**: All sensor descriptions now reflect that integration automatically converts units
+  - **Before**: "Must provide values in hPa" / "Must provide values in °C" (misleading - users thought they needed specific units)
+  - **After**: "Supports hPa, mbar, inHg, mmHg - automatically converted" / "Supports °C, °F, K - automatically converted"
+  - Updated sensors: pressure, temperature, wind_speed, wind_gust, dewpoint, rain_rate
+  - Affects: strings.json, en.json, de.json, sk.json (gr.json, it.json partial)
+  - Users can now use ANY unit their sensors provide - integration handles conversion automatically
+  - More accurate representation of implemented UnitConverter functionality
+
+- **Translation Files - Removed Obsolete Language Field** (2025-12-09)
+  - **Fixed**: Removed `language` field from all translation files (strings.json + 5 language translations)
+  - Language selection removed from config_flow UI - now uses Home Assistant UI language automatically
+  - Affects: strings.json, en.json, de.json, gr.json, it.json, sk.json
+  - Removed from both "user" step and "options" step
+  - Language is now auto-detected via `get_language_index(hass)` function
+  - No user action needed - translations match actual config_flow implementation
+
+- **IDE Warning - 'SENSOR_DOMAIN is Final'** (2025-12-09)
+  - **Fixed**: Changed import from `from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN` to `from homeassistant.components import sensor`
+  - Changed all usages from `domain=SENSOR_DOMAIN` to `domain=sensor.DOMAIN`
+  - Resolves IDE/type checker warning about reassigning Final constant
+  - No functional change, just cleaner typing compliance
+  - Affects: config_flow.py (4 occurrences in EntitySelectorConfig)
+
+- **Code Cleanup - Unused Imports Removed** (2025-12-09)
+  - **Fixed**: Removed all unused imports from Python files
+  - `config_flow.py`: Removed CONF_NAME, HomeAssistant, cv, UnitConverter (4 unused imports)
+  - `language.py`: Removed UnitConverter (not actually used after refactoring)
+  - `unit_conversion.py`: Removed Any from typing
+  - `weather.py`: Removed get_language_index, timedelta (2 unused imports)
+  - `__init__.py`: Removed Any from typing
+  - Result: Cleaner code, faster imports, no pyflakes warnings
+  - All files still compile and pass syntax checks
+
+- **Debug Log SI Units Consistency** (2025-12-09)
+  - **Fixed**: All debug/info logs now consistently use SI units (same as calculations)
+  - Wind speed logs: Added "m/s" unit (was missing)
+  - Wind gust logs: Added "m/s" unit (was missing)
+  - Rain rate logs: Added "mm/h" unit (was missing in one place)
+  - Gust ratio: Added precision formatting (.2f) for consistency
+  - Temperature, pressure, humidity already had correct SI units (°C, hPa, %)
+  - Examples:
+    - "Enhanced: Config wind gust sensor = ..., wind_speed = 1.67 m/s"
+    - "Enhanced: Calculated gust_ratio=1.67 (gust=2.78 m/s, speed=1.67 m/s)"
+    - "RainProb: Current rain rate = 0.0 mm/h"
+  - Makes debug logs easier to understand and consistent with internal calculations
+
+- **Weather Card Translation Display** (2025-12-09)
+  - **Fixed**: Weather cards now correctly display translated `atmosphere_stability` and `fog_risk` values
+  - **Problem**: Cards used hardcoded English comparisons (`== "stable"`) which failed for translated values ("Mierne nestabilná")
+  - **Solution**: Cards now use translated values directly and match by keywords (`"nestabilná" in stability`)
+  - **Effect**: Slovak cards show "Mierne nestabilná" instead of "Unknown", colors work correctly
+  - Affected cards: Advanced Mushroom Card (Card 3), Complete Weather Analysis (Card 7)
+  - Works for all languages (German, English, Greek, Italian, Slovak)
+
+- **Negretti-Zambra Debug Logging** (2025-12-09)
+  - **Added**: Comprehensive debug logging to diagnose Negretti calculation failures
+  - Logs input parameters: pressure, pressure_change, wind_data, elevation
+  - Logs intermediate calculations: season, trend, z_hp adjustments, z_option
+  - Logs final result: forecast_number, letter_code, forecast_text
+  - Helps identify why Negretti returns 0% when Zambretti gives forecast
+  - Example log: "Negretti: RESULT - forecast_number=17, letter_code=R, text='Nestálé, neskôr dážď'"
+
+- **Fog Detection Logic** (2025-12-09)
+  - **Fixed**: Fog can now be detected anytime (day or night) when conditions are met
+  - Removed incorrect daytime restriction that prevented fog detection during daylight hours
+  - Fog is now detected based solely on meteorological conditions:
+    - Dewpoint spread < 1.5°C AND humidity > 85% → FOG
+    - Dewpoint spread < 1.0°C AND humidity > 80% → FOG (near saturation)
+  - Real-world example: Dense fog at 12:00 with spread=0.4°C, humidity=97% is now correctly detected
+  - Fog can persist throughout the day in stable atmospheric conditions
+
+- **Enhanced Sensor Attribute Translations** (2025-12-09)
+  - **Fixed**: `atmosphere_stability` attribute now translated to user's language (was English only)
+    - Example: "stable" → "Stabilná" (Slovak), "Stabil" (German)
+  - **Fixed**: `fog_risk` attribute now translated to user's language (was English only)
+    - Example: "high" → "Vysoké riziko hmly" (Slovak), "Hohes Nebelrisiko" (German)
+  - Uses centralized `get_atmosphere_stability_text()` and `get_fog_risk_text()` helpers
+
+- **Sensor Device Classes Added** (2025-12-09)
+  - **Fixed**: `LocalForecastPressureChangeSensor` now has `ATMOSPHERIC_PRESSURE` device class
+    - Enables proper unit conversion (hPa ↔ inHg) based on HA settings
+  - **Fixed**: `LocalForecastTemperatureChangeSensor` now has `TEMPERATURE` device class
+    - Enables proper unit conversion (°C ↔ °F) based on HA settings
+  - **Fixed**: Added `state_class = MEASUREMENT` to PressureChange and TemperatureChange sensors
+    - Enables historical statistics recording (graphs, long-term statistics)
+    - Now shows data points every 5 minutes in history graphs like other sensors
+  - Improves consistency with Home Assistant unit system
+
+- **Weather Entity Language Detection** (2025-12-09)
+  - Fixed weather entity ignoring Home Assistant UI language setting
+  - Removed hardcoded Slovak translations for wind types and visibility estimates
+  - Weather entity now uses automatic language detection like sensors
+  - Wind type descriptions (Beaufort scale) now in correct language
+  - Visibility estimates now in correct language
+  - Supports: German, English, Greek, Italian, Slovak (defaults to English)
+  - Consistent language behavior across all sensors and weather entity
+
+- **Language Order Consistency** (2025-12-09)
+  - Fixed wind type language array order to match `forecast_data.py` format
+  - Correct order: [German, English, Greek, Italian, Slovak]
+  - Ensures English fallback works correctly for unsupported languages
+  - Previously had inconsistent ordering between forecast texts and wind types
+
+- **Zambretti & Negretti-Zambra Number Mapping** (2025-12-09)
+  - Fixed unmapped Zambretti number 33 warning for extreme rising pressure
+  - Added mapping: z=33 → forecast index 25 (letter "Z" - very fine weather)
+  - Fixed missing z=22 mapping (letter "F" - settling fair)
+  - Occurs during rapid pressure increases (anticyclone formation)
+  - Applied to both Zambretti and Negretti-Zambra algorithms
+  - No more `WARNING: Unmapped Zambretti number: 33` in logs
+
 ## [3.1.0] - 2025-12-08
 
 ### 🔧 Fixed - Sensor Data Consistency & Auto-Updates
-
-- **2 Decimal Precision for Numeric Values** (2025-12-08)
   - All numeric sensor values now consistently use 2 decimal places
   - **Enhanced sensor** (`sensor.local_forecast_enhanced`):
     - `humidity`: 89.12% (was 89.1%)

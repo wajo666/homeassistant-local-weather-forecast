@@ -27,6 +27,11 @@ def calculate_negretti_zambra_forecast(
     Returns:
         [forecast_text, forecast_number, letter_code]
     """
+    _LOGGER.debug(
+        f"Negretti: Input - p0={p0:.1f} hPa, pressure_change={pressure_change:.2f} hPa, "
+        f"wind_data={wind_data}, elevation={elevation}m"
+    )
+
     # Configuration
     hemisphere = 1  # Northern = 1, Southern = 0
     bar_top = 1050
@@ -59,10 +64,17 @@ def calculate_negretti_zambra_forecast(
     else:
         trend = 0
 
+    _LOGGER.debug(
+        f"Negretti: month={current_month}, is_summer={is_summer}, "
+        f"trend={'RISING' if trend == 1 else 'FALLING' if trend == -1 else 'STEADY'}"
+    )
+
     # Adjusted pressure for Northern Hemisphere
     z_hp = p0
     direction = wind_data[1]
     wind_speed_fak = wind_data[3]
+
+    _LOGGER.debug(f"Negretti: wind direction={direction}°, wind_speed_fak={wind_speed_fak}")
 
     if hemisphere == 1 and wind_speed_fak == 1:
         # Wind direction adjustments for Northern Hemisphere
@@ -113,6 +125,8 @@ def calculate_negretti_zambra_forecast(
     # Calculate option index
     z_option = int((z_hp - bar_bottom) / constant)
 
+    _LOGGER.debug(f"Negretti: z_hp after adjustments={z_hp:.1f} hPa, z_option={z_option}")
+
     # Check for exceptional weather
     is_exceptional = False
     if z_option < 0:
@@ -130,6 +144,11 @@ def calculate_negretti_zambra_forecast(
     else:  # Steady
         forecast_idx = steady_opt[z_option]
 
+    _LOGGER.debug(
+        f"Negretti: forecast_idx={forecast_idx}, is_exceptional={is_exceptional}, "
+        f"z_option={z_option}"
+    )
+
     # Build forecast text
     forecast_text = ""
     if is_exceptional:
@@ -137,6 +156,11 @@ def calculate_negretti_zambra_forecast(
 
     forecast_text += FORECAST_TEXTS[forecast_idx][lang_index]
     letter_code = _map_zambretti_to_letter(forecast_idx + 1)
+
+    _LOGGER.info(
+        f"Negretti: RESULT - forecast_number={forecast_idx}, letter_code={letter_code}, "
+        f"text='{forecast_text}'"
+    )
 
     return [forecast_text, forecast_idx, letter_code]
 
@@ -159,7 +183,8 @@ def _map_zambretti_to_letter(z: int) -> str:
         15: "P",
         16: "S",
         17: "W",
-        19: "Z", 32: "Z",
+        19: "Z", 32: "Z", 33: "Z",  # z=33 is extreme rising pressure
+        22: "F",  # FIXED: Missing z=22 letter mapping
         23: "F",
         24: "G",
         25: "I",

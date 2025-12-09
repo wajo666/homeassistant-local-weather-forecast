@@ -10,17 +10,15 @@
           "wind_direction_sensor": "Windrichtungssensor (Optional)",
           "wind_speed_sensor": "Windgeschwindigkeitssensor (Optional)",
           "elevation": "Höhe über dem Meeresspiegel",
-          "pressure_type": "Drucktyp",
-          "language": "Vorhersagesprache"
+          "pressure_type": "Drucktyp"
         },
         "data_description": {
-          "pressure_sensor": "Barometrischer Drucksensor (erforderlich). Muss Werte in hPa (Hektopascal) liefern.",
-          "temperature_sensor": "Temperatursensor (erforderlich, wenn Druck nicht auf Meereshöhe ist). Muss Werte in °C (Celsius) liefern.",
+          "pressure_sensor": "Barometrischer Drucksensor (erforderlich). Unterstützt hPa, mbar, inHg, mmHg - automatisch konvertiert.",
+          "temperature_sensor": "Temperatursensor (erforderlich, wenn Druck nicht auf Meereshöhe ist). Unterstützt °C, °F, K - automatisch konvertiert.",
           "wind_direction_sensor": "Windrichtung in Grad (0-360°). Verbessert Vorhersagegenauigkeit, besonders für Frontenerkennung.",
-          "wind_speed_sensor": "Windgeschwindigkeit in km/h oder m/s. Verbessert Vorhersagegenauigkeit durch Windfaktor.",
+          "wind_speed_sensor": "Windgeschwindigkeitssensor. Unterstützt m/s, km/h, mph, ft/s, Knoten - automatisch konvertiert. Verbessert Vorhersagegenauigkeit durch Windfaktor.",
           "elevation": "Höhe Ihres Standorts in Metern über dem Meeresspiegel (zur Berechnung des Drucks auf Meereshöhe).",
-          "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck.",
-          "language": "Sprache für Vorhersagetexte und Beschreibungen"
+          "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck."
         }
       }
     },
@@ -52,7 +50,6 @@
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (Erweitert)",
           "elevation": "Höhe über dem Meeresspiegel",
           "pressure_type": "Drucktyp",
-          "language": "Vorhersagesprache",
           "enable_weather_entity": "Wetter-Entität aktivieren"
         },
         "data_description": {

@@ -10,18 +10,15 @@
           "wind_direction_sensor": "Wind Direction Sensor (Optional)",
           "wind_speed_sensor": "Wind Speed Sensor (Optional)",
           "elevation": "Elevation Above Sea Level",
-          "pressure_type": "Pressure Type",
-          "pressure_at_sealevel": "Pressure Sensor Already at Sea Level",
-          "language": "Forecast Language"
+          "pressure_type": "Pressure Type"
         },
         "data_description": {
-          "pressure_sensor": "Barometric pressure sensor (required). Must provide values in hPa (hectopascals).",
-          "temperature_sensor": "Temperature sensor (needed if pressure is not at sea level). Must provide values in °C (Celsius).",
+          "pressure_sensor": "Barometric pressure sensor (required). Supports hPa, mbar, inHg, mmHg - automatically converted.",
+          "temperature_sensor": "Temperature sensor (needed if pressure is not at sea level). Supports °C, °F, K - automatically converted.",
           "wind_direction_sensor": "Wind direction in degrees (0-360°). Improves forecast accuracy, especially for detecting weather fronts.",
-          "wind_speed_sensor": "Wind speed in km/h or m/s. Improves forecast accuracy by determining wind factor.",
+          "wind_speed_sensor": "Wind speed sensor. Supports m/s, km/h, mph, ft/s, knots - automatically converted. Improves forecast accuracy by determining wind factor.",
           "elevation": "Your location's elevation in meters above sea level (used to calculate sea level pressure from station pressure).",
-          "pressure_type": "Select whether your sensor provides absolute station pressure (QFE) or relative sea level pressure (QNH). Most sensors provide absolute pressure.",
-          "language": "Language for forecast text and descriptions"
+          "pressure_type": "Select whether your sensor provides absolute station pressure (QFE) or relative sea level pressure (QNH). Most sensors provide absolute pressure."
         }
       }
     },
@@ -53,14 +50,13 @@
           "cloud_coverage_sensor": "Cloud Coverage Sensor (Enhanced)",
           "elevation": "Elevation Above Sea Level",
           "pressure_type": "Pressure Type",
-          "language": "Forecast Language",
           "enable_weather_entity": "Enable Weather Entity"
         },
         "data_description": {
-          "humidity_sensor": "Humidity sensor for enhanced fog risk detection, dew point calculation, and rain probability (optional)",
-          "wind_gust_sensor": "Wind gust sensor for atmospheric stability detection and severe weather alerts (optional)",
-          "rain_rate_sensor": "Rain detection sensor with device_class='precipitation' and unit='mm'. The integration automatically detects rain when sensor value > 0 (Netatmo: increments 0.101, 0.202... / Ecowitt WS90: similar). Do NOT use hourly total sensors (optional)",
-          "dewpoint_sensor": "Dew point sensor to override calculated values (optional)",
+          "humidity_sensor": "Humidity sensor for enhanced fog risk detection, dew point calculation, and rain probability. Supports % units (optional)",
+          "wind_gust_sensor": "Wind gust sensor. Supports m/s, km/h, mph, ft/s, knots - automatically converted. Used for atmospheric stability detection and severe weather alerts (optional)",
+          "rain_rate_sensor": "Rain detection sensor with device_class='precipitation'. Supports mm, in - automatically converted. The integration automatically detects rain when sensor value > 0 (Netatmo: increments 0.101, 0.202... / Ecowitt WS90: similar). Do NOT use hourly total sensors (optional)",
+          "dewpoint_sensor": "Dew point sensor. Supports °C, °F, K - automatically converted. Overrides calculated values (optional)",
           "solar_radiation_sensor": "Solar radiation sensor in W/m² for accurate feels-like temperature. If UV Index sensor is provided, solar radiation can be calculated automatically (optional)",
           "uv_index_sensor": "UV Index sensor (0-15 scale). If Solar Radiation sensor is provided, UV Index can be calculated automatically. Used for sun protection alerts and apparent temperature (optional)",
           "cloud_coverage_sensor": "Cloud coverage sensor (%) to adjust solar radiation effects on apparent temperature (optional)",

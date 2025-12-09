@@ -10,146 +10,84 @@
 
 This Home Assistant integration provides **advanced local weather forecasting** without relying on external services or APIs. It uses barometric pressure trends, temperature modeling, and proven meteorological algorithms to predict weather conditions.
 
-**Latest Version:** v3.1.0 (UNRELEASED - Testing Phase)
-
 **Original Developer:** [@HAuser1234](https://github.com/HAuser1234)  
-**Original Repository:** [github.com/HAuser1234/homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)  
-**Original Forum Thread:** [Home Assistant Community](https://community.home-assistant.io/t/homeassistant-12h-local-weather-forecast-94-accurate/569975)
+**Current Maintainer:** [@wajo666](https://github.com/wajo666)
 
 ### ✨ Key Features
 
-- 🎯 **~94-98% Accuracy** - Enhanced with modern sensor fusion
-- 🔌 **Fully Offline** - No external API dependencies
+- 🎯 **High Accuracy** - 94-98% forecast accuracy with optional sensors
+- 🔌 **Fully Offline** - No external API dependencies or cloud services
 - 📅 **Multi-timeframe Forecasts** - Hourly (25h) + Daily (3 days)
-- 🌍 **Multi-language Support** - English, German, Greek, Italian, Slovak
-- 🎨 **Modern UI Configuration** - Easy setup through Home Assistant UI
-- 💾 **Smart Fallbacks** - Uses historical data when sensors are unavailable
-- 🔄 **Auto-Recovery** - Restores last known values after restart
-- 🧠 **Dual Forecast Models** - Zambretti & Negretti-Zambra algorithms
-- 🌡️ **Advanced Calculations** - Feels Like (Wind Chill), Dew Point, Fog Risk
-- 🌧️ **Enhanced Rain Prediction** - Multi-factor probability with real-time detection
+- 🌍 **Multi-language** - Automatic language detection from Home Assistant UI
+- 🔄 **Auto Unit Conversion** - Use any standard units (°F, inHg, mph, km/h, etc.)
+- 🎨 **Easy Setup** - Modern UI configuration, no YAML needed
+- 🧠 **Dual Algorithms** - Zambretti & Negretti-Zambra forecast models
+- 🌡️ **Advanced Features** - Feels Like temp, Dew Point, Fog Risk analysis
+- 🌧️ **Smart Rain Detection** - Enhanced probability with real-time override
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
-- 🌦️ **UV Index Integration** - Cloud cover correction & solar estimation
-- 🌧️ **Smart Rain Detection** - Automatic detection: Netatmo (mm increments) & Ecowitt (mm/h)
 
 ---
 
-## 📏 Quick Reference: Sensor Units
+## 📏 Quick Reference: How to Use
 
-**⚠️ CRITICAL: Use these exact units or forecast will be incorrect!**
+**✅ Automatic Unit Conversion - Use Any Standard Units!**
 
-| Sensor | Unit | Symbol | Example | Device Class |
-|--------|------|--------|---------|--------------|
-| **Pressure** | Hectopascals | `hPa` | 1013.25 | `atmospheric_pressure` or `pressure` |
-| **Temperature** | Celsius | `°C` | 15.0 | `temperature` |
-| **Wind Speed** | Metres/second | `m/s` | 5.0 (= 18 km/h) | `wind_speed` |
-| **Wind Direction** | Degrees | `°` | 180 (South) | - |
-| **Elevation** | Metres | `m` | 370 | - |
-| **Humidity** | Percent | `%` | 75 | `humidity` |
+This integration automatically converts sensor values to the required format. No manual conversion needed!
 
-**🔄 Common Conversions:**
-- Wind: `km/h ÷ 3.6 = m/s` (e.g., 18 km/h = 5 m/s)
-- Temp: `(°F - 32) × 5/9 = °C` (e.g., 59°F = 15°C)
-- Pressure: `inHg × 33.8639 = hPa` (e.g., 29.92 inHg = 1013 hPa)
+### Sensor Requirements
+
+| Sensor | Status | Supported Units | Examples |
+|--------|--------|-----------------|----------|
+| **Pressure** | ✅ Required | hPa, mbar, inHg, mmHg, kPa, Pa, psi | 1013.25 hPa, 29.92 inHg |
+| **Temperature** | ⚠️ Recommended | °C, °F, K | 20°C, 68°F, 293K |
+| **Wind Speed** | ⚠️ Optional | m/s, km/h, mph, knots, ft/s | 10 m/s, 36 km/h, 22 mph |
+| **Wind Direction** | ⚠️ Optional | ° (degrees) | 180° (South), 270° (West) |
+| **Humidity** | ⚠️ Optional | % (percent) | 75%, 90% |
+| **Rain Rate** | ⚠️ Optional | mm, mm/h, in, in/h | 2.5 mm/h, 0.1 in/h |
+
+### Common Unit Conversions (for reference)
+
+**Wind Speed:**
+- 1 m/s = 3.6 km/h = 2.237 mph = 1.944 knots
+- 10 m/s = 36 km/h = 22.4 mph
+
+**Rain Rate:**
+- 1 inch = 25.4 mm
+- 0.1 in/h = 2.54 mm/h
+- 1 in/h = 25.4 mm/h
+
+**Temperature:**
+- (°F - 32) × 5/9 = °C
+- 68°F = 20°C
+
+**Pressure:**
+- 1 hPa = 1 mbar = 0.02953 inHg
+- 29.92 inHg = 1013.25 hPa
 
 💡 **Don't have all sensors?** Only pressure is required! Temperature + humidity highly recommended for best accuracy.
 
 ---
 
-## 🌟 What's New in v3.1.0 (2025-12-08)
+## 🎯 How It Works
 
-### 🔧 Critical Fixes
+This integration uses **barometric pressure trends** combined with optional sensors to predict weather:
 
-**Dewpoint Spread Calculation Fix**
-- Enhanced sensor now uses dewpoint from weather entity for consistency
-- Weather entity respects configured dewpoint sensor priority
-- Spread calculation: `weather.temperature - weather.dew_point`
-- Ensures consistent values across all sensors
-- Example: temp=6.7°C, dewpoint=5.0°C → spread=1.7°C ✅
+### Core Algorithm
+- **Zambretti & Negretti-Zambra** - Proven meteorological forecast methods
+- **Pressure trend analysis** - 3-hour pressure changes predict weather patterns
+- **Wind corrections** - Wind direction and speed refine forecast accuracy
+- **Seasonal adjustments** - Summer/winter patterns automatically applied
 
-**Enhanced Sensor Automatic Updates**
-- Auto-updates when ANY monitored sensor changes (up to 9 entities)
-- Monitors: weather entity, forecast, temperature, humidity, pressure, wind, dewpoint, rain
-- Throttling: Max 1 update per 30 seconds (prevents flooding)
-- Before: Updated only at startup → stale data
-- After: Real-time updates within 30s of sensor changes ✅
+### Smart Features
+- **Automatic unit conversion** - Use any standard units (°F, inHg, mph, km/h, etc.)
+- **Multi-language support** - Detects your Home Assistant UI language automatically
+- **Real-time updates** - Sensors update within 30 seconds of source changes
+- **Historical fallback** - Uses past data when sensors temporarily unavailable
+- **Smart rain detection** - Works with Netatmo, Ecowitt, and other rain sensors
 
-**Sensor Configuration Logic Fix**
-- **Only PRESSURE is required** (correct Zambretti algorithm implementation)
-- All other sensors marked as **optional enhancements**
-- Integration works with minimal setup (pressure only)
-- Add sensors gradually to unlock features
-- Temperature, wind, humidity improve accuracy but not required ✅
+---
 
-**2 Decimal Precision**
-- All numeric values now use **2 decimal places** consistently
-- Enhanced sensor: humidity=89.12%, dew_point=5.02°C, spread=1.70°C
-- Weather entity: feels_like=4.12°C, wind_gust=1.52 m/s
-- Template sensors: same precision throughout
-- Python code + YAML templates aligned ✅
-
-**Modern Template Format (HA 2026.6+ Ready)**
-- Migrated to modern `template:` format
-- Removed deprecated `platform: template`
-- Binary sensors and numeric sensors in single sections
-- No duplicate `- sensor:` or `- binary_sensor:` blocks
-- Compatible with Home Assistant 2026.6+ ✅
-
-### 🌦️ UV Index & Solar Radiation Support
-
-**UV-Based Cloud Cover Correction** - Automatically adjusts cloud estimates:
-
-- **UV Index Sensor** - Cloud cover calculation from UV measurements
-  - Converts UVI to solar radiation (UVI 10 ≈ 1000 W/m²)
-  - Accounts for cloud attenuation
-  - Improves temperature forecasting during sunny periods
-- **Solar Radiation Sensor** - Direct solar energy measurement (W/m²)
-  - Temperature warming from solar heating
-  - Sun angle calculation using Home Assistant coordinates
-  - Automatic day/night cycle detection
-- **Dual Mode** - Works with UV only, solar only, or both sensors
-- **Automatic Detection** - Smart sensor type detection (W/m² or UVI)
-- **Fallback Logic** - Uses humidity estimates if no solar sensors available
-
-### 🌧️ Smart Rain Detection System
-
-**Automatic Sensor Type Detection** - Works with any rain gauge:
-
-- **Netatmo Support** - Accumulation tracking (mm per interval)
-  - Detects rain when value changes (0.101 → 0.202 mm)
-  - 15-minute auto-reset timeout after rain stops
-  - Hourly accumulation sensor support
-- **Ecowitt WS90 Support** - Can work with both modes
-  - If direct mm/h available: Real-time rain rate monitoring
-  - If only mm available: Monitors accumulation changes
-- **Single Sensor Config** - One sensor does it all
-- **Priority System** - Real-time rain > Zambretti forecast
-- **Smart Thresholds**:
-  - Light rain: 0.1-2.5 mm/h → "rainy"
-  - Moderate rain: 2.5-7.6 mm/h → "rainy"
-  - Heavy rain: >7.6 mm/h → "pouring"
-
-### 🌡️ Feels Like Temperature
-
-**Accurate Apparent Temperature** - Built into weather entity:
-
-- **Weather Entity** - Automatic `feels_like` attribute
-- **Heat Index** - For hot weather (>27°C + high humidity)
-- **Wind Chill** - For cold weather (<10°C + wind)
-- **Graceful Fallback** - Uses actual temperature if sensors unavailable
-- **No Template Required** - Works out of the box
-
-### ☀️ Solar-Aware Forecasting
-
-**Improved Temperature Predictions**:
-
-- Warmer daytime temperatures when sunny (+2°C per 400 W/m²)
-- Cloud cover reduces solar warming
-- Automatic nighttime cooling (18:00-06:00)
-- Uses Home Assistant coordinates for sun angle
-- 25-hour hourly forecast with solar integration
-
-### 📚 Documentation
+## 📚 Documentation
 
 - **[WEATHER_CARDS.md](WEATHER_CARDS.md)** - Lovelace UI examples and configuration
 - **[CHANGELOG.md](CHANGELOG.md)** - Complete version history
@@ -166,7 +104,7 @@ The integration uses two independent forecast algorithms that run in parallel:
 - Seasonal adjustments (summer/winter)
 - Letter codes A-Z for quick reference
 - Best for: Temperate climates
-- **Now with hourly forecasting** in v3.1.0
+- **Now with hourly forecasting**
 
 ### 2. Negretti & Zambra (`negretti_zambra.py`)
 - Modern "slide rule" approach
@@ -174,7 +112,7 @@ The integration uses two independent forecast algorithms that run in parallel:
 - Detailed 16-direction wind corrections
 - Exceptional weather detection
 - Best for: Variable weather patterns
-- **Now with hourly forecasting** in v3.1.0
+- **Now with hourly forecasting**
 
 **Both models run simultaneously** - compare them to find which works better for your location!
 
@@ -217,68 +155,15 @@ The integration uses two independent forecast algorithms that run in parallel:
 
 ### Required Sensors
 
-| Sensor | Required | Description | Units | Default |
-|--------|----------|-------------|-------|---------|
-| **Barometric Pressure** | ✅ Yes | Atmospheric pressure sensor | **hPa** | 1013.25 hPa |
-| **Temperature** | ⚠️ Recommended | For accurate sea level pressure calculation | **°C** | 15.0 °C |
-| **Wind Direction** | ❌ Optional | Improves forecast accuracy by 5-10% | **°** (0-360) | 0° (North) |
-| **Wind Speed** | ❌ Optional | Improves forecast accuracy by 3-5% | **m/s** | 0.0 m/s |
+| Sensor | Required | Description | Supported Units | Default |
+|--------|----------|-------------|----------------|---------|
+| **Barometric Pressure** | ✅ Yes | Atmospheric pressure sensor | hPa, mbar, inHg, mmHg, kPa, Pa, psi | 1013.25 hPa |
+| **Temperature** | ⚠️ Recommended | For accurate sea level pressure calculation | °C, °F, K | 15.0 °C |
+| **Wind Direction** | ❌ Optional | Improves forecast accuracy by 5-10% | ° (0-360) | 0° (North) |
+| **Wind Speed** | ❌ Optional | Improves forecast accuracy by 3-5% | m/s, km/h, mph, knots, ft/s | 0.0 m/s |
+| **Humidity** | ❌ Optional | Enables fog detection and enhanced forecasts | % (0-100) | - |
 
-### 📏 Sensor Units & Requirements
-
-**⚠️ IMPORTANT: Use correct units or forecast will be inaccurate!**
-
-| Measurement | Required Unit | Alternative Units | Home Assistant Device Class |
-|-------------|---------------|-------------------|------------------------------|
-| **Pressure** | **hPa** (hectopascals) | ❌ NOT mbar, inHg, mmHg, or atm | `atmospheric_pressure` **or** `pressure` |
-| **Temperature** | **°C** (Celsius) | ❌ NOT °F or K | `temperature` |
-| **Wind Speed** | **m/s** (metres/second) | ❌ NOT km/h, mph, or knots | `wind_speed` |
-| **Wind Direction** | **°** (degrees 0-360) | - | - |
-| **Elevation** | **m** (metres) | - | - |
-
-**💡 Note:** The integration accepts pressure sensors with either `atmospheric_pressure` or `pressure` device class.
-
-#### 🔄 Unit Conversions (if needed)
-
-**Wind Speed Conversion (REQUIRED if your sensor uses km/h):**
-```yaml
-template:
-  - sensor:
-      - name: "Wind Speed m/s"
-        state: "{{ (states('sensor.wind_kmh') | float / 3.6) | round(2) }}"
-        unit_of_measurement: "m/s"
-        device_class: "wind_speed"
-```
-
-**Pressure Conversion Examples:**
-```
-1 hPa = 1 mbar
-1 hPa = 0.02953 inHg
-1 inHg = 33.8639 hPa
-```
-
-**Temperature Conversion:**
-```yaml
-# °F to °C
-{{ ((states('sensor.temp_f') | float - 32) * 5/9) | round(1) }}
-```
-
-**⚠️ Why m/s for wind speed?**
-The Zambretti algorithm uses a threshold of **1 m/s (3.6 km/h)** to determine if wind affects the forecast. Using km/h values will result in incorrect predictions!
-
-**📊 Typical Sensor Value Ranges:**
-
-| Measurement | Typical Range | Integration Range | Notes |
-|-------------|---------------|-------------------|-------|
-| **Pressure** | 980-1040 hPa | 950-1050 hPa | Normal sea level: ~1013 hPa |
-| **Temperature** | -40 to +50 °C | Any | Used for pressure correction |
-| **Wind Speed** | 0-30 m/s | 0+ m/s | Threshold: 1 m/s (3.6 km/h) |
-| **Wind Direction** | 0-360° | 0-360° | 0°=North, 90°=East, 180°=South, 270°=West |
-
-**Pressure Interpretation:**
-- 📉 **Low** (980-1000 hPa): Storms, rain likely
-- ⚖️ **Normal** (1000-1020 hPa): Variable weather
-- 📈 **High** (1020-1040 hPa): Clear, settled weather
+💡 **The integration automatically converts all units to the required format for calculations.**
 
 ### Configuration Options
 
@@ -286,7 +171,9 @@ The Zambretti algorithm uses a threshold of **1 m/s (3.6 km/h)** to determine if
 - **Pressure Type**: Select QFE (absolute) or QNH (relative)
   - **QFE (Absolute)**: Station pressure without altitude correction - most sensors (BME280, BMP280, etc.)
   - **QNH (Relative)**: Sea level corrected pressure - some weather stations (Ecowitt, Netatmo)
-- **Language**: Choose forecast text language (de, en, gr, it, sk)
+- **Language**: Automatically uses your Home Assistant UI language
+  - Supported: Slovak, English, German, Italian, Greek (defaults to English if not supported)
+  - Change in: `Settings → System → General → Language` → Restart HA
 
 ---
 
@@ -313,7 +200,7 @@ Required + Wind:
   - Wind Speed sensor           ← Adds +3-5% accuracy (calm vs windy differentiation)
 ```
 
-**Enhanced (Best - ~98% accuracy):** ⭐ **Fully implemented in v3.1.0**
+**Enhanced (Best - ~98% accuracy)**
 ```yaml
 All sensors + Extended:
   - Barometric Pressure sensor  (required)
@@ -328,12 +215,6 @@ All sensors + Extended:
   - Dewpoint sensor (optional)  ← Alternative to humidity for fog detection
 ```
 
-**Future Expert (Coming in v3.2+):**
-```yaml
-All current + Advanced (prepared but not yet used in forecast):
-  - Precipitation sensor        ← Will enable accumulated rain tracking & learning
-```
-
 ### 📊 Sensor Impact on Accuracy & Features
 
 | Sensor | Status | Impact if PRESENT | Impact if ABSENT |
@@ -342,21 +223,17 @@ All current + Advanced (prepared but not yet used in forecast):
 | **Temperature** | ⚠️ Optional | Accurate sea level pressure conversion | ⚠️ Uses 15°C default (minor error) |
 | **Wind Direction** | ⚠️ Optional | +5-10% accuracy (Zambretti wind correction) | ⚠️ Uses North (0°) default |
 | **Wind Speed** | ⚠️ Optional | +3-5% accuracy (calm vs windy) | ⚠️ Uses 0 m/s (calm) default |
-| **Humidity** | ⭐ Optional (v3.1.0) | **Enables:** Fog risk levels, enhanced rain %, dew point calculation | ⚠️ Fog/dew features disabled |
-| **Wind Gust** | ⭐ Optional (v3.1.0) | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
-| **Rain Rate** | ⭐ Optional (v3.1.0) | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
-| **Solar Radiation** | ⭐ Optional (v3.1.0) | **Enables:** Solar warming effect in "feels like" temperature | ⚠️ Ignores solar heating |
-| **Cloud Coverage** | ⭐ Optional (v3.1.0) | **Enables:** Cloud-based comfort level refinement | ⚠️ Uses estimated sky condition |
-| **Dewpoint** | ⭐ Optional (v3.1.0) | Alternative to humidity for fog detection (auto-calculated if humidity present) | ⚠️ Calculated from temp+humidity |
-| **Precipitation** | 🔜 Future (v3.2+) | Configuration available, not yet used in forecasts | Not yet active |
-
-⭐ = **Fully implemented in v3.1.0** - All enhanced features active  
-🔜 = **Prepared for future** - Configuration ready, forecast logic planned for v3.2+
+| **Humidity** | ⚠️ Optional | **Enables:** Fog risk levels, enhanced rain %, dew point calculation | ⚠️ Fog/dew features disabled |
+| **Wind Gust** | ⚠️ Optional | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
+| **Rain Rate** | ⚠️ Optional | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
+| **Solar Radiation** | ⚠️ Optional | **Enables:** Solar warming effect in "feels like" temperature | ⚠️ Ignores solar heating |
+| **Cloud Coverage** | ⚠️ Optional | **Enables:** Cloud-based comfort level refinement | ⚠️ Uses estimated sky condition |
+| **Dewpoint** | ⚠️ Optional | Alternative to humidity for fog detection (auto-calculated if humidity present) | ⚠️ Calculated from temp+humidity |
 
 **Summary:**
 - **Minimum Setup**: Pressure only → ~88% accuracy (basic Zambretti forecast)
 - **Standard Setup**: Pressure + Temperature + Wind → ~94% accuracy (wind corrections)
-- **Enhanced Setup**: All v3.1.0 sensors → ~98% accuracy (fog, rain %, stability, solar, clouds) ⭐
+- **Enhanced Setup**: All optional sensors → ~98% accuracy (fog, rain %, stability, solar, clouds)
 
 💡 **Pro Tip**: Every optional sensor improves accuracy and unlocks additional features. Missing sensors use sensible defaults - the integration always works.
 
@@ -367,7 +244,7 @@ All current + Advanced (prepared but not yet used in forecast):
 
 The integration creates the following sensors and entities:
 
-### Weather Entity ⭐ NEW in v3.1.0
+### Weather Entity
 
 - **`weather.local_weather_forecast_weather`** - Standard HA weather entity
   - Current conditions and detailed attributes
@@ -399,7 +276,7 @@ The integration creates the following sensors and entities:
 - **`sensor.local_forecast_pressurechange`** - Pressure change over 3 hours
 - **`sensor.local_forecast_temperaturechange`** - Temperature change over 1 hour
 
-### Enhanced Sensors ⭐ NEW in v3.0.3+
+### Enhanced Sensors
 
 - **`sensor.local_forecast_enhanced`** - Modern sensor fusion forecast
   - Base forecast from Zambretti/Negretti-Zambra
@@ -489,7 +366,7 @@ All sensors restore their previous state after Home Assistant restart, preventin
 
 ## 📖 How It Works
 
-### Forecast Calculator (NEW in v3.1.0)
+### Forecast Calculator 
 
 Advanced forecasting engine (`forecast_calculator.py`):
 
@@ -537,7 +414,7 @@ Both models provide:
 
 ---
 
-## 🆕 Enhanced Sensors (v3.1.0+)
+## Enhanced Sensors
 
 ### Enhanced Forecast Sensor
 
@@ -622,7 +499,7 @@ dewpoint_spread: 1.2
 
 ---
 
-## 🌟 Enhanced Features (v3.1.0+)
+## Enhanced Features
 
 ### Feels Like Temperature
 
@@ -658,7 +535,7 @@ Based on **wind gust ratio** (gust speed / wind speed):
 - **Unstable** - Ratio 1.5-2.5 → Moderate turbulence
 - **Very Unstable** - Ratio > 2.5 → High turbulence
 
-### Cloud Cover Estimation ⭐ NEW
+### Cloud Cover Estimation
 
 **If cloud sensor is not available**, the integration estimates cloud cover from **humidity**:
 
@@ -778,7 +655,6 @@ Configure these sensors for improved accuracy:
 | **Wind Gust** | `wind_speed` | `m/s` | Atmospheric stability |
 | **Rain Rate** | - | `mm/h` | Real-time rain override |
 | **Dew Point** | `temperature` | `°C` | Override calculated value |
-| **Precipitation** | `precipitation` | `mm` | Rain trend analysis |
 
 **How to Add:**
 1. Settings → Devices & Services → Local Weather Forecast
@@ -802,30 +678,36 @@ Configure these sensors for improved accuracy:
 | Pressure Change | `sensor.local_forecast_pressurechange` | 3-hour pressure trend (hPa) |
 | Temperature Change | `sensor.local_forecast_temperaturechange` | 1-hour temp trend (°C/h) |
 | **Detail Sensors** | | |
-| Zambretti Detail | `sensor.local_forecast_zambretti_detail` | Detailed Zambretti forecast |
-| Negretti Detail | `sensor.local_forecast_neg_zam_detail` | Detailed Negretti forecast |
+| Zambretti Detail | `sensor.local_forecast_zambretti_detail` | Detailed Zambretti forecast with hourly data |
+| Negretti Detail | `sensor.local_forecast_neg_zam_detail` | Detailed Negretti-Zambra forecast with hourly data |
 | **Enhanced Sensors** | | |
-| Enhanced Forecast | `sensor.local_forecast_enhanced` | ⭐ Modern sensors + algorithms |
-| Rain Probability | `sensor.local_forecast_rain_probability` | ⭐ Enhanced rain % |
+| Enhanced Forecast | `sensor.local_forecast_enhanced` | Enhanced with fog risk, wind stability, atmosphere analysis |
+| Rain Probability | `sensor.local_forecast_rain_probability` | Enhanced rain % with real-time override |
 | **Weather Entity** | | |
-| Weather | `weather.local_weather_forecast_weather` | ⭐ Standard HA weather entity with forecasts |
+| Weather | `weather.local_weather_forecast_weather` | Standard HA weather entity with hourly/daily forecasts |
 
----
-| Rain Probability | `sensor.local_forecast_rain_probability` | ⭐ Enhanced rain % |
-| **Weather Entity** | | |
-| Weather | `weather.local_weather_forecast_weather` | ⭐ Standard HA weather entity |
+
+**Note:** All sensors auto-update when source sensors change (max 1 update per 30 seconds to prevent flooding).
 
 ---
 
 ## 🌍 Supported Languages
 
-| Language | Code | Status |
-|----------|------|--------|
-| 🇩🇪 German | `de` | ✅ Complete |
-| 🇬🇧 English | `en` | ✅ Complete |
-| 🇬🇷 Greek | `gr` | ✅ Complete |
-| 🇮🇹 Italian | `it` | ✅ Complete |
-| 🇸🇰 Slovak | `sk` | ✅ Complete |
+**Language is automatically detected from your Home Assistant UI settings!**
+
+| Language | Code | Status | Wind Types | Forecast Texts |
+|----------|------|--------|------------|----------------|
+| 🇸🇰 Slovak | `sk` | ✅ Complete | Ticho, Búrka, Hurikán | ✅ |
+| 🇬🇧 English | `en` | ✅ Complete | Calm, Gale, Hurricane | ✅ |
+| 🇩🇪 German | `de` | ✅ Complete | Windstille, Sturm, Orkan | ✅ |
+| 🇮🇹 Italian | `it` | ✅ Complete | Calmo, Burrasca, Uragano | ✅ |
+| 🇬🇷 Greek | `el`/`gr` | ✅ Complete | Νηνεμία, Θύελλα, Τυφώνας | ✅ |
+
+**How to change language:**
+1. Go to `Settings → System → General → Language`
+2. Select your preferred language
+3. Restart Home Assistant (recommended)
+4. All forecast texts and wind descriptions will use your selected language
 
 Want to add your language? PRs welcome!
 
@@ -916,7 +798,7 @@ Weather: Using Zambretti forecast - Settled Fine (sunny)
 
 **To get real-time conditions:**
 - Use rain rate sensor (detects active rain)
-- Use cloud coverage sensor (v3.2+, planned)
+- Use cloud coverage sensor if available
 - Compare with external weather API for current conditions
 
 ---
@@ -952,11 +834,11 @@ Thank you to all contributors who help improve this integration!
 
 ### In This README
 - [Installation](#-installation) - HACS and manual setup
-- [Configuration](#️-configuration) - Required sensors and setup wizard
-- [Sensor Units](#-sensor-units--requirements) - Critical unit requirements
+- [Configuration](#-configuration) - Required sensors and setup wizard
+- [Quick Reference](#-quick-reference-how-to-use) - Supported units and sensor requirements
 - [Created Sensors](#-created-sensors--entities) - Complete entity reference
 - [Lovelace Examples](#-lovelace-card-examples) - Quick card examples
-- [Enhanced Features](#-enhanced-features-v310) - Feels like, fog risk, rain probability
+- [Enhanced Features](#enhanced-features) - Feels like, fog risk, rain probability
 - [Troubleshooting](#-troubleshooting) - Common issues and solutions
 
 ### Development

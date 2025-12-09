@@ -24,6 +24,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import DeviceInfo
 
 from .calculations import (
     calculate_apparent_temperature,
@@ -57,6 +58,8 @@ from .forecast_calculator import (
     TemperatureModel,
     ZambrettiForecaster,
 )
+from .language import get_wind_type, get_visibility_estimate
+from .unit_conversion import UnitConverter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,13 +99,13 @@ class LocalWeatherForecastWeather(WeatherEntity):
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_weather"
         self._attr_name = "Weather"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Local Weather Forecast",
-            "manufacturer": "Local Weather Forecast",
-            "model": "Zambretti/Negretti-Zambra",
-            "sw_version": "3.1.0",
-        }
+        self._attr_device_info: DeviceInfo = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="Local Weather Forecast",
+            manufacturer="Local Weather Forecast",
+            model="Zambretti/Negretti-Zambra",
+            sw_version="3.1.1",
+        )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
         self._last_rain_check_time = None  # Track when we last checked (for rate calculation)
@@ -126,7 +129,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(temp_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    # Apply unit conversion
+                    unit = state.attributes.get("unit_of_measurement")
+                    if unit:
+                        return UnitConverter.convert_sensor_value(value, "temperature", unit)
+                    return value
                 except (ValueError, TypeError):
                     pass
         return None
@@ -141,7 +149,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(pressure_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    # Apply unit conversion
+                    unit = state.attributes.get("unit_of_measurement")
+                    if unit:
+                        return UnitConverter.convert_sensor_value(value, "pressure", unit)
+                    return value
                 except (ValueError, TypeError):
                     pass
         return None
@@ -171,7 +184,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(wind_speed_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    # Apply unit conversion
+                    unit = state.attributes.get("unit_of_measurement")
+                    if unit:
+                        return UnitConverter.convert_sensor_value(value, "wind_speed", unit)
+                    return value
                 except (ValueError, TypeError):
                     pass
         return None
@@ -201,7 +219,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(wind_gust_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    # Apply unit conversion
+                    unit = state.attributes.get("unit_of_measurement")
+                    if unit:
+                        converted = UnitConverter.convert_sensor_value(value, "wind_speed", unit)
+                        _LOGGER.debug(
+                            f"Weather: Wind gust converted: {value} {unit} → {converted:.2f} m/s"
+                        )
+                        return converted
+                    return value
                 except (ValueError, TypeError):
                     pass
         return None
@@ -217,7 +244,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(dewpoint_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    # Apply unit conversion
+                    unit = state.attributes.get("unit_of_measurement")
+                    if unit:
+                        return UnitConverter.convert_sensor_value(value, "temperature", unit)
+                    return value
                 except (ValueError, TypeError):
                     pass
 
@@ -322,7 +354,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 rain_sensor = self.hass.states.get(rain_rate_sensor_id)
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
                     try:
-                        from datetime import datetime, timedelta
+                        from datetime import datetime
                         current_rain = float(rain_sensor.state)
                         now = datetime.now()
 
@@ -385,40 +417,27 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
             if temp is not None and dewpoint is not None and humidity is not None:
                 dewpoint_spread = temp - dewpoint
-
-                # Check if it's fog-favorable time (night, early morning, evening)
-                # Fog typically forms during nighttime cooling and dissipates after sunrise
                 current_hour = dt.now().hour
-                is_fog_time = (
-                    self._is_night() or  # Night time (after sunset, before sunrise)
-                    current_hour <= 9 or  # Early morning (00:00-09:00)
-                    current_hour >= 18    # Evening (18:00-23:59)
-                )
 
                 # FOG CONDITIONS (meteorologically justified):
+                # Fog occurs when dewpoint spread is very low and humidity is high
+                # This can happen anytime (day or night) when conditions are met
                 # - Dewpoint spread < 1.5°C = CRITICAL fog risk
                 # - Humidity > 85% = high moisture content
-                # - Fog-favorable time (not midday sun)
-                # - Combined = actual fog present
-                if dewpoint_spread < 1.5 and humidity > 85 and is_fog_time:
+                # - Combined = actual fog likely present
+                if dewpoint_spread < 1.5 and humidity > 85:
                     _LOGGER.info(
                         f"Weather: FOG detected - dewpoint spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, hour={current_hour}"
                     )
                     return ATTR_CONDITION_FOG
-                # Near-fog conditions (visibility may be reduced)
-                elif dewpoint_spread < 1.0 and humidity > 80 and is_fog_time:
+                # Near-fog conditions (very low spread + high humidity)
+                elif dewpoint_spread < 1.0 and humidity > 80:
                     _LOGGER.info(
                         f"Weather: FOG detected (near saturation) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, hour={current_hour}"
                     )
                     return ATTR_CONDITION_FOG
-                # During daytime with high humidity + low spread = just high humidity, not fog
-                elif dewpoint_spread < 1.5 and humidity > 85 and not is_fog_time:
-                    _LOGGER.debug(
-                        f"Weather: High humidity during daytime - spread={dewpoint_spread:.1f}°C, "
-                        f"humidity={humidity:.1f}%, hour={current_hour} - NOT setting fog (daytime)"
-                    )
 
             # PRIORITY 3: Get Zambretti forecast condition
             zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
@@ -616,7 +635,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
             wind_gust_state = self.hass.states.get(wind_gust_sensor_id)
             if wind_gust_state and wind_gust_state.state not in ("unknown", "unavailable"):
                 try:
-                    wind_gust = float(wind_gust_state.state)
+                    value = float(wind_gust_state.state)
+                    # Apply unit conversion
+                    unit = wind_gust_state.attributes.get("unit_of_measurement")
+                    wind_gust = UnitConverter.convert_sensor_value(value, "wind_speed", unit) if unit else value
                     attrs["wind_gust"] = round(wind_gust, 2)
                     gust_ratio = wind_gust / wind_speed
                     attrs["gust_ratio"] = round(gust_ratio, 2)
@@ -656,14 +678,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         # Add visibility estimate based on fog risk
         if "fog_risk" in attrs:
             fog_risk = attrs["fog_risk"]
-            if fog_risk == "high":
-                attrs["visibility_estimate"] = "Znížená viditeľnosť (<1 km)"
-            elif fog_risk == "medium":
-                attrs["visibility_estimate"] = "Možná znížená viditeľnosť (1-5 km)"
-            elif fog_risk == "low":
-                attrs["visibility_estimate"] = "Dobrá viditeľnosť (5-10 km)"
-            else:
-                attrs["visibility_estimate"] = "Veľmi dobrá viditeľnosť (>10 km)"
+            attrs["visibility_estimate"] = get_visibility_estimate(self.hass, fog_risk)
 
         attrs["attribution"] = "Local Weather Forecast based on Zambretti and Negretti-Zambra algorithms"
 
@@ -699,26 +714,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
             return 12  # Hurricane
 
     def _get_beaufort_wind_type(self, wind_speed: float) -> str:
-        """Get wind type description from Beaufort scale (Slovak)."""
+        """Get wind type description from Beaufort scale in current HA language.
+
+        Args:
+            wind_speed: Wind speed in m/s
+
+        Returns:
+            Wind type description in user's language
+        """
         beaufort = self._get_beaufort_number(wind_speed)
-
-        descriptions = {
-            0: "Ticho",
-            1: "Slabý vánok",
-            2: "Vánok",
-            3: "Slabý vietor",
-            4: "Mierny vietor",
-            5: "Čerstvý vietor",
-            6: "Silný vietor",
-            7: "Prudký vietor",
-            8: "Búrka",
-            9: "Silná búrka",
-            10: "Veľká búrka",
-            11: "Orkán",
-            12: "Hurikán",
-        }
-
-        return descriptions.get(beaufort, "Neznámy")
+        return get_wind_type(self.hass, beaufort)
 
     def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
         """Determine atmospheric stability based on wind speed and gust ratio."""
@@ -746,10 +751,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the daily forecast using advanced models."""
         _LOGGER.debug("async_forecast_daily called - generating with advanced models")
 
-        def generate_forecast():
-            return self._generate_advanced_daily_forecast(3)
-
-        result = await self.hass.async_add_executor_job(generate_forecast)
+        result = await self.hass.async_add_executor_job(
+            self._generate_advanced_daily_forecast, 3
+        )
         _LOGGER.debug(f"async_forecast_daily returning {len(result) if result else 0} days")
         return result
 
@@ -757,10 +761,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the hourly forecast using advanced models."""
         _LOGGER.debug("async_forecast_hourly called - generating with advanced models")
 
-        def generate_forecast():
-            return self._generate_advanced_hourly_forecast(24)
-
-        result = await self.hass.async_add_executor_job(generate_forecast)
+        result = await self.hass.async_add_executor_job(
+            self._generate_advanced_hourly_forecast, 24
+        )
         _LOGGER.debug(f"async_forecast_hourly returning {len(result) if result else 0} hours")
         return result
 
@@ -930,7 +933,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 f"(P={pressure}hPa, T={temperature}°C)"
             )
 
-            return forecasts
+            return forecasts  # type: ignore[return-value]
 
         except Exception as e:
             _LOGGER.error(f"❌ Error generating advanced daily forecast: {e}", exc_info=True)
@@ -1084,7 +1087,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 f"P={pressure}hPa, T={temperature}°C, ΔP={pressure_change_3h}hPa"
             )
 
-            return forecasts
+            return forecasts  # type: ignore[return-value]
 
         except Exception as e:
             _LOGGER.error(f"Error generating advanced hourly forecast: {e}", exc_info=True)

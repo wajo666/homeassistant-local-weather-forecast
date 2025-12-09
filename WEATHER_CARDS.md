@@ -177,14 +177,14 @@ cards:
       - type: custom:mushroom-template-card
         primary: Fog Risk
         secondary: |
-          {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | capitalize}}
+          {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | default("No fog")}}
         icon: mdi:weather-fog
         icon_color: |
-          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
-          {% if fog == "critical" %}red
-          {% elif fog == "high" %}orange
-          {% elif fog == "medium" %}yellow
-          {% elif fog == "low" %}blue
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") | lower %}
+          {% if "critical" in fog or "kritické" in fog %}red
+          {% elif "high" in fog or "vysoké" in fog %}orange
+          {% elif "medium" in fog or "stredné" in fog %}yellow
+          {% elif "low" in fog or "nízke" in fog %}blue
           {% else %}green{% endif %}
         layout: vertical
       
@@ -221,18 +221,13 @@ cards:
       - type: custom:mushroom-template-card
         primary: Stability
         secondary: |
-          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
-          {% if stability == "stable" %}Stable
-          {% elif stability == "moderate" %}Moderate
-          {% elif stability == "unstable" %}Unstable
-          {% elif stability == "very_unstable" %}Very Unstable
-          {% else %}Unknown{% endif %}
+          {{state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") | default("Unknown")}}
         icon: mdi:weather-partly-cloudy
         icon_color: |
-          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
-          {% if stability == "very_unstable" %}red
-          {% elif stability == "unstable" %}orange
-          {% elif stability == "moderate" %}yellow
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") | lower %}
+          {% if "very_unstable" in stability or "veľmi nestabilná" in stability %}red
+          {% elif "unstable" in stability or "nestabilná" in stability %}orange
+          {% elif "moderate" in stability or "mierne" in stability %}yellow
           {% else %}green{% endif %}
         layout: vertical
       
@@ -600,21 +595,16 @@ cards:
       - type: custom:mushroom-template-card
         primary: Stabilita atmosféry
         secondary: |
-          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
-          {% if stability == "stable" %}✅ Stabilná
-          {% elif stability == "moderate" %}⚠️ Mierne nestabilná
-          {% elif stability == "unstable" %}⚠️ Nestabilná
-          {% elif stability == "very_unstable" %}🌪️ Veľmi nestabilná
-          {% else %}Neznáma{% endif %}
+          {{state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") | default("Neznáma")}}
           
           {% set ratio = state_attr("sensor.local_forecast_enhanced", "gust_ratio") %}
           {% if ratio %}Gust ratio: {{ratio}}{% endif %}
         icon: mdi:weather-tornado
         icon_color: |
-          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") %}
-          {% if stability == "very_unstable" %}red
-          {% elif stability == "unstable" %}orange
-          {% elif stability == "moderate" %}yellow
+          {% set stability = state_attr("sensor.local_forecast_enhanced", "atmosphere_stability") | lower %}
+          {% if "veľmi nestabilná" in stability %}red
+          {% elif "nestabilná" in stability %}orange
+          {% elif "mierne" in stability %}yellow
           {% else %}green{% endif %}
         layout: vertical
         multiline_secondary: true
@@ -626,12 +616,7 @@ cards:
     cards:
       - type: custom:mushroom-template-card
         primary: |
-          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
-          {% if fog == "critical" %}🚨 KRITICKÁ HMLA
-          {% elif fog == "high" %}⚠️ Vysoké riziko
-          {% elif fog == "medium" %}⚡ Stredné riziko
-          {% elif fog == "low" %}💡 Nízke riziko
-          {% else %}✅ Žiadne riziko{% endif %}
+          {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | default("Žiadne riziko")}}
         secondary: |
           Rosný bod: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | default("N/A")}}°C
           Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | default("N/A")}}°C
@@ -641,11 +626,11 @@ cards:
           {% if visibility %}Viditeľnosť: {{visibility}}{% endif %}
         icon: mdi:weather-fog
         icon_color: |
-          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") %}
-          {% if fog == "critical" %}red
-          {% elif fog == "high" %}orange
-          {% elif fog == "medium" %}yellow
-          {% elif fog == "low" %}blue
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") | lower %}
+          {% if "kritické" in fog %}red
+          {% elif "vysoké" in fog %}orange
+          {% elif "stredné" in fog %}yellow
+          {% elif "nízke" in fog %}blue
           {% else %}green{% endif %}
         layout: vertical
         multiline_secondary: true
@@ -800,6 +785,357 @@ cards:
 
 ---
 
-**Last updated:** 2025-12-08  
-**Version:** v3.1.0
+## 📋 Card 8: Complete Weather Entity Details (All Attributes)
+
+**🎯 Purpose:** Display ALL attributes from weather.local_weather_forecast_weather entity  
+**📦 Cards needed:** None for simple version, `custom:mushroom-*` for advanced version
+
+**💡 Why this card?**
+- Home Assistant weather UI shows only 5 basic attributes (temperature, pressure, humidity, wind speed, wind bearing)
+- Weather entity has **25+ additional attributes** with valuable data!
+- This card exposes everything: feels like, dew point, fog risk, wind gust, rain probability, forecasts, etc.
+
+### Option A: Simple Entities Card (No Custom Cards Needed)
+
+```yaml
+type: entities
+title: Complete Weather Details
+show_header_toggle: false
+entities:
+  # Current Conditions
+  - type: section
+    label: 🌡️ Current Conditions
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: temperature
+    name: Temperature
+    suffix: °C
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: feels_like
+    name: Feels Like
+    suffix: °C
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: comfort_level
+    name: Comfort Level
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: humidity
+    name: Humidity
+    suffix: '%'
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: pressure
+    name: Pressure
+    suffix: hPa
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: pressure_trend
+    name: Pressure Trend
+  
+  # Wind & Atmospheric
+  - type: section
+    label: 💨 Wind & Atmospheric
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: wind_speed
+    name: Wind Speed
+    suffix: m/s
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: wind_gust
+    name: Wind Gust
+    suffix: m/s
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: gust_ratio
+    name: Gust Ratio
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: wind_type
+    name: Wind Type
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: wind_beaufort_scale
+    name: Beaufort Scale
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: atmosphere_stability
+    name: Atmospheric Stability
+  
+  # Fog & Visibility
+  - type: section
+    label: 🌫️ Fog & Visibility
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: dew_point
+    name: Dew Point
+    suffix: °C
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: dewpoint_spread
+    name: Dewpoint Spread
+    suffix: °C
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: fog_risk
+    name: Fog Risk
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: visibility_estimate
+    name: Visibility Estimate
+  
+  # Rain Forecast
+  - type: section
+    label: 🌧️ Rain Forecast
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: rain_probability
+    name: Rain Probability
+    suffix: '%'
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: rain_confidence
+    name: Rain Confidence
+  
+  # Forecasts
+  - type: section
+    label: 📊 Forecast Models
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: forecast_zambretti
+    name: Zambretti Forecast
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: forecast_negretti_zambra
+    name: Negretti-Zambra Forecast
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: forecast_short_term
+    name: Short Term Forecast
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: forecast_confidence
+    name: Forecast Confidence
+```
+
+### Option B: Advanced Mushroom Card (Prettier, More Compact)
+
+```yaml
+type: custom:vertical-stack-in-card
+cards:
+  - type: custom:mushroom-title-card
+    title: Complete Weather Details
+    subtitle: All attributes from weather.local_weather_forecast_weather
+  
+  # ========== SECTION 1: CURRENT WEATHER ==========
+  - type: custom:mushroom-title-card
+    title: 🌡️ Current Conditions
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Temperature
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "temperature")}}°C
+          Feels: {{state_attr("weather.local_weather_forecast_weather", "feels_like")}}°C
+        icon: mdi:thermometer
+        icon_color: red
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Humidity
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "humidity")}}%
+          Comfort: {{state_attr("weather.local_weather_forecast_weather", "comfort_level")}}
+        icon: mdi:water-percent
+        icon_color: blue
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Pressure
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "pressure")}} hPa
+          {{state_attr("weather.local_weather_forecast_weather", "pressure_trend")}}
+        icon: mdi:gauge
+        icon_color: purple
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========== SECTION 2: WIND & ATMOSPHERIC ==========
+  - type: custom:mushroom-title-card
+    title: 💨 Wind & Atmospheric Stability
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Wind Speed
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "wind_speed")}} m/s
+          Gust: {{state_attr("weather.local_weather_forecast_weather", "wind_gust")}} m/s
+          Ratio: {{state_attr("weather.local_weather_forecast_weather", "gust_ratio")}}
+        icon: mdi:weather-windy
+        icon_color: cyan
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: |
+          {{state_attr("weather.local_weather_forecast_weather", "wind_type")}}
+        secondary: |
+          Beaufort: {{state_attr("weather.local_weather_forecast_weather", "wind_beaufort_scale")}}/12
+          {{state_attr("weather.local_weather_forecast_weather", "atmosphere_stability")}}
+        icon: mdi:weather-tornado
+        icon_color: |
+          {% set stability = state_attr("weather.local_weather_forecast_weather", "atmosphere_stability") | lower %}
+          {% if "veľmi nestabilná" in stability or "very unstable" in stability %}red
+          {% elif "nestabilná" in stability or "unstable" in stability %}orange
+          {% elif "mierne" in stability or "moderate" in stability %}yellow
+          {% else %}green{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========== SECTION 3: FOG & VISIBILITY ==========
+  - type: custom:mushroom-title-card
+    title: 🌫️ Fog Risk & Visibility
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: |
+          {{state_attr("weather.local_weather_forecast_weather", "fog_risk")}}
+        secondary: |
+          Dew Point: {{state_attr("weather.local_weather_forecast_weather", "dew_point")}}°C
+          Spread: {{state_attr("weather.local_weather_forecast_weather", "dewpoint_spread")}}°C
+        icon: mdi:weather-fog
+        icon_color: |
+          {% set fog = state_attr("weather.local_weather_forecast_weather", "fog_risk") | lower %}
+          {% if "kritické" in fog or "critical" in fog %}red
+          {% elif "vysoké" in fog or "high" in fog %}orange
+          {% elif "stredné" in fog or "medium" in fog %}yellow
+          {% else %}blue{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Visibility
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "visibility_estimate")}}
+        icon: mdi:eye
+        icon_color: grey
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========== SECTION 4: RAIN PROBABILITY ==========
+  - type: custom:mushroom-title-card
+    title: 🌧️ Rain Forecast
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Rain Probability
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "rain_probability")}}%
+          Confidence: {{state_attr("weather.local_weather_forecast_weather", "rain_confidence")}}
+        icon: mdi:weather-rainy
+        icon_color: |
+          {% set prob = state_attr("weather.local_weather_forecast_weather", "rain_probability") | int(0) %}
+          {% if prob >= 70 %}red
+          {% elif prob >= 40 %}orange
+          {% else %}blue{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========== SECTION 5: FORECASTS ==========
+  - type: custom:mushroom-title-card
+    title: 📊 Forecast Models
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Zambretti
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "forecast_zambretti")}}
+          Number: {{state_attr("weather.local_weather_forecast_weather", "zambretti_number")}}
+        icon: mdi:weather-partly-cloudy
+        icon_color: blue
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Negretti-Zambra
+        secondary: |
+          {{state_attr("weather.local_weather_forecast_weather", "forecast_negretti_zambra")}}
+          Number: {{state_attr("weather.local_weather_forecast_weather", "neg_zam_number")}}
+        icon: mdi:weather-partly-rainy
+        icon_color: orange
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========== SECTION 6: FORECAST CONFIDENCE ==========
+  - type: custom:mushroom-title-card
+    title: 🎯 Forecast Quality
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Confidence
+        secondary: |
+          Level: {{state_attr("weather.local_weather_forecast_weather", "forecast_confidence")}}
+          
+          {% set adj = state_attr("weather.local_weather_forecast_weather", "forecast_adjustments") %}
+          {% if adj and adj is iterable and adj is not string %}
+            Adjustments: {{adj | length}}
+          {% endif %}
+        icon: mdi:check-circle
+        icon_color: |
+          {% set conf = state_attr("weather.local_weather_forecast_weather", "forecast_confidence") %}
+          {% if conf == "high" %}green
+          {% elif conf == "medium" %}yellow
+          {% else %}orange{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Adjustments
+        secondary: |
+          {% set details = state_attr("weather.local_weather_forecast_weather", "forecast_adjustment_details") %}
+          {% if details and details is iterable and details is not string %}
+            {% for detail in details[:3] %}
+              • {{detail}}
+            {% endfor %}
+          {% else %}
+            No adjustments
+          {% endif %}
+        icon: mdi:information
+        icon_color: blue
+        layout: vertical
+        multiline_secondary: true
+```
+
+**📋 Available Attributes:**
+- `temperature`, `feels_like`, `comfort_level`
+- `humidity`, `pressure`, `pressure_trend`
+- `wind_speed`, `wind_gust`, `wind_bearing`, `gust_ratio`
+- `wind_type`, `wind_beaufort_scale`, `atmosphere_stability`
+- `dew_point`, `dewpoint_spread`, `fog_risk`, `visibility_estimate`
+- `rain_probability`, `rain_confidence`
+- `forecast_zambretti`, `zambretti_number`
+- `forecast_negretti_zambra`, `neg_zam_number`
+- `forecast_short_term`, `forecast_confidence`
+- `forecast_adjustments`, `forecast_adjustment_details`
+
+---
+
+**Last updated:** 2025-12-09  
+**Version:** v3.1.1
 

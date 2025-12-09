@@ -88,7 +88,7 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
         15: 15,
         16: 18,
         17: 22,
-        19: 25, 32: 25,
+        19: 25, 32: 25, 33: 25,  # z=33 is extreme rising pressure
         22: 5,  # FIXED: Missing z=22 mapping - Settling fair
         23: 5,
         24: 6,
@@ -124,7 +124,7 @@ def _map_zambretti_to_letter(z: int) -> str:
         15: "P",
         16: "S",
         17: "W",
-        19: "Z", 32: "Z",
+        19: "Z", 32: "Z", 33: "Z",  # z=33 is extreme rising pressure
         22: "F",  # FIXED: Missing z=22 letter mapping
         23: "F",
         24: "G",

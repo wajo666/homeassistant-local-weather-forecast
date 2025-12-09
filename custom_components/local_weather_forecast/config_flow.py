@@ -7,11 +7,9 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
-from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.components import sensor
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import selector
 
 from .const import (
@@ -20,7 +18,6 @@ from .const import (
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_HUMIDITY_SENSOR,
-    CONF_LANGUAGE,
     CONF_PRESSURE_SENSOR,
     CONF_PRESSURE_TYPE,
     CONF_RAIN_RATE_SENSOR,
@@ -32,10 +29,8 @@ from .const import (
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
     DEFAULT_ENABLE_WEATHER_ENTITY,
-    DEFAULT_LANGUAGE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
-    LANGUAGES,
     PRESSURE_TYPE_ABSOLUTE,
     PRESSURE_TYPE_RELATIVE,
 )
@@ -66,10 +61,14 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error("Pressure sensor not found: %s", pressure_sensor)
                 errors[CONF_PRESSURE_SENSOR] = "sensor_not_found"
             else:
-                _LOGGER.debug("Pressure sensor found: %s (state=%s, unit=%s)",
-                            pressure_sensor,
-                            pressure_state.state,
-                            pressure_state.attributes.get("unit_of_measurement"))
+                unit = pressure_state.attributes.get("unit_of_measurement")
+                _LOGGER.info(
+                    "Pressure sensor: %s | Value: %s %s | "
+                    "Will be converted to hPa for calculations",
+                    pressure_sensor,
+                    pressure_state.state,
+                    unit
+                )
 
             # Validate optional sensors if provided (with safe access)
             if temp_sensor := user_input.get(CONF_TEMPERATURE_SENSOR):
@@ -80,10 +79,14 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         _LOGGER.error("Temperature sensor not found: %s", temp_sensor)
                         errors[CONF_TEMPERATURE_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Temperature sensor found: %s (state=%s, unit=%s)",
-                                    temp_sensor,
-                                    temp_state.state if temp_state else None,
-                                    temp_state.attributes.get("unit_of_measurement") if temp_state else None)
+                        unit = temp_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Temperature sensor: %s | Value: %s %s | "
+                            "Will be converted to °C for calculations",
+                            temp_sensor,
+                            temp_state.state if temp_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating temperature sensor %s: %s", temp_sensor, e)
                     errors[CONF_TEMPERATURE_SENSOR] = "sensor_validation_error"
@@ -112,10 +115,14 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         _LOGGER.error("Wind speed sensor not found: %s", wind_speed_sensor)
                         errors[CONF_WIND_SPEED_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Wind speed sensor found: %s (state=%s, unit=%s)",
-                                    wind_speed_sensor,
-                                    wind_speed_state.state if wind_speed_state else None,
-                                    wind_speed_state.attributes.get("unit_of_measurement") if wind_speed_state else None)
+                        unit = wind_speed_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Wind speed sensor: %s | Value: %s %s | "
+                            "Will be converted to m/s for calculations",
+                            wind_speed_sensor,
+                            wind_speed_state.state if wind_speed_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating wind speed sensor %s: %s", wind_speed_sensor, e)
                     errors[CONF_WIND_SPEED_SENSOR] = "sensor_validation_error"
@@ -158,7 +165,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else "",
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain=SENSOR_DOMAIN,
+                        domain=sensor.DOMAIN,
                         device_class=["atmospheric_pressure", "pressure"],
                     )
                 ),
@@ -169,7 +176,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain=SENSOR_DOMAIN,
+                        domain=sensor.DOMAIN,
                         device_class="temperature",
                         multiple=False,
                     )
@@ -181,7 +188,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain=SENSOR_DOMAIN,
+                        domain=sensor.DOMAIN,
                         multiple=False,
                     )
                 ),
@@ -192,7 +199,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain=SENSOR_DOMAIN,
+                        domain=sensor.DOMAIN,
                         device_class="wind_speed",
                         multiple=False,
                     )
@@ -231,20 +238,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(
-                    CONF_LANGUAGE,
-                    default=user_input.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
-                    if user_input
-                    else DEFAULT_LANGUAGE,
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value=k, label=v)
-                            for k, v in LANGUAGES.items()
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
+                # CONF_LANGUAGE removed - now uses Home Assistant UI language automatically
             }
         )
 
@@ -334,10 +328,14 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         _LOGGER.error("Humidity sensor not found: %s", humidity_sensor)
                         errors[CONF_HUMIDITY_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Humidity sensor found: %s (state=%s, unit=%s)",
-                                    humidity_sensor,
-                                    humidity_state.state if humidity_state else None,
-                                    humidity_state.attributes.get("unit_of_measurement") if humidity_state else None)
+                        unit = humidity_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Humidity sensor: %s | Value: %s %s | "
+                            "Enables fog detection and enhanced forecasts",
+                            humidity_sensor,
+                            humidity_state.state if humidity_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating humidity sensor %s: %s", humidity_sensor, e)
                     errors[CONF_HUMIDITY_SENSOR] = "sensor_validation_error"
@@ -350,10 +348,14 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         _LOGGER.error("Wind gust sensor not found: %s", wind_gust_sensor)
                         errors[CONF_WIND_GUST_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Wind gust sensor found: %s (state=%s, unit=%s)",
-                                    wind_gust_sensor,
-                                    wind_gust_state.state if wind_gust_state else None,
-                                    wind_gust_state.attributes.get("unit_of_measurement") if wind_gust_state else None)
+                        unit = wind_gust_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Wind gust sensor: %s | Value: %s %s | "
+                            "Will be converted to m/s for calculations",
+                            wind_gust_sensor,
+                            wind_gust_state.state if wind_gust_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating wind gust sensor %s: %s", wind_gust_sensor, e)
                     errors[CONF_WIND_GUST_SENSOR] = "sensor_validation_error"
@@ -366,10 +368,14 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         _LOGGER.error("Rain rate sensor not found: %s", rain_rate_sensor)
                         errors[CONF_RAIN_RATE_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Rain rate sensor found: %s (state=%s, unit=%s)",
-                                    rain_rate_sensor,
-                                    rain_rate_state.state if rain_rate_state else None,
-                                    rain_rate_state.attributes.get("unit_of_measurement") if rain_rate_state else None)
+                        unit = rain_rate_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Rain rate sensor: %s | Value: %s %s | "
+                            "Supported units: mm/h, mm, in/h, in (will be converted to mm)",
+                            rain_rate_sensor,
+                            rain_rate_state.state if rain_rate_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating rain rate sensor %s: %s", rain_rate_sensor, e)
                     errors[CONF_RAIN_RATE_SENSOR] = "sensor_validation_error"
@@ -383,10 +389,14 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         _LOGGER.error("Dewpoint sensor not found: %s", dewpoint_sensor)
                         errors[CONF_DEWPOINT_SENSOR] = "sensor_not_found"
                     else:
-                        _LOGGER.debug("Dewpoint sensor found: %s (state=%s, unit=%s)",
-                                    dewpoint_sensor,
-                                    dewpoint_state.state if dewpoint_state else None,
-                                    dewpoint_state.attributes.get("unit_of_measurement") if dewpoint_state else None)
+                        unit = dewpoint_state.attributes.get("unit_of_measurement")
+                        _LOGGER.info(
+                            "Dewpoint sensor: %s | Value: %s %s | "
+                            "Will be converted to °C for calculations",
+                            dewpoint_sensor,
+                            dewpoint_state.state if dewpoint_state else None,
+                            unit
+                        )
                 except Exception as e:
                     _LOGGER.error("Error validating dewpoint sensor %s: %s", dewpoint_sensor, e)
                     errors[CONF_DEWPOINT_SENSOR] = "sensor_validation_error"
@@ -636,18 +646,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(
-                    CONF_LANGUAGE,
-                    default=current_config.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value=k, label=v)
-                            for k, v in LANGUAGES.items()
-                        ],
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
+                # CONF_LANGUAGE removed - now uses Home Assistant UI language automatically
                 # Feature toggles
                 vol.Optional(
                     CONF_ENABLE_WEATHER_ENTITY,
@@ -661,4 +660,3 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
             data_schema=options_schema,
             errors=errors,
         )
-
