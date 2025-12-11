@@ -9,6 +9,9 @@ pytest-xdist>=3.6.0  # For parallel test execution
 # Home Assistant (minimal version for imports)
 homeassistant>=2024.12.0
 
+# Fix for Python 3.13 compatibility
+pycares>=4.4.0  # Required for aiodns/aiohttp with Python 3.13
+
 # Code quality (optional)
 # pylint>=3.0.0
 # black>=24.0.0
