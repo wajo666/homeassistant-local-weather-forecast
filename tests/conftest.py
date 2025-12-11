@@ -242,6 +242,11 @@ class MockHomeAssistant:
         """Add executor job."""
         return asyncio.get_event_loop().run_in_executor(None, func, *args)
 
+    async def async_block_till_done(self):
+        """Block until all pending work is done."""
+        # Wait for all pending tasks
+        await asyncio.sleep(0)
+
 
 @pytest.fixture
 async def hass():
