@@ -42,8 +42,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install 'pycares>=4.4.0' 'aiodns>=3.2.0'
           pip install -r requirements_test.txt
-          pip install homeassistant
+          pip install homeassistant  # Python 3.13 - latest is OK
 
       - name: Run quick tests
         run: |
