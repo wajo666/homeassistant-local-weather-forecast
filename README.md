@@ -3,15 +3,20 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/wajo666/homeassistant-local-weather-forecast.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Original Author](https://img.shields.io/badge/Original%20Author-HAuser1234-blue.svg)](https://github.com/HAuser1234)
-[![Maintainer](https://img.shields.io/badge/Maintainer-wajo666-green.svg)](https://github.com/wajo666)
+[![Version](https://img.shields.io/badge/version-3.1.3-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-464%20passed-brightgreen.svg)](tests/README_TESTS.md)
+[![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/README_TESTS.md)
+[![Developer](https://img.shields.io/badge/Developer-wajo666-green.svg)](https://github.com/wajo666)
 
 ## 🌤️ Advanced Local Weather Forecast - Up to 3 Days*
 
 This Home Assistant integration provides **advanced local weather forecasting** without relying on external services or APIs. It uses barometric pressure trends, temperature modeling, and proven meteorological algorithms to predict weather conditions.
 
-**Original Developer:** [@HAuser1234](https://github.com/HAuser1234)  
-**Current Maintainer:** [@wajo666](https://github.com/wajo666)
+**Developer:** [@wajo666](https://github.com/wajo666)
+
+### 💡 Inspiration
+
+This integration was inspired by the original work of **[@HAuser1234](https://github.com/HAuser1234)** ([original repository](https://github.com/HAuser1234/homeassistant-local-weather-forecast)). This is an **independent integration developed from scratch** with significant enhancements and new features. The original code served as inspiration for the forecasting approach.
 
 ### ✨ Key Features
 
@@ -24,6 +29,8 @@ This Home Assistant integration provides **advanced local weather forecasting** 
 - 🧠 **Dual Algorithms** - Zambretti & Negretti-Zambra forecast models
 - 🌡️ **Advanced Features** - Feels Like temp, Dew Point, Fog Risk analysis
 - 🌧️ **Smart Rain Detection** - Enhanced probability with real-time override
+- ❄️ **Snow Risk Detection** - 4-level snow probability (high/medium/low/none)
+- 🧊 **Frost/Ice Warning** - Critical black ice detection with 5 risk levels
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
 
 ---
@@ -99,22 +106,186 @@ This integration uses **barometric pressure trends** combined with optional sens
 The integration uses two independent forecast algorithms that run in parallel:
 
 ### 1. Zambretti Forecaster (`zambretti.py`)
+- **Base Accuracy:** ~88-94%
 - Classic algorithm from 1920s
 - Based on pressure, trend, and wind
 - Seasonal adjustments (summer/winter)
 - Letter codes A-Z for quick reference
-- Best for: Temperate climates
+- **Best for:** Temperate climates, stable weather patterns
+- **Strengths:** Simple, proven, good for European climate
 - **Now with hourly forecasting**
 
 ### 2. Negretti & Zambra (`negretti_zambra.py`)
+- **Base Accuracy:** ~88-94%
 - Modern "slide rule" approach
 - 22-step pressure scale (950-1050 hPa)
 - Detailed 16-direction wind corrections
 - Exceptional weather detection
-- Best for: Variable weather patterns
+- **Best for:** Variable weather patterns, rapid changes
+- **Strengths:** Better extreme weather detection, finer pressure scale
 - **Now with hourly forecasting**
 
-**Both models run simultaneously** - compare them to find which works better for your location!
+### 🏆 Which is More Accurate?
+
+**Both have similar accuracy (~88-94%)**, but excel in different conditions:
+
+| Weather Pattern | Better Algorithm | Why? |
+|-----------------|------------------|------|
+| Stable weather (high pressure) | **Zambretti** | Optimized for temperate zones |
+| Variable weather (fronts) | **Negretti-Zambra** | Finer pressure scale (22 steps) |
+| Extreme conditions (storms) | **Negretti-Zambra** | Exceptional weather detection |
+| Seasonal changes | **Zambretti** | Better summer/winter adjustments |
+| Wind-influenced weather | **Negretti-Zambra** | 16-direction wind corrections |
+
+### 🎯 Recommended: Use Enhanced Forecast!
+
+**`sensor.local_forecast_enhanced`** combines BOTH algorithms + modern sensors:
+
+```
+📊 Accuracy by Configuration:
+├─ Zambretti only:        ~88-94%
+├─ Negretti only:         ~88-94%
+├─ Enhanced (both + wind): ~94%
+└─ Enhanced (all sensors): ~98% ⭐ BEST!
+```
+
+**Enhanced features:**
+- ✅ Consensus from both algorithms
+- ✅ Fog risk detection (humidity + dewpoint)
+- ✅ Atmospheric stability (wind gusts)
+- ✅ Snow/frost warnings
+- ✅ Confidence scoring
+
+**Example:**
+```yaml
+# sensor.local_forecast_enhanced
+state: "Settled Fine. High humidity (92%), CRITICAL fog risk"
+
+attributes:
+  zambretti_number: 0      # "Settled Fine"
+  negretti_number: 1       # "Fine Weather"
+  consensus: true          # Both agree!
+  confidence: "high"
+  accuracy_estimate: "~98%"
+```
+
+### 📝 How to Compare Them Yourself
+
+**Test both for 2-3 weeks on your location:**
+
+1. Monitor both sensors:
+   - `sensor.local_forecast_zambretti_detail`
+   - `sensor.local_forecast_neg_zam_detail`
+
+2. Compare with actual weather
+
+3. Use the more accurate one, or trust `sensor.local_forecast_enhanced` (uses both!)
+
+**Both models run simultaneously** - you don't need to choose, the enhanced sensor does it for you!
+
+---
+
+## 🌦️ Weather Entity - What Does It Use?
+
+**Entity:** `weather.local_weather_forecast_weather`
+
+The weather entity intelligently combines multiple data sources with **priority-based override system**:
+
+### 🎯 Priority Order (Highest to Lowest)
+
+#### **PRIORITY 1: Real-Time Rain Detection** (Immediate Override)
+- **Source:** Rain rate sensor (if configured)
+- **Triggers:** When rain rate > 0.1 mm/h
+- **Result:** Condition = `"rainy"` (100% rain probability)
+- **Example:** Active rain sensor → Immediate "rainy" condition
+
+#### **PRIORITY 2: Snow & Fog Detection** (Meteorological Conditions)
+- **Snow Detection:**
+  - **High risk:** Temp ≤ 0°C, humidity > 80%, dewpoint spread < 2°C, rain prob > 60%
+  - **Medium risk:** Temp 0-2°C, humidity > 70%, dewpoint spread < 3°C, rain prob > 40%
+  - **Result:** Condition = `"snowy"`
+  
+- **Fog Detection:**
+  - **Critical:** Dewpoint spread < 1.5°C + humidity > 85%
+  - **Near saturation:** Dewpoint spread < 1.0°C + humidity > 80%
+  - **Result:** Condition = `"fog"`
+
+#### **PRIORITY 3: Zambretti Forecast** (Barometric Pressure-Based)
+- **Source:** `sensor.local_forecast_zambretti_detail`
+- **Uses:** Letter code (A-Z) → HA condition mapping
+- **Enhancements:**
+  - **Humidity correction:**
+    - Humidity > 85% + (sunny/partlycloudy) → Upgraded to `"cloudy"`
+    - Humidity > 70% + sunny → Upgraded to `"partlycloudy"`
+  - **Night detection:**
+    - Sunny at night → Converted to `"clear-night"`
+
+#### **PRIORITY 4: Pressure Fallback** (Basic Estimation)
+- **Used:** When Zambretti sensor unavailable
+- **Logic:**
+  - Pressure < 1000 hPa → `"rainy"`
+  - Pressure 1000-1013 hPa → `"cloudy"`
+  - Pressure 1013-1020 hPa → `"partlycloudy"`
+  - Pressure > 1020 hPa → `"sunny"` (or `"clear-night"`)
+
+### 📊 Summary: Data Sources Used
+
+| Feature | Data Source | Required? |
+|---------|-------------|-----------|
+| **Condition** | Zambretti forecast (letter A-Z) | ✅ Required |
+| **Rain Override** | Rain rate sensor | ❌ Optional |
+| **Snow Detection** | Temperature + Humidity + Rain probability | ❌ Optional |
+| **Fog Detection** | Temperature + Humidity + Dewpoint | ❌ Optional |
+| **Humidity Correction** | Humidity sensor | ❌ Optional |
+| **Night Detection** | Sunrise/Sunset (automatic) | ✅ Built-in |
+| **Temperature** | Temperature sensor | ⚠️ Recommended |
+| **Pressure** | Pressure sensor | ✅ Required |
+| **Wind** | Wind speed + direction sensors | ❌ Optional |
+| **Feels Like** | Temperature + Humidity + Wind + Solar | ❌ Optional |
+| **Dew Point** | Temperature + Humidity (calculated) | ❌ Optional |
+
+### 🎯 Which Forecast Algorithm?
+
+**Weather entity uses ONLY Zambretti forecast** for the base condition:
+- ✅ **Zambretti letter code** (A-Z) → HA weather condition
+- ❌ **Negretti-Zambra** is NOT used by weather entity
+- ✅ **Enhanced sensor** (`sensor.local_forecast_enhanced`) uses BOTH
+
+**Why Zambretti?**
+- Simpler letter code mapping (A-Z)
+- Standard HA weather conditions match well
+- Proven accuracy for European climates
+
+**Want to use both algorithms?**
+- Use `sensor.local_forecast_enhanced` instead
+- It combines Zambretti + Negretti-Zambra + all sensors
+- Higher accuracy (~98% vs ~94%)
+
+### 📝 Example: How Condition is Determined
+
+```text
+Scenario 1: Active rain
+  Rain rate: 2.5 mm/h
+  → Condition: "rainy" (Priority 1 override)
+
+Scenario 2: Freezing with high humidity
+  Temperature: -1°C, Humidity: 85%, Rain prob: 70%
+  → Condition: "snowy" (Priority 2 override)
+
+Scenario 3: Near saturation
+  Dewpoint spread: 0.8°C, Humidity: 88%
+  → Condition: "fog" (Priority 2 override)
+
+Scenario 4: Normal forecast
+  Zambretti: Letter "A" (Settled Fine)
+  Humidity: 65%
+  → Condition: "sunny" (Priority 3, Zambretti)
+
+Scenario 5: High humidity correction
+  Zambretti: Letter "A" (Settled Fine)
+  Humidity: 90%
+  → Condition: "cloudy" (Priority 3, humidity-corrected)
+```
 
 ---
 
@@ -393,7 +564,7 @@ Classic algorithm using:
 - Pressure trend (rising/falling/steady)
 - Wind direction correction
 - Seasonal adjustments
-- **NEW:** Hourly forecasting capability
+- Hourly forecasting capability
 
 ### Negretti & Zambra
 
@@ -402,7 +573,7 @@ Modern "slide rule" approach with:
 - Detailed wind direction corrections
 - Hemisphere-specific adjustments
 - Exceptional weather detection
-- **NEW:** Hourly forecasting capability
+- Hourly forecasting capability
 
 Both models provide:
 - 📝 Text forecast in your language
@@ -430,16 +601,30 @@ Combines classical Zambretti/Negretti-Zambra algorithms with modern sensor data:
 - ✅ Accuracy: ~94-98%
 
 **Example Output:**
-```
-State: "Settling fair. CRITICAL fog risk (spread 1.2°C), High humidity (92.7%)"
+```yaml
+state: "Settled Fine. High humidity (90.9%), CRITICAL fog risk (spread 1.4°C), Very unstable atmosphere (gust ratio 2.98)"
 
-Attributes:
-  base_forecast: "Settling fair"
+attributes:
+  base_forecast: "Settled Fine"
+  zambretti_number: 0
+  negretti_number: 1
+  adjustments: "high_humidity, critical_fog_risk, very_unstable"
+  adjustment_details: "High humidity (90.9%), CRITICAL fog risk (spread 1.4°C), Very unstable atmosphere (gust ratio 2.98)"
+  confidence: "high"
+  consensus: true
+  humidity: 90.9
+  dew_point: 2.9
+  dewpoint_spread: 1.4
   fog_risk: "high"
-  dewpoint_spread: 1.2
-  humidity: 92.7
-  confidence: "medium"
-  accuracy_estimate: "~94%"
+  snow_risk: "none"
+  frost_risk: "none"
+  wind_speed: 5.2
+  wind_gust: 15.5
+  gust_ratio: 2.98
+  atmosphere_stability: "very_unstable"
+  wind_type: "Fresh Breeze"
+  wind_beaufort_scale: 5
+  accuracy_estimate: "~98%"
 ```
 
 ---
@@ -458,15 +643,19 @@ Enhanced rain probability calculation using multiple factors:
 - Current rain override
 
 **Example Output:**
-```
-State: 45  # percentage
+```yaml
+state: 45  # percentage
 
-Attributes:
+attributes:
   zambretti_probability: 34
   negretti_probability: 86
   enhanced_probability: 45
   confidence: "high"
-  factors_used: ["Zambretti", "Negretti-Zambra", "Humidity", "Dewpoint spread"]
+  factors_used:
+    - "Zambretti"
+    - "Negretti-Zambra"
+    - "Humidity"
+    - "Dewpoint spread"
 ```
 
 ---
@@ -480,8 +669,8 @@ Standard Home Assistant weather entity with advanced calculations:
 **Properties:**
 - Temperature, Pressure, Humidity
 - Wind Speed, Direction, Gust
-- **NEW:** Dew Point (Magnus formula)
-- **NEW:** Feels Like Temperature (Dynamic formula)
+- Dew Point (Magnus formula)
+- Feels Like Temperature (Dynamic formula)
 - Condition from Zambretti
 - Daily forecast
 
@@ -535,6 +724,33 @@ Based on **wind gust ratio** (gust speed / wind speed):
 - **Unstable** - Ratio 1.5-2.5 → Moderate turbulence
 - **Very Unstable** - Ratio > 2.5 → High turbulence
 
+### Snow Risk Detection ❄️
+
+Meteorologically accurate snow prediction based on **temperature, humidity, dewpoint spread, and precipitation probability**:
+- **High** - Temp ≤ 0°C, humidity > 80%, dewpoint spread < 2°C, rain prob > 60%
+- **Medium** - Temp 0-2°C, humidity > 70%, dewpoint spread < 3°C, rain prob > 40%
+- **Low** - Temp 2-4°C, humidity > 60%, rain prob > 50%
+- **None** - Temp > 4°C
+
+**Example:** `-2°C, 85% RH, spread 0.5°C, 70% rain` → **High snow risk**
+
+**Weather Entity Override:** When high/medium snow risk is detected, `weather.local_weather_forecast_weather` 
+condition automatically changes to **"snowy"** (overrides forecast-based condition like fog does).
+
+### Frost/Ice Risk Detection 🧊
+
+Critical black ice warning system based on **temperature, dewpoint, wind speed, and humidity**:
+- **CRITICAL** ⚠️ - Temp -2 to 0°C, humidity > 90%, spread < 1°C → **BLACK ICE WARNING!**
+- **High** - Temp < -2°C, dewpoint < 0°C, low wind (< 2 m/s) → Heavy frost/ice
+- **Medium** - Temp ≤ 0°C, dewpoint ≤ 2°C, wind < 3 m/s → Frost likely
+- **Low** - Temp 0-2°C, dewpoint ≤ 0°C → Frost possible
+- **None** - Temp > 4°C
+
+**Example:** `-1°C, 95% RH, spread 0.8°C` → **CRITICAL: Black ice!** (⚠️ logged)
+
+**Note:** Frost/ice risk is available in **attributes only** (does NOT override weather condition, 
+unlike snow which changes condition to "snowy").
+
 ### Cloud Cover Estimation
 
 **If cloud sensor is not available**, the integration estimates cloud cover from **humidity**:
@@ -585,6 +801,8 @@ Combines Zambretti/Negretti-Zambra with modern sensors:
 - 💧 **Humidity Analysis** - High humidity detection
 - 🌫️ **Fog Risk Detection** - Based on dewpoint spread
 - 💨 **Atmospheric Stability** - Wind gust ratio analysis
+- ❄️ **Snow Risk Detection** - Temperature + humidity + precipitation analysis
+- 🧊 **Frost/Ice Warning** - Critical black ice detection
 - ⚠️ **Severity Levels** - CRITICAL/HIGH/MEDIUM/LOW alerts
 
 **Example Output:**
@@ -605,8 +823,11 @@ humidity: 90.9
 dew_point: 2.9
 dewpoint_spread: 1.4
 fog_risk: "high"
+snow_risk: "none"
+frost_risk: "none"
 gust_ratio: 2.98
 accuracy_estimate: "~98%"
+```
 ```
 
 ---
@@ -626,10 +847,10 @@ Multi-factor rain prediction:
 **Output:** 0-100% probability with confidence level
 
 **Example Output:**
-```
-State: 25  # percentage
+```yaml
+state: 25  # percentage
 
-Attributes:
+attributes:
   zambretti_probability: 0
   negretti_probability: 0
   base_probability: 0
@@ -638,7 +859,11 @@ Attributes:
   humidity: 90.9
   dewpoint_spread: 1.4
   current_rain_rate: 0
-  factors_used: ["Zambretti", "Negretti-Zambra", "Humidity", "Dewpoint spread"]
+  factors_used: 
+    - "Zambretti"
+    - "Negretti-Zambra"
+    - "Humidity"
+    - "Dewpoint spread"
 ```
 
 ---
@@ -656,16 +881,8 @@ Configure these sensors for improved accuracy:
 | **Rain Rate** | - | `mm/h` | Real-time rain override |
 | **Dew Point** | `temperature` | `°C` | Override calculated value |
 
-**How to Add:**
-1. Settings → Devices & Services → Local Weather Forecast
-2. Click **Configure** (⚙️)
-3. Scroll to **Enhanced Sensors** section
-4. Select your sensors
-5. Save and reload integration
-
-**Note:** All enhanced sensors are **optional**. The integration automatically uses only available sensors.
-
 ---
+
 
 ## 📊 Complete Sensor List
 
@@ -805,23 +1022,124 @@ Weather: Using Zambretti forecast - Settled Fine (sunny)
 
 ## 🏆 Credits & Attribution
 
-### Original Developer
-This integration was originally developed by **[@HAuser1234](https://github.com/HAuser1234)**
+### Developer
+**[@wajo666](https://github.com/wajo666)** - Integration developer and maintainer
 
-**Original Repository:** [homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)  
-**Original Forum Thread:** [Home Assistant Community](https://community.home-assistant.io/t/homeassistant-12h-local-weather-forecast-94-accurate/569975)
+### Original Work & Inspiration
+This integration was inspired by and built upon the original work of **[@HAuser1234](https://github.com/HAuser1234)**:
+- **Original Repository:** [homeassistant-local-weather-forecast](https://github.com/HAuser1234/homeassistant-local-weather-forecast)
+- **Community Thread:** [Home Assistant Forum - 12h Local Weather Forecast](https://community.home-assistant.io/t/homeassistant-12h-local-weather-forecast-94-accurate/569975)
+- **Original Approach:** Zambretti algorithm implementation for Home Assistant
 
-### Current Maintainers
-- **[@HAuser1234](https://github.com/HAuser1234)** - Original developer
-- **[@wajo666](https://github.com/wajo666)** - Current maintainer
+This integration is an **independent development from scratch** with significant enhancements, but the core forecasting concept and initial inspiration came from HAuser1234's pioneering work.
 
-### Based On
-The forecast algorithms are based on proven meteorological methods:
-- **Zambretti Algorithm** - Classic barometric forecasting (1920s)
-- **Negretti & Zambra** - Slide rule method for weather prediction
+### Meteorological Algorithms
+
+#### Zambretti Forecaster
+Classic barometric forecasting method developed by **Negretti & Zambra** in the 1920s:
+- **Original Method:** [Zambretti Algorithm Explanation](https://integritext.net/DrKFS/zambretti.htm) - Dr. Kevin F. Stolarick
+- **Historical Background:** [Beteljuice Zambretti Calculator](http://www.beteljuice.co.uk/zambretti/forecast.html) - Web calculator with detailed explanation
+- **Implementation Reference:** [SAS IoT Zambretti](https://github.com/sassoftware/iot-zambretti-weather-forcasting) - Accuracy testing and validation
+- **Letter Code System:** A-Z mapping to weather conditions based on pressure trends
+
+#### Negretti & Zambra Method
+Traditional slide rule approach for weather prediction:
+- **Historical Method:** Developed by Negretti & Zambra instrument makers (19th century)
+- **Approach:** 22-step pressure scale (950-1050 hPa) with 16-direction wind corrections
+- **Reference:** [Zambretti Algorithm Documentation](https://integritext.net/DrKFS/zambretti.htm)
+- **Implementation:** Extended version with exceptional weather detection
+
+### Calculation Methods & Scientific References
+
+#### Temperature Calculations
+- **Feels Like Temperature:**
+  - [Apparent Temperature Formula](https://en.wikipedia.org/wiki/Apparent_temperature) - Wikipedia
+  - [Wind Chill Calculator](https://www.weather.gov/epz/wxcalc_windchill) - NOAA
+  - [Heat Index](https://www.weather.gov/safety/heat-index) - NWS Guidelines
+  
+- **Temperature Change Detection:**
+  - Linear regression over 1-hour sliding window
+  - Dual-limit system (time-based + count-based) for reliability
+
+#### Humidity & Dew Point
+- **Dew Point Calculation:**
+  - [Magnus Formula](https://en.wikipedia.org/wiki/Dew_point#Calculating_the_dew_point) - Wikipedia
+  - [NOAA Dew Point Calculator](https://www.weather.gov/epz/wxcalc_dewpoint)
+  - Formula: `Td = (b × α(T,RH)) / (a - α(T,RH))` where `α(T,RH) = (a×T)/(b+T) + ln(RH/100)`
+  
+- **Dewpoint Spread:**
+  - `Spread = Temperature - Dew Point`
+  - Used for fog, snow, and frost risk assessment
+
+#### Fog Detection
+- **Meteorological Basis:**
+  - [Fog Formation Conditions](https://www.weather.gov/lmk/fog) - NWS
+  - [Dew Point Depression & Fog](https://en.wikipedia.org/wiki/Dew_point_depression)
+  
+- **Criteria:**
+  - **Critical:** Dewpoint spread < 1.5°C + humidity > 85%
+  - **High:** Dewpoint spread < 1.0°C + humidity > 80%
+  - Based on saturation point proximity
+
+#### Snow Risk Detection
+- **Scientific Basis:**
+  - [Snow Formation Conditions](https://www.weather.gov/media/lmk/soo/Winter_Wx_Review.pdf) - NWS Winter Weather Guide
+  - [Temperature & Precipitation Type](https://www.weather.gov/source/zhu/ZHU_Training_Page/precipitation_type/why_it_snows/why_it_snows.html)
+  
+- **Criteria:**
+  - Temperature ≤ 4°C (snow possible)
+  - High humidity (>70%) indicates moisture
+  - Low dewpoint spread (<3°C) indicates saturation
+  - Rain probability confirms precipitation
+  
+- **Implementation:** Multi-factor risk assessment (high/medium/low/none)
+
+#### Frost & Ice Detection
+- **Scientific Basis:**
+  - [Frost Formation](https://www.weather.gov/safety/winter-frost) - NWS Safety Guide
+  - [Black Ice Conditions](https://www.weather.gov/safety/winter-ice) - NOAA
+  
+- **Criteria:**
+  - **CRITICAL (Black Ice):** -2°C to 0°C, RH > 90%, spread < 1°C, low wind
+  - **High:** < -2°C, dewpoint < 0°C, low wind (<2 m/s)
+  - **Medium:** ≤ 0°C, dewpoint ≤ 2°C, wind < 3 m/s
+  
+- **Black Ice Warning:** Most dangerous road condition - supercooled water on pavement
+
+#### Atmospheric Stability & Wind
+- **Beaufort Scale:**
+  - [Beaufort Wind Scale](https://en.wikipedia.org/wiki/Beaufort_scale) - 0-12 classification
+  - Used for wind type descriptions (Calm, Breeze, Gale, Storm, Hurricane)
+  
+- **Gust Ratio Analysis:**
+  - `Gust Ratio = Wind Gust / Wind Speed`
+  - **Stable:** Ratio < 1.3
+  - **Moderate:** Ratio 1.3-1.5
+  - **Unstable:** Ratio 1.5-2.0
+  - **Very Unstable:** Ratio > 2.0
+  - Low wind speeds (<3 m/s) exempt from instability warnings
+
+#### Rain Probability
+- **Multi-Factor Calculation:**
+  - Base forecast (Zambretti + Negretti-Zambra)
+  - Humidity adjustments (±15%)
+  - Dewpoint spread saturation factor (±15%)
+  - Real-time rain rate override
+  
+- **Confidence Scoring:**
+  - High: Both algorithms agree
+  - Medium: Algorithms differ slightly
+  - Low: Algorithms significantly disagree
+
+### Implementation Tools
+- **Home Assistant Core:** [developers.home-assistant.io](https://developers.home-assistant.io/)
+- **Python Libraries:** Magnus formula, statistical analysis, time series processing
+- **Testing Framework:** pytest with 464 comprehensive tests
 
 ### Contributors
-Thank you to all contributors who help improve this integration!
+Thank you to everyone who contributes to improving this integration through bug reports, feature requests, and pull requests!
+
+Special thanks to the meteorological community for maintaining detailed documentation and the open-source weather calculation references.
 
 ---
 
@@ -830,6 +1148,7 @@ Thank you to all contributors who help improve this integration!
 ### Available Guides
 - 📝 **[Changelog](CHANGELOG.md)** - Version history and changes
 - 🌦️ **[Weather Cards Guide](WEATHER_CARDS.md)** - Lovelace card examples
+- 🧪 **[Testing Guide](tests/README_TESTS.md)** - Test suite documentation (456 tests, 100% pass rate)
 - 🔧 **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to this project
 
 ### In This README
@@ -843,6 +1162,7 @@ Thank you to all contributors who help improve this integration!
 
 ### Development
 - 🔧 **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- 🧪 **[Testing Guide](tests/README_TESTS.md)** - 456 tests with 100% pass rate
 
 ---
 
@@ -859,20 +1179,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 
-## 📚 Related Projects
-
-- [HA Ecowitt Extended](https://github.com/HAuser1234/HA_Ecowitt_Extended) - Ecowitt weather station integration
-- [Solar Forecast Charge Prediction](https://github.com/HAuser1234/Homeassistant-solar-forecast-charge-prediction) - Solar battery forecasting
-
----
-
-## 📜 Credits & Sources
-
-- [SAS IoT Zambretti Implementation](https://github.com/sassoftware/iot-zambretti-weather-forcasting)
-- [Zambretti Algorithm Documentation](https://integritext.net/DrKFS/zambretti.htm)
-- [Beteljuice Zambretti Calculator](http://www.beteljuice.co.uk/zambretti/forecast.html)
-
----
 
 ## ⚖️ License
 
@@ -884,6 +1190,8 @@ MIT License - See [LICENSE](LICENSE) file
 
 
 **Note:** *94% accuracy claim based on [SAS IoT implementation testing](https://github.com/sassoftware/iot-zambretti-weather-forcasting)*
+
+
 
 
 

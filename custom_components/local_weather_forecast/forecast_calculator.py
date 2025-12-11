@@ -94,7 +94,14 @@ class PressureModel:
         predicted = self.current_pressure + total_change
 
         # Clamp to realistic atmospheric pressure range (950-1050 hPa)
-        return max(950.0, min(1050.0, predicted))
+        result = max(950.0, min(1050.0, predicted))
+
+        _LOGGER.debug(
+            f"PressureModel: {hours_ahead}h → {result:.1f} hPa "
+            f"(current={self.current_pressure:.1f}, change={total_change:+.1f}, rate={self.change_rate_3h:+.1f}/3h)"
+        )
+
+        return result
 
     def get_trend(self, hours_ahead: int) -> str:
         """Get pressure trend description.
@@ -270,7 +277,15 @@ class TemperatureModel:
             )
 
         # Absolute realistic temperature limits (-40 to +50°C)
-        return max(-40.0, min(50.0, predicted))
+        result = max(-40.0, min(50.0, predicted))
+
+        _LOGGER.debug(
+            f"TempModel: {hours_ahead}h → {result:.1f}°C "
+            f"(current={self.current_temp:.1f}, trend={trend_change:+.1f}, "
+            f"diurnal={diurnal_change:+.1f}, solar={solar_change:+.1f})"
+        )
+
+        return result
 
     def _get_sun_angle_factor(self, hour: int) -> float:
         """Calculate sun angle factor (0-1) for given hour.
@@ -515,7 +530,7 @@ class ZambrettiForecaster:
                 # Calculate cloud cover from UV index
                 # UV ratio: actual/expected (1.0 = clear, 0.5 = 50% clouds, 0.2 = overcast)
                 uv_ratio = self.uv_index / expected_clear_sky_uv
-                cloud_cover_percent = max(0, min(100, (1.0 - uv_ratio) * 100))
+                cloud_cover_percent = max(0.0, min(100.0, (1.0 - uv_ratio) * 100))
 
                 _LOGGER.debug(
                     f"UV cloud correction: UV={self.uv_index:.1f}, "
@@ -566,7 +581,7 @@ class ZambrettiForecaster:
 
             if expected_clear_sky_solar > 100:
                 solar_ratio = self.solar_radiation / expected_clear_sky_solar
-                cloud_cover_percent = max(0, min(100, (1.0 - solar_ratio) * 100))
+                cloud_cover_percent = max(0.0, min(100.0, (1.0 - solar_ratio) * 100))
 
                 _LOGGER.debug(
                     f"Solar cloud correction: radiation={self.solar_radiation:.0f}W/m², "
@@ -760,7 +775,14 @@ class RainProbabilityCalculator:
             base_prob = max(0, base_prob - 5)
 
         # Clamp to 0-100
-        return max(0, min(100, base_prob))
+        result = max(0, min(100, base_prob))
+
+        _LOGGER.debug(
+            f"RainProb: letter={zambretti_letter} → {result}% "
+            f"(P={future_pressure:.1f}hPa, ΔP={pressure_change:+.1f}, base={RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)}%)"
+        )
+
+        return result
 
 
 class HourlyForecastGenerator:

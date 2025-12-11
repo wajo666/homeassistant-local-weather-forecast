@@ -75,6 +75,7 @@ def calculate_negretti_zambra_forecast(
     wind_speed_fak = wind_data[3]
 
     _LOGGER.debug(f"Negretti: wind direction={direction}°, wind_speed_fak={wind_speed_fak}")
+    _LOGGER.debug(f"Negretti: Initial z_hp={z_hp:.1f} hPa (before wind adjustments)")
 
     if hemisphere == 1 and wind_speed_fak == 1:
         # Wind direction adjustments for Northern Hemisphere
@@ -111,16 +112,31 @@ def calculate_negretti_zambra_forecast(
         elif direction > 348.75 or direction <= 11.25:  # N
             z_hp = z_hp + 6 / 100 * bar_range
 
+        _LOGGER.debug(f"Negretti: z_hp after wind direction adjustment={z_hp:.1f} hPa")
+    else:
+        _LOGGER.debug(f"Negretti: No wind direction adjustment applied (hemisphere={hemisphere}, wind_speed_fak={wind_speed_fak})")
+
     # Summer adjustment for rising/falling trends
     if is_summer:
         if trend == 1:
-            z_hp = z_hp + 7 / 100 * bar_range
+            adjustment = 7 / 100 * bar_range
+            z_hp = z_hp + adjustment
+            _LOGGER.debug(f"Negretti: Summer RISING adjustment: +{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa")
         elif trend == -1:
-            z_hp = z_hp - 7 / 100 * bar_range
+            adjustment = 7 / 100 * bar_range
+            z_hp = z_hp - adjustment
+            _LOGGER.debug(f"Negretti: Summer FALLING adjustment: -{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa")
+    else:
+        _LOGGER.debug(f"Negretti: No summer adjustment (winter month)")
 
     # Ensure within bounds
     if z_hp >= bar_top:
+        _LOGGER.debug(f"Negretti: Pressure {z_hp:.1f} hPa exceeds bar_top {bar_top}, clamping to {bar_top - 1}")
         z_hp = bar_top - 1
+
+    if z_hp < bar_bottom:
+        _LOGGER.debug(f"Negretti: Pressure {z_hp:.1f} hPa below bar_bottom {bar_bottom}, clamping to {bar_bottom}")
+        z_hp = bar_bottom
 
     # Calculate option index
     z_option = int((z_hp - bar_bottom) / constant)
@@ -130,19 +146,24 @@ def calculate_negretti_zambra_forecast(
     # Check for exceptional weather
     is_exceptional = False
     if z_option < 0:
+        _LOGGER.warning(f"Negretti: EXCEPTIONAL weather detected - z_option={z_option} < 0, clamping to 0")
         z_option = 0
         is_exceptional = True
     elif z_option > 21:
+        _LOGGER.warning(f"Negretti: EXCEPTIONAL weather detected - z_option={z_option} > 21, clamping to 21")
         z_option = 21
         is_exceptional = True
 
     # Select forecast based on trend
     if trend == 1:  # Rising
         forecast_idx = rise_opt[z_option]
+        _LOGGER.debug(f"Negretti: Using RISING lookup table: z_option={z_option} → forecast_idx={forecast_idx}")
     elif trend == -1:  # Falling
         forecast_idx = fall_opt[z_option]
+        _LOGGER.debug(f"Negretti: Using FALLING lookup table: z_option={z_option} → forecast_idx={forecast_idx}")
     else:  # Steady
         forecast_idx = steady_opt[z_option]
+        _LOGGER.debug(f"Negretti: Using STEADY lookup table: z_option={z_option} → forecast_idx={forecast_idx}")
 
     _LOGGER.debug(
         f"Negretti: forecast_idx={forecast_idx}, is_exceptional={is_exceptional}, "
@@ -166,7 +187,14 @@ def calculate_negretti_zambra_forecast(
 
 
 def _map_zambretti_to_letter(z: int) -> str:
-    """Map Zambretti number to letter code."""
+    """Map Zambretti number to letter code.
+
+    Args:
+        z: Zambretti number (1-33)
+
+    Returns:
+        Letter code (A-Z) representing weather forecast
+    """
     mapping = {
         1: "A", 10: "A", 20: "A",
         2: "B", 11: "B", 21: "B",
@@ -195,5 +223,10 @@ def _map_zambretti_to_letter(z: int) -> str:
         30: "T",
         31: "Y",
     }
-    return mapping.get(z, "A")
+    result = mapping.get(z, "A")
+    if z not in mapping:
+        _LOGGER.debug(f"Negretti: Unknown Zambretti number {z}, using fallback letter 'A'")
+    else:
+        _LOGGER.debug(f"Negretti: Mapped Zambretti number {z} → letter '{result}'")
+    return result
 

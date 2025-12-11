@@ -44,6 +44,8 @@ from .const import (
     PRESSURE_TREND_FALLING,
     PRESSURE_TREND_RISING,
     PRESSURE_TYPE_RELATIVE,
+    PRESSURE_MIN_RECORDS,
+    TEMPERATURE_MIN_RECORDS,
 )
 from .forecast_data import PRESSURE_SYSTEMS, CONDITIONS
 from .zambretti import calculate_zambretti_forecast
@@ -52,8 +54,18 @@ from .calculations import (
     calculate_dewpoint,
     calculate_rain_probability_enhanced,
     get_fog_risk,
+    get_snow_risk,
+    get_frost_risk,
 )
-from .language import get_language_index, get_wind_type, get_adjustment_text, get_atmosphere_stability_text, get_fog_risk_text
+from .language import (
+    get_language_index,
+    get_wind_type,
+    get_adjustment_text,
+    get_atmosphere_stability_text,
+    get_fog_risk_text,
+    get_snow_risk_text,
+    get_frost_risk_text,
+)
 from .unit_conversion import UnitConverter
 
 _LOGGER = logging.getLogger(__name__)
@@ -831,23 +843,48 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                 pressure = float(new_state.state)
                 timestamp = datetime.now()
 
+                _LOGGER.debug(f"PressureChange: New pressure reading: {pressure} hPa at {timestamp}")
+
                 # Add to history
                 self._history.append((timestamp, pressure))
 
-                # Keep only last 180 minutes
+                # Keep records using BOTH time-based AND count-based limits:
+                # 1. Keep all records within 180 minutes (time window)
+                # 2. ALWAYS keep at least PRESSURE_MIN_RECORDS newest records (even if older)
+                # This ensures we have enough data even if sensor updates irregularly
                 cutoff = timestamp - timedelta(minutes=180)
-                self._history = [
+                time_filtered = [
                     (ts, p) for ts, p in self._history if ts > cutoff
                 ]
+
+                # If we don't have enough records after time filtering, keep more
+                if len(time_filtered) < PRESSURE_MIN_RECORDS:
+                    # Keep the last PRESSURE_MIN_RECORDS records regardless of age
+                    self._history = self._history[-PRESSURE_MIN_RECORDS:]
+                    _LOGGER.debug(
+                        f"PressureChange: Kept {len(self._history)} records (minimum required, "
+                        f"time filter would leave only {len(time_filtered)})"
+                    )
+                else:
+                    self._history = time_filtered
+                    _LOGGER.debug(f"PressureChange: Kept {len(self._history)} records within 180-minute window")
 
                 # Calculate change if we have enough data
                 if len(self._history) >= 2:
                     oldest = self._history[0][1]
                     newest = self._history[-1][1]
                     self._state = round(newest - oldest, 2)
+                    time_span = (self._history[-1][0] - self._history[0][0]).total_seconds() / 60
+                    _LOGGER.debug(
+                        f"PressureChange: Calculated change = {self._state} hPa "
+                        f"over {time_span:.1f} minutes ({oldest} → {newest} hPa)"
+                    )
                     self.async_write_ha_state()
+                else:
+                    _LOGGER.debug(f"PressureChange: Not enough data for calculation (have {len(self._history)} records)")
 
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                _LOGGER.debug(f"PressureChange: Error processing update: {e}")
                 pass
 
     @property
@@ -947,23 +984,48 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
                 temperature = float(new_state.state)
                 timestamp = datetime.now()
 
+                _LOGGER.debug(f"TemperatureChange: New temperature reading: {temperature}°C at {timestamp}")
+
                 # Add to history
                 self._history.append((timestamp, temperature))
 
-                # Keep only last 60 minutes
+                # Keep records using BOTH time-based AND count-based limits:
+                # 1. Keep all records within 60 minutes (time window)
+                # 2. ALWAYS keep at least TEMPERATURE_MIN_RECORDS newest records (even if older)
+                # This ensures we have enough data even if sensor updates irregularly
                 cutoff = timestamp - timedelta(minutes=60)
-                self._history = [
+                time_filtered = [
                     (ts, t) for ts, t in self._history if ts > cutoff
                 ]
+
+                # If we don't have enough records after time filtering, keep more
+                if len(time_filtered) < TEMPERATURE_MIN_RECORDS:
+                    # Keep the last TEMPERATURE_MIN_RECORDS records regardless of age
+                    self._history = self._history[-TEMPERATURE_MIN_RECORDS:]
+                    _LOGGER.debug(
+                        f"TemperatureChange: Kept {len(self._history)} records (minimum required, "
+                        f"time filter would leave only {len(time_filtered)})"
+                    )
+                else:
+                    self._history = time_filtered
+                    _LOGGER.debug(f"TemperatureChange: Kept {len(self._history)} records within 60-minute window")
 
                 # Calculate change if we have enough data
                 if len(self._history) >= 2:
                     oldest = self._history[0][1]
                     newest = self._history[-1][1]
                     self._state = round(newest - oldest, 2)
+                    time_span = (self._history[-1][0] - self._history[0][0]).total_seconds() / 60
+                    _LOGGER.debug(
+                        f"TemperatureChange: Calculated change = {self._state}°C "
+                        f"over {time_span:.1f} minutes ({oldest} → {newest}°C)"
+                    )
                     self.async_write_ha_state()
+                else:
+                    _LOGGER.debug(f"TemperatureChange: Not enough data for calculation (have {len(self._history)} records)")
 
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                _LOGGER.debug(f"TemperatureChange: Error processing update: {e}")
                 pass
 
     @property
@@ -1951,6 +2013,33 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         if dewpoint is not None and temp is not None:
             fog_risk = get_fog_risk(temp, dewpoint)
 
+        # Get snow risk (only calculate if conditions are cold enough)
+        snow_risk = "none"
+        if temp is not None and temp <= 4 and dewpoint is not None and humidity is not None:
+            # Get rain probability if available for better snow risk assessment
+            rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+            rain_prob = None
+            if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    rain_prob = int(rain_prob_sensor.state.rstrip('%'))
+                except (ValueError, AttributeError):
+                    pass
+
+            snow_risk = get_snow_risk(temp, humidity, dewpoint, rain_prob)
+            _LOGGER.debug(
+                f"Enhanced: Snow risk={snow_risk} (temp={temp:.1f}°C, humidity={humidity:.1f}%, "
+                f"dewpoint={dewpoint:.1f}°C, rain_prob={rain_prob}%)"
+            )
+
+        # Get frost/ice risk (námraza)
+        frost_risk = "none"
+        if temp is not None and temp <= 4 and dewpoint is not None:
+            frost_risk = get_frost_risk(temp, dewpoint, wind_speed, humidity)
+            _LOGGER.debug(
+                f"Enhanced: Frost risk={frost_risk} (temp={temp:.1f}°C, dewpoint={dewpoint:.1f}°C, "
+                f"wind_speed={wind_speed:.1f} m/s)"
+            )
+
         self._state = enhanced_text
         _LOGGER.info(f"Enhanced: Setting state to: {enhanced_text}")
         self._attributes = {
@@ -1965,6 +2054,8 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "dew_point": round(dewpoint, 2) if dewpoint is not None else None,
             "dewpoint_spread": round(dewpoint_spread, 2) if dewpoint_spread is not None else None,
             "fog_risk": get_fog_risk_text(self.hass, fog_risk),  # Translated
+            "snow_risk": get_snow_risk_text(self.hass, snow_risk),  # Translated
+            "frost_risk": get_frost_risk_text(self.hass, frost_risk),  # Translated
             "wind_speed": round(wind_speed, 2) if wind_speed is not None else None,
             "wind_gust": round(wind_gust, 2) if wind_gust is not None else None,
             "gust_ratio": round(gust_ratio, 2) if gust_ratio is not None else None,

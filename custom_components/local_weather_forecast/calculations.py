@@ -34,6 +34,7 @@ def calculate_dewpoint(temperature: float, humidity: float) -> Optional[float]:
         Dew point temperature in °C, or None if calculation fails
     """
     if humidity <= 0 or humidity > 100:
+        _LOGGER.debug(f"Dewpoint: Invalid humidity={humidity}% (must be 0-100)")
         return None
 
     try:
@@ -47,8 +48,11 @@ def calculate_dewpoint(temperature: float, humidity: float) -> Optional[float]:
         # Calculate dew point
         dewpoint = (b * alpha) / (a - alpha)
 
+        _LOGGER.debug(f"Dewpoint: T={temperature:.1f}°C, RH={humidity:.1f}% → Dewpoint={dewpoint:.1f}°C")
+
         return round(dewpoint, 1)
-    except (ValueError, ZeroDivisionError):
+    except (ValueError, ZeroDivisionError) as e:
+        _LOGGER.debug(f"Dewpoint: Calculation failed - {e}")
         return None
 
 
@@ -66,6 +70,7 @@ def calculate_heat_index(temperature: float, humidity: float) -> Optional[float]
     """
     # Heat index only applicable when temperature > 27°C
     if temperature <= 27 or humidity <= 0 or humidity > 100:
+        _LOGGER.debug(f"HeatIndex: Not applicable - T={temperature:.1f}°C (need >27°C), RH={humidity:.1f}%")
         return None
 
     try:
@@ -89,41 +94,43 @@ def calculate_heat_index(temperature: float, humidity: float) -> Optional[float]
         # Convert back to Celsius
         hi_c = (hi_f - 32) * 5/9
 
+        _LOGGER.debug(f"HeatIndex: T={temperature:.1f}°C, RH={humidity:.1f}% → HI={hi_c:.1f}°C")
+
         return round(hi_c, 1)
-    except (ValueError, ZeroDivisionError):
+    except (ValueError, ZeroDivisionError) as e:
+        _LOGGER.debug(f"HeatIndex: Calculation failed - {e}")
         return None
 
 
 def calculate_wind_chill(temperature: float, wind_speed: float) -> Optional[float]:
     """
     Calculate wind chill (apparent temperature when cold and windy).
-    Uses Australian Apparent Temperature formula which works for all wind speeds.
+    Based on US National Weather Service formula.
 
     Args:
         temperature: Temperature in °C
-        wind_speed: Wind speed in km/h
+        wind_speed: Wind speed in m/s
 
     Returns:
         Wind chill in °C, or None if not applicable
     """
-    # Only applicable when temperature < 10°C
-    if temperature >= 10:
+    # Wind chill only applicable when temperature < 10°C and wind > 1.3 m/s
+    if temperature >= 10 or wind_speed <= 1.3:
+        _LOGGER.debug(f"WindChill: Not applicable - T={temperature:.1f}°C (need <10°C), Wind={wind_speed:.1f} m/s (need >1.3)")
         return None
 
     try:
-        t = temperature
-        v_ms = wind_speed / 3.6  # Convert km/h to m/s
+        # Convert wind speed to km/h for calculation
+        wind_kmh = wind_speed * 3.6
 
-        # Australian Apparent Temperature formula (works for all wind speeds)
-        # AT = Ta + 0.33×e − 0.70×ws − 4.00
-        # where e is water vapor pressure, ws is wind speed at 10m height
+        # Wind chill formula (metric)
+        wc = 13.12 + 0.6215 * temperature - 11.37 * (wind_kmh ** 0.16) + 0.3965 * temperature * (wind_kmh ** 0.16)
 
-        # Simplified wind chill for low temperatures (no humidity needed)
-        # AT ≈ T - 1.5 * (ws^0.5)
-        wc = t - 1.5 * (v_ms ** 0.5)
+        _LOGGER.debug(f"WindChill: T={temperature:.1f}°C, Wind={wind_speed:.1f} m/s → WC={wc:.1f}°C")
 
         return round(wc, 1)
-    except (ValueError, ZeroDivisionError):
+    except (ValueError, ZeroDivisionError) as e:
+        _LOGGER.debug(f"WindChill: Calculation failed - {e}")
         return None
 
 
@@ -157,19 +164,24 @@ def calculate_apparent_temperature(
     """
     try:
         apparent_temp = temperature
+        components = []
 
         # 1. HUMIDITY EFFECT (vapor pressure makes it feel warmer/colder)
         if humidity is not None:
             # Calculate water vapor pressure (e) in hPa
             e = (humidity / 100) * 6.105 * math.exp((17.27 * temperature) / (237.7 + temperature))
             # Humidity contribution (calibrated to Netatmo)
-            apparent_temp += 0.18 * e - 0.9
+            humidity_effect = 0.18 * e - 0.9
+            apparent_temp += humidity_effect
+            components.append(f"humidity_effect={humidity_effect:+.1f}°C")
 
         # 2. WIND CHILL EFFECT (wind makes it feel colder)
         if wind_speed is not None and wind_speed > 0:
             ws_ms = wind_speed / 3.6  # Convert km/h to m/s
             # Wind chill contribution (calibrated to Netatmo)
-            apparent_temp -= 0.15 * ws_ms
+            wind_effect = -0.15 * ws_ms
+            apparent_temp += wind_effect
+            components.append(f"wind_effect={wind_effect:+.1f}°C")
 
         # 3. SOLAR RADIATION EFFECT (sun makes it feel warmer)
         if solar_radiation is not None and solar_radiation > 0:
@@ -182,11 +194,18 @@ def calculate_apparent_temperature(
             if cloud_cover is not None:
                 cloud_reduction = 1.0 - (cloud_cover / 100.0)
                 solar_factor *= cloud_reduction
+                components.append(f"solar_effect={solar_factor:+.1f}°C (cloudy={cloud_cover:.0f}%)")
+            else:
+                components.append(f"solar_effect={solar_factor:+.1f}°C")
 
             apparent_temp += solar_factor
 
-        return round(apparent_temp, 1)
-    except (ValueError, ZeroDivisionError, OverflowError):
+        result = round(apparent_temp, 1)
+        _LOGGER.debug(f"ApparentTemp: T={temperature:.1f}°C → Feels={result:.1f}°C [{', '.join(components) if components else 'no adjustments'}]")
+
+        return result
+    except (ValueError, ZeroDivisionError, OverflowError) as e:
+        _LOGGER.debug(f"ApparentTemp: Calculation failed - {e}, returning temperature={temperature:.1f}°C")
         # If calculation fails, return actual temperature
         return temperature
 
@@ -352,7 +371,7 @@ def calculate_rain_probability_enhanced(
     _LOGGER.debug(f"RainCalc: Final probability (before clamp) = {final_prob}%")
 
     # Clamp to 0-100 range
-    final_prob = max(0, min(100, final_prob))
+    final_prob = max(0.0, min(100.0, final_prob))
 
     # Determine confidence based on data availability and consensus
     if len(adjustments) >= 3:
@@ -493,21 +512,167 @@ def calculate_solar_radiation_from_uv_index(uv_index: float, cloud_coverage: Opt
         return None
 
     try:
-        # Reverse of UV calculation: Solar = UV / 0.04
+        # Reverse calculation: solar_radiation = uv_index / 0.04
         solar_radiation = uv_index / 0.04
 
-        # Adjust for cloud coverage if provided (reverse the reduction)
+        # If cloud coverage was factored in, reverse that too
         if cloud_coverage is not None and 0 <= cloud_coverage <= 100:
             cloud_reduction = 1.0 - (cloud_coverage / 100 * 0.7)
             if cloud_reduction > 0:
                 solar_radiation /= cloud_reduction
 
-        # Reasonable maximum for solar radiation at Earth's surface
-        solar_radiation = min(solar_radiation, 1500.0)
-
         return round(solar_radiation, 1)
     except (ValueError, ZeroDivisionError):
         return None
+
+
+def get_snow_risk(
+    temperature: float,
+    humidity: float,
+    dewpoint: float,
+    precipitation_prob: Optional[int] = None
+) -> str:
+    """
+    Calculate snow risk based on temperature, humidity, and dewpoint.
+
+    Snow conditions (meteorologically justified):
+    - Temperature near or below 0°C
+    - High humidity (>70%) indicates moisture for precipitation
+    - Small dewpoint spread indicates saturation
+    - If precipitation probability is provided, it's factored in
+
+    Args:
+        temperature: Temperature in °C
+        humidity: Relative humidity in %
+        dewpoint: Dew point in °C
+        precipitation_prob: Optional precipitation probability (0-100%)
+
+    Returns:
+        Snow risk level: none, low, medium, high
+    """
+    from .const import (
+        SNOW_RISK_NONE,
+        SNOW_RISK_LOW,
+        SNOW_RISK_MEDIUM,
+        SNOW_RISK_HIGH,
+    )
+
+    # Snow is unlikely if temperature is above 4°C
+    if temperature > 4:
+        _LOGGER.debug(f"SnowRisk: none - T={temperature:.1f}°C (>4°C)")
+        return SNOW_RISK_NONE
+
+    dewpoint_spread = abs(temperature - dewpoint)
+
+    # HIGH RISK: Very cold, high humidity, near saturation
+    # Temperature ≤ 0°C, humidity > 80%, spread < 2°C
+    if temperature <= 0 and humidity > 80 and dewpoint_spread < 2:
+        # If precipitation probability is known and high, confirm high risk
+        if precipitation_prob is not None and precipitation_prob > 60:
+            _LOGGER.debug(f"SnowRisk: HIGH - T={temperature:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}%")
+            return SNOW_RISK_HIGH
+        # Even without precip prob, these conditions favor snow if it does precipitate
+        result = SNOW_RISK_HIGH if precipitation_prob is None else SNOW_RISK_MEDIUM
+        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={'unknown' if precipitation_prob is None else f'{precipitation_prob}%'}")
+        return result
+
+    # MEDIUM RISK: Cold, decent humidity
+    # Temperature 0-2°C, humidity > 70%, spread < 3°C
+    if temperature <= 2 and humidity > 70 and dewpoint_spread < 3:
+        result = SNOW_RISK_MEDIUM if (precipitation_prob is not None and precipitation_prob > 40) else SNOW_RISK_LOW
+        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C (0-2°C), RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}%")
+        return result
+
+    # LOW RISK: Near freezing but conditions not ideal
+    # Temperature 2-4°C, humidity > 60%
+    if temperature <= 4 and humidity > 60:
+        result = SNOW_RISK_LOW if (precipitation_prob is not None and precipitation_prob > 50) else SNOW_RISK_NONE
+        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C (2-4°C), RH={humidity:.1f}%, precip={precipitation_prob}%")
+        return result
+
+    _LOGGER.debug(f"SnowRisk: none - T={temperature:.1f}°C, RH={humidity:.1f}% (conditions not met)")
+    return SNOW_RISK_NONE
+
+
+def get_frost_risk(
+    temperature: float,
+    dewpoint: float,
+    wind_speed: Optional[float] = None,
+    humidity: Optional[float] = None
+) -> str:
+    """
+    Calculate frost/ice (námraza) risk based on temperature and dewpoint.
+
+    Frost/Ice conditions (meteorologically justified):
+    - Temperature at or below 0°C
+    - Dewpoint at or below 0°C (moisture will freeze)
+    - Low wind speed favors frost formation
+    - High humidity + freezing = ice formation
+
+    Types of frost/ice warnings:
+    - CRITICAL: Black ice risk (wet + freezing)
+    - HIGH: Heavy frost/ice formation expected
+    - MEDIUM: Light frost expected
+    - LOW: Near-freezing, frost possible
+    - NONE: No frost risk
+
+    Args:
+        temperature: Temperature in °C
+        dewpoint: Dew point in °C
+        wind_speed: Optional wind speed in m/s (low wind favors frost)
+        humidity: Optional relative humidity in %
+
+    Returns:
+        Frost risk level: none, low, medium, high, critical
+    """
+    from .const import (
+        FROST_RISK_NONE,
+        FROST_RISK_LOW,
+        FROST_RISK_MEDIUM,
+        FROST_RISK_HIGH,
+        FROST_RISK_CRITICAL,
+    )
+
+    # No frost risk if temperature is above 4°C
+    if temperature > 4:
+        _LOGGER.debug(f"FrostRisk: none - T={temperature:.1f}°C (>4°C)")
+        return FROST_RISK_NONE
+
+    dewpoint_spread = abs(temperature - dewpoint)
+
+    # CRITICAL RISK: Black ice conditions
+    # Temperature slightly below 0°C, very high humidity, near saturation
+    # This creates conditions for ice formation on surfaces
+    if -2 <= temperature <= 0 and humidity is not None and humidity > 90 and dewpoint_spread < 1:
+        _LOGGER.warning(
+            f"⚠️ CRITICAL FROST RISK: Black ice conditions - T={temperature:.1f}°C, "
+            f"Dewpoint={dewpoint:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
+        )
+        return FROST_RISK_CRITICAL
+
+    # HIGH RISK: Heavy frost/ice formation
+    # Temperature well below 0°C, dewpoint also below 0°C
+    if temperature < -2 and dewpoint < 0:
+        # Low wind makes it worse (calm conditions = more frost)
+        result = FROST_RISK_HIGH if (wind_speed is None or wind_speed < 2) else FROST_RISK_MEDIUM
+        _LOGGER.debug(f"FrostRisk: {result} - T={temperature:.1f}°C (<-2°C), Dewpoint={dewpoint:.1f}°C, Wind={wind_speed if wind_speed else 'unknown'} m/s")
+        return result
+
+    # MEDIUM RISK: Frost formation likely
+    # Temperature 0 to -2°C, dewpoint near 0°C
+    if temperature <= 0 and dewpoint <= 2:
+        result = FROST_RISK_MEDIUM if (wind_speed is not None and wind_speed < 3) else FROST_RISK_LOW
+        _LOGGER.debug(f"FrostRisk: {result} - T={temperature:.1f}°C (≤0°C), Dewpoint={dewpoint:.1f}°C, Wind={wind_speed if wind_speed else 'unknown'} m/s")
+        return result
+
+    # LOW RISK: Near-freezing conditions
+    # Temperature 0-4°C, dewpoint below freezing possible
+    if temperature <= 2 and dewpoint <= 0:
+        _LOGGER.debug(f"FrostRisk: low - T={temperature:.1f}°C (0-2°C), Dewpoint={dewpoint:.1f}°C (≤0°C)")
+        return FROST_RISK_LOW
+
+    _LOGGER.debug(f"FrostRisk: none - T={temperature:.1f}°C, Dewpoint={dewpoint:.1f}°C (conditions not met)")
+    return FROST_RISK_NONE
 
 
 def get_uv_protection_level(uv_index: float) -> str:
@@ -572,7 +737,7 @@ def estimate_solar_radiation_from_time_and_clouds(
         # Daytime - use cosine curve
         # Peak at noon (hour_angle=0), zero at ±6h
         sun_factor = math.cos(math.radians(hour_angle * 15))  # 15° per hour
-        radiation = max_radiation * max(0, sun_factor)
+        radiation = max_radiation * max(0.0, sun_factor)
 
         # Adjust for latitude (higher latitudes get less sun)
         lat_factor = math.cos(math.radians(abs(latitude)))

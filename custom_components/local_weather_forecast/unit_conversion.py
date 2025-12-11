@@ -37,20 +37,26 @@ class UnitConverter:
             Pressure in hPa
         """
         if from_unit in (UnitOfPressure.HPA, UnitOfPressure.MBAR, "hPa", "mbar"):
+            _LOGGER.debug(f"Pressure conversion: {value} {from_unit} (no conversion needed)")
             return value
-        elif from_unit in (UnitOfPressure.INHG, "inHg"):
-            return value * 33.8639  # inHg to hPa
+
+        result = value
+        if from_unit in (UnitOfPressure.INHG, "inHg"):
+            result = value * 33.8639  # inHg to hPa
         elif from_unit in (UnitOfPressure.MMHG, "mmHg"):
-            return value * 1.33322  # mmHg to hPa
+            result = value * 1.33322  # mmHg to hPa
         elif from_unit in (UnitOfPressure.KPA, "kPa"):
-            return value * 10.0  # kPa to hPa
+            result = value * 10.0  # kPa to hPa
         elif from_unit in (UnitOfPressure.PA, "Pa"):
-            return value / 100.0  # Pa to hPa
+            result = value / 100.0  # Pa to hPa
         elif from_unit in (UnitOfPressure.PSI, "psi"):
-            return value * 68.9476  # psi to hPa
+            result = value * 68.9476  # psi to hPa
         else:
             _LOGGER.warning(f"Unknown pressure unit: {from_unit}, assuming hPa")
             return value
+
+        _LOGGER.debug(f"Pressure conversion: {value} {from_unit} → {result:.2f} hPa")
+        return result
 
     @staticmethod
     def convert_temperature(value: float, from_unit: str) -> float:
@@ -64,14 +70,20 @@ class UnitConverter:
             Temperature in °C
         """
         if from_unit in (UnitOfTemperature.CELSIUS, "°C", "C"):
+            _LOGGER.debug(f"Temperature conversion: {value} {from_unit} (no conversion needed)")
             return value
-        elif from_unit in (UnitOfTemperature.FAHRENHEIT, "°F", "F"):
-            return (value - 32) * 5 / 9  # °F to °C
+
+        result = value
+        if from_unit in (UnitOfTemperature.FAHRENHEIT, "°F", "F"):
+            result = (value - 32) * 5 / 9  # °F to °C
         elif from_unit in (UnitOfTemperature.KELVIN, "K"):
-            return value - 273.15  # K to °C
+            result = value - 273.15  # K to °C
         else:
             _LOGGER.warning(f"Unknown temperature unit: {from_unit}, assuming °C")
             return value
+
+        _LOGGER.debug(f"Temperature conversion: {value} {from_unit} → {result:.2f} °C")
+        return result
 
     @staticmethod
     def convert_wind_speed(value: float, from_unit: str) -> float:
@@ -85,18 +97,24 @@ class UnitConverter:
             Wind speed in m/s
         """
         if from_unit in (UnitOfSpeed.METERS_PER_SECOND, "m/s"):
+            _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} (no conversion needed)")
             return value
-        elif from_unit in (UnitOfSpeed.KILOMETERS_PER_HOUR, "km/h", "kmh"):
-            return value / 3.6  # km/h to m/s
+
+        result = value
+        if from_unit in (UnitOfSpeed.KILOMETERS_PER_HOUR, "km/h", "kmh"):
+            result = value / 3.6  # km/h to m/s
         elif from_unit in (UnitOfSpeed.MILES_PER_HOUR, "mph"):
-            return value * 0.44704  # mph to m/s
+            result = value * 0.44704  # mph to m/s
         elif from_unit in (UnitOfSpeed.KNOTS, "kn", "kt"):
-            return value * 0.514444  # knots to m/s
+            result = value * 0.514444  # knots to m/s
         elif from_unit in ("ft/s", "fps"):
-            return value * 0.3048  # ft/s to m/s
+            result = value * 0.3048  # ft/s to m/s
         else:
             _LOGGER.warning(f"Unknown wind speed unit: {from_unit}, assuming m/s")
             return value
+
+        _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} → {result:.2f} m/s")
+        return result
 
     @staticmethod
     def convert_precipitation(value: float, from_unit: str) -> float:
@@ -110,12 +128,18 @@ class UnitConverter:
             Precipitation in mm or mm/h (same time unit as input)
         """
         if from_unit in ("mm", "mm/h"):
+            _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} (no conversion needed)")
             return value
-        elif from_unit in ("in", "in/h"):
-            return value * 25.4  # inches to mm (1 inch = 25.4 mm)
+
+        result = value
+        if from_unit in ("in", "in/h"):
+            result = value * 25.4  # inches to mm (1 inch = 25.4 mm)
+            _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} → {result:.2f} mm")
         else:
             _LOGGER.warning(f"Unknown precipitation unit: {from_unit}, assuming mm")
             return value
+
+        return result
 
     @staticmethod
     def get_sensor_unit(hass, entity_id: str) -> str | None:
@@ -151,7 +175,10 @@ class UnitConverter:
             Converted value in required unit
         """
         if from_unit is None:
+            _LOGGER.debug(f"Converting {sensor_type}: {value} (no unit specified, assuming correct unit)")
             return value
+
+        _LOGGER.debug(f"Converting {sensor_type}: {value} {from_unit} to {cls.REQUIRED_UNITS.get(sensor_type)}")
 
         if sensor_type == "pressure":
             return cls.convert_pressure(value, from_unit)
@@ -161,6 +188,7 @@ class UnitConverter:
             return cls.convert_wind_speed(value, from_unit)
         elif sensor_type == "humidity":
             # Humidity is always in %
+            _LOGGER.debug(f"Humidity: {value}% (no conversion needed)")
             return value
         elif sensor_type == "precipitation":
             return cls.convert_precipitation(value, from_unit)

@@ -1,7 +1,13 @@
 # Weather Card Examples for Lovelace UI
 
-**📦 Version:** v3.1.0 (2025-12-08)  
+**📦 Version:** v3.1.3 (2025-12-10)  
 **🎨 Purpose:** Lovelace UI card examples for Local Weather Forecast integration
+
+**🆕 v3.1.3 Features:**
+- ❄️ Snow risk detection (temperature, humidity, precipitation)
+- 🧊 Ice/frost risk detection (temperature, dew point)
+- 🌫️ Enhanced fog detection
+- 🌡️ Extended comfort analysis
 
 ---
 
@@ -340,6 +346,12 @@ forecast_type: hourly
 
 **Kompletná karta so VŠETKÝMI dostupnými informáciami zorganizovanými do logických celkov**
 
+**🆕 Nové v3.1.3:**
+- ❄️ Detekcia rizika snehu (teplota, vlhkosť, zrážky)
+- 🧊 Detekcia rizika poľadovice/námrazy (teplota, rosný bod)
+- 🌫️ Vylepšená detekcia hmly
+- 🌡️ Rozšírená analýza komfortu
+
 ```yaml
 type: custom:vertical-stack-in-card
 cards:
@@ -662,6 +674,64 @@ cards:
         multiline_secondary: true
   
   # ========================================================================
+  # SNEH A POĽADOVICA
+  # ========================================================================
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: |
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
+          {% if risk == "critical" %}⚠️ KRITICKÉ RIZIKO SNEHU
+          {% elif risk == "high" %}❄️ Vysoké riziko snehu
+          {% elif risk == "medium" %}🌨️ Stredné riziko snehu
+          {% elif risk == "low" %}☁️ Nízke riziko snehu
+          {% else %}Žiadne riziko snehu{% endif %}
+        secondary: |
+          Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature") | default("N/A")}}°C
+          Vlhkosť: {{state_attr("sensor.local_forecast_enhanced", "humidity") | default("N/A")}}%
+          {% set rain_prob = states("sensor.local_forecast_rain_probability") | int(0) %}
+          Zrážky: {{rain_prob}}%
+          
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
+          {% if risk in ["high", "critical"] %}⚠️ Očakávaj sneženie!{% endif %}
+        icon: mdi:snowflake
+        icon_color: |
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
+          {% if risk == "critical" %}red
+          {% elif risk == "high" %}orange
+          {% elif risk == "medium" %}blue
+          {% elif risk == "low" %}cyan
+          {% else %}grey{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: |
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
+          {% if risk == "critical" %}🚨 KRITICKÉ RIZIKO NÁMRAZY
+          {% elif risk == "high" %}⚠️ Vysoké riziko námrazy
+          {% elif risk == "medium" %}❄️ Stredné riziko námrazy
+          {% elif risk == "low" %}💧 Nízke riziko námrazy
+          {% else %}Žiadne riziko námrazy{% endif %}
+        secondary: |
+          Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature") | default("N/A")}}°C
+          Rosný bod: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | default("N/A")}}°C
+          Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | default("N/A")}}°C
+          
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
+          {% if risk in ["high", "critical"] %}⚠️ POZOR - klzké cesty!{% endif %}
+        icon: mdi:snowflake-alert
+        icon_color: |
+          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
+          {% if risk == "critical" %}red
+          {% elif risk == "high" %}orange
+          {% elif risk == "medium" %}yellow
+          {% elif risk == "low" %}blue
+          {% else %}grey{% endif %}
+        layout: vertical
+        multiline_secondary: true
+  
+  # ========================================================================
   # PREDPOVEĎ NA 6H A 12H (ZAMBRETTI DETAIL)
   # ========================================================================
   - type: markdown
@@ -774,7 +844,7 @@ cards:
 | **Compact Mobile** | Mobile view | ⭐ Easy | Quick stats, small screen |
 | **Comparison** | Method details | ⭐⭐ Medium | Compare Zambretti vs Negretti |
 | **Weather Entity** | Standard HA | ⭐ Easy | Daily/hourly forecast |
-| **Complete Dashboard (SK)** | All data | ⭐⭐⭐⭐ Expert | ALL sensors organized by category |
+| **Complete Dashboard (SK)** | All data | ⭐⭐⭐⭐ Expert | ALL sensors + snow/ice/fog warnings |
 
 ---
 
@@ -885,6 +955,18 @@ entities:
     type: attribute
     attribute: visibility_estimate
     name: Visibility Estimate
+  
+  # Snow & Ice (v3.1.3+)
+  - type: section
+    label: ❄️ Snow & Ice Risk
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: snow_risk
+    name: Snow Risk
+  - entity: weather.local_weather_forecast_weather
+    type: attribute
+    attribute: ice_risk
+    name: Ice/Frost Risk
   
   # Rain Forecast
   - type: section

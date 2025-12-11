@@ -6,6 +6,237 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.3] - 2025-12-11
+
+### ✨ Added - Snow & Frost Detection
+
+- **Snow Risk Detection** ❄️ (2025-12-10)
+  - **NEW**: `get_snow_risk()` function in `calculations.py`
+  - **Weather Entity Override**: High/medium snow risk → `weather.local_weather_forecast_weather` condition = "snowy"
+  - Meteorologically accurate snow prediction based on:
+    - Temperature (≤ 4°C for any risk)
+    - Humidity (>70% indicates moisture for precipitation)
+    - Dewpoint spread (proximity to saturation)
+    - Precipitation probability (optional, improves accuracy)
+  - **Four risk levels**:
+    - `"high"`: Temperature ≤ 0°C, humidity > 80%, dewpoint spread < 2°C + precipitation probability > 60%
+    - `"medium"`: Temperature 0-2°C, humidity > 70%, dewpoint spread < 3°C + precipitation probability > 40%
+    - `"low"`: Temperature 2-4°C, humidity > 60% + precipitation probability > 50%
+    - `"none"`: Temperature > 4°C
+  - **New sensor attributes**: 
+    - `snow_risk` in `sensor.local_forecast_enhanced`
+    - `snow_risk` in `weather.local_weather_forecast_weather` attributes
+  - **Multilingual support**: Translations in 5 languages (DE, EN, GR, IT, SK)
+  - **Priority in weather condition**: Snow detection has priority 2 (after rain, same as fog)
+
+### 🔧 Fixed - Extreme Atmospheric Conditions
+
+- **Zambretti Algorithm Robustness** (2025-12-11)
+  - **FIXED**: Negative z-numbers handling for extreme high pressure (>1080 hPa) with falling trend
+  - **FIXED**: Z-numbers >33 handling for extreme low pressure (<920 hPa) with rising trend
+  - **FIXED**: "Unmapped Zambretti number: 34" warning - clamping now happens BEFORE mapping
+  - **IMPROVED**: Clamping moved before `_map_zambretti_to_forecast()` call to prevent confusing warnings
+  - **CHANGED**: Unmapped number warnings changed to ERROR level (defensive fallback)
+  - **Added**: Automatic clamping of z-numbers to valid range (1-33)
+  - **Added**: Clear INFO logs when extreme conditions detected (z_original → z_clamped)
+  - **Example log:** "Clamping extreme case z=34 → z=33 (Stormy, Much Rain)"
+  - **Tested**: All geographic locations (-50m to 8000m elevation)
+  - **Tested**: All hemispheres and seasons
+  - **Tested**: >300 atmospheric condition combinations
+  - **Issue:** Reported by community user - extreme low pressure with rapid rise caused z=34
+
+- **Negretti-Zambra Algorithm Improvements** (2025-12-11)
+  - **FIXED**: Exceptional weather detection for extreme high pressure
+  - **ADDED**: Lower bound check (z_hp < bar_bottom)
+  - **IMPROVED**: DEBUG logs changed to WARNING for exceptional conditions
+
+### 🧪 Testing
+
+- **Added**: Comprehensive extreme conditions test suite (`test_extreme_conditions.py`)
+  - 20 new tests covering extreme pressures, elevations, and hemispheres
+  - Tests for pressure range: 900-1100 hPa
+  - Tests for all 16 wind directions
+  - Tests for elevations: -50m to 8000m
+  - Tests for all months (seasonal effects)
+  - Tests for all pressure trends (rising, steady, falling)
+
+- **Added**: Weather.py unit tests (`test_weather.py`)
+  - 39 tests for weather entity helper functions
+  - Beaufort scale (all 13 levels)
+  - Atmosphere stability analysis
+  - Weather condition mapping
+  - Night/day detection
+
+### 📊 Total Tests: 464 (100% pass rate)
+
+- All core functionality tested
+- All extreme conditions handled
+- No unmapped states possible
+
+### 🎨 UI/UX Improvements
+
+- **Integration Icon** 🏠☀️ (2025-12-11)
+  - **Added**: Custom icon for Home Assistant integration
+  - **Design**: House with sun, clouds, and weather symbols
+  - **Format**: PNG exports (256x256, 512x512)
+  - **Auto-detection**: Home Assistant automatically displays icon in Integrations page
+  - **Files**: `icon.png`, `icon@2x.png`
+
+---
+
+## [3.1.2] - 2025-12-09
+
+### ✨ Added - Snow & Frost Detection (Extended)
+  - Critical warning for black ice (poľadovica) conditions
+  - Meteorologically accurate frost/ice prediction based on:
+    - Temperature (≤ 4°C for any risk)
+    - Dewpoint (below 0°C = freezing moisture)
+    - Wind speed (low wind favors frost formation)
+    - Humidity (high humidity + freezing = ice formation)
+  - **Five risk levels** (including CRITICAL for black ice):
+    - `"critical"`: **BLACK ICE WARNING** - Temperature -2 to 0°C, humidity > 90%, dewpoint spread < 1°C (wet surfaces will freeze!)
+    - `"high"`: Temperature < -2°C, dewpoint < 0°C, low wind (< 2 m/s) - heavy frost/ice formation expected
+    - `"medium"`: Temperature ≤ 0°C, dewpoint ≤ 2°C, moderate wind (< 3 m/s) - frost formation likely
+    - `"low"`: Temperature 0-2°C, dewpoint ≤ 0°C - near-freezing conditions, frost possible
+    - `"none"`: Temperature > 4°C - no frost risk
+  - **New sensor attributes**:
+    - `frost_risk` in `sensor.local_forecast_enhanced`
+    - `frost_risk` in `weather.local_weather_forecast_weather` attributes
+  - **Logger warning**: Critical black ice conditions logged with WARNING level
+  - **Note**: Frost/ice risk available in **attributes only** (does NOT override weather condition, unlike snow)
+  - **Multilingual support**: Translations in 5 languages (DE, EN, GR, IT, SK)
+  - Examples:
+    - `-1°C, 95% RH, dewpoint spread 0.8°C` → "KRITICKÉ: Poľadovica!" (SK) + ⚠️ WARNING log
+    - `-5°C, dewpoint -3°C, wind 1.5 m/s` → "Vysoké riziko námrazy" (SK)
+
+- **Enhanced Sensor Attributes** (2025-12-10)
+  - `sensor.local_forecast_enhanced` now includes:
+    - `snow_risk`: Translated snow risk level (e.g., "Vysoké riziko snehu")
+    - `frost_risk`: Translated frost/ice risk level (e.g., "KRITICKÉ: Poľadovica!")
+  - `weather.local_weather_forecast_weather` now includes:
+    - `snow_risk`: Translated snow risk level + **condition override to "snowy"** when high/medium risk
+    - `frost_risk`: Translated frost/ice risk level (attribute only, no condition override)
+  - Both attributes automatically translated based on Home Assistant UI language
+  - Risk assessment only calculated when temperature ≤ 4°C (performance optimization)
+
+### 🧪 Added - Comprehensive Test Suite
+
+- **209 Unit Tests** (100% pass rate) (2025-12-10)
+  - **test_calculations.py** - 86 tests for `calculations.py`
+    - Complete test coverage for all 16 calculation functions
+    - **Snow detection tests** (6 tests): All risk levels, edge cases, with/without precipitation probability
+    - **Frost detection tests** (6 tests): All risk levels including critical black ice, wind effects
+  - **test_config_flow.py** - 17 tests for `config_flow.py`
+    - User flow (initial setup): 10 tests
+    - Options flow (reconfiguration): 7 tests
+    - Validates sensor detection, elevation ranges, pressure types, duplicate prevention
+  - **test_forecast_calculator.py** - 35 tests for `forecast_calculator.py`
+    - PressureModel: 9 tests (rising/falling trends, damping, clamping)
+    - TemperatureModel: 9 tests (diurnal cycle, solar warming, cloud effects)
+    - RainProbabilityCalculator: 6 tests (Zambretti letters, pressure influence)
+    - Forecast generators: 8 tests (hourly/daily, rain override, intervals)
+    - Complete facade: 3 tests (integration testing)
+  - **test_const.py** - 36 tests for `const.py`
+    - Language mapping validation: 5 tests (prevents index errors)
+    - Zambretti constants: 3 tests (all 26 letters A-Z mapped correctly)
+    - Pressure/meteorology constants: 4 tests (intervals, thresholds, barometric formulas)
+    - Risk levels: 4 tests (fog/snow/frost consistency)
+    - Comfort/trend/confidence: 9 tests (all levels defined correctly)
+    - Defaults validation: 5 tests (elevation, latitude, pressure type, etc.)
+    - Constant consistency: 6 tests (validates relationships between constants)
+  - **test_forecast_data.py** - 35 tests for `forecast_data.py` ⭐ NEW!
+    - Multilingual structure: 2 tests (all data has 5 languages)
+    - Zambretti data: 4 tests (26 letters A-Z, completeness)
+    - Wind/conditions/pressure: 7 tests (Beaufort scale, weather conditions)
+    - Comfort/fog/stability levels: 9 tests (all UI display levels)
+    - Visibility/templates: 6 tests (distance indicators, placeholders)
+    - Language consistency: 3 tests (no mixing, completeness, order)
+    - Data integrity: 3 tests (coverage, typos, formatting)
+  - Test framework: pytest 9.0.2 + pytest-homeassistant-custom-component
+  - Test files:
+    - `tests/test_calculations.py` - 86 comprehensive tests
+    - `tests/test_config_flow.py` - 17 UI flow tests
+    - `tests/test_forecast_calculator.py` - 35 model tests
+    - `tests/test_const.py` - 36 validation tests
+    - `tests/test_forecast_data.py` - 35 multilingual data tests
+    - `tests/README_TESTS.md` - Complete test documentation
+  - All tests validate meteorological accuracy, edge cases, user workflows, configuration integrity, and multilingual data completeness
+
+### 🛠️ Fixed
+
+- **Code Cleanup in calculations.py** (2025-12-10)
+  - Removed orphaned unreachable code from old `calculate_solar_radiation_from_uv_index` function
+  - Removed duplicate `calculate_wind_chill` function definition
+  - Fixed type hints for `max()` operations (using `0.0` instead of `0` for float compatibility)
+  - All Python syntax errors resolved
+
+- **Enhanced Debug Logging in calculations.py** (2025-12-10)
+  - Added comprehensive DEBUG logging to all calculation functions:
+    - `calculate_dewpoint()` - Logs input T/RH and calculated dewpoint
+    - `calculate_heat_index()` - Logs when applicable and calculated heat index
+    - `calculate_wind_chill()` - Logs when applicable and calculated wind chill
+    - `calculate_apparent_temperature()` - Logs all contributing factors (humidity, wind, solar effects)
+    - `get_snow_risk()` - Logs all risk levels with meteorological conditions
+    - `get_frost_risk()` - Logs all risk levels including CRITICAL black ice warnings
+  - All debug messages use SI units (°C, m/s, %, hPa)
+  - All debug messages in English for consistency
+  - Format: `FunctionName: result - conditions` (e.g., `SnowRisk: HIGH - T=-2.0°C, RH=85.0%, spread=0.5°C, precip=70%`)
+  - Benefits:
+    - ✅ Easy troubleshooting of weather calculations
+    - ✅ Visibility into why certain conditions are detected
+    - ✅ Performance monitoring (see when functions are called)
+
+- **Enhanced Debug Logging in forecast_calculator.py** (2025-12-10)
+  - Added DEBUG logging to prediction models:
+    - `PressureModel.predict()` - Logs predicted pressure with change rate and damping
+    - `TemperatureModel.predict()` - Logs predicted temp with trend, diurnal, and solar components
+    - `RainProbabilityCalculator.calculate()` - Logs probability with Zambretti letter and pressure info
+  - Format: `ModelName: Xh → result (components)`
+  - Example: `TempModel: 6h → 22.3°C (current=20.0, trend=+1.0, diurnal=+0.8, solar=+0.5)`
+
+- **Removed Unused Constants in const.py** (2025-12-10)
+  - Removed `PRESSURE_SAMPLING_SIZE` (1890) - unused, actual limit is time-based (180 minutes)
+  - Removed `TEMPERATURE_SAMPLING_SIZE` (140) - unused, replaced with intelligent dual-limit system
+  - **New: Guaranteed Minimum Record Counts** 🔒
+    - Added `PRESSURE_MIN_RECORDS = 36` - Always keep at least 36 records
+    - Added `TEMPERATURE_MIN_RECORDS = 12` - Always keep at least 12 records
+  - **How the new dual-limit system works**:
+    - **Primary limit (time-based)**: Keep all records within time window (180 min / 60 min)
+    - **Secondary limit (count-based)**: If fewer than MIN_RECORDS, keep the newest MIN_RECORDS anyway
+    - **Result**: GUARANTEED minimum data even if sensor updates irregularly!
+  - **Examples**:
+    - Normal case (5-minute updates): 36 records in 180 minutes ✅
+    - Irregular updates: Still keeps 36 newest records even if they span 4+ hours ✅
+    - After restart: Restores full history (36/12 records) → immediate accurate forecast ✅
+  - **Recovery after restart**: 
+    - With 36 pressure records: **Excellent** accuracy, immediate forecast ⭐⭐⭐⭐⭐
+    - With 12 temperature records: **Excellent** accuracy, immediate forecast ⭐⭐⭐⭐⭐
+    - Minimum 2 records: Still works, but less precise ⭐⭐⭐
+  - **Updated sensor logic**:
+    - `PressureChange`: Uses time window OR minimum 36 records (whichever gives more data)
+    - `TemperatureChange`: Uses time window OR minimum 12 records (whichever gives more data)
+
+### 📝 Language Support
+
+- **New Translation Functions** (2025-12-10)
+  - `get_snow_risk_text()` - Translates snow risk levels
+  - `get_frost_risk_text()` - Translates frost/ice risk levels
+  - Format: [German, English, Greek, Italian, Slovak]
+
+### 📄 Documentation
+
+- **Enhanced Documentation** (2025-12-10)
+  - Updated Troubleshooting section in `README.md`
+  - **Problem addressed**: External sensors (outside this integration) that combine data from multiple sources with different update frequencies
+  - **Solutions provided**:
+    1. Quick fix using `statistics` platform with `sampling_size`
+    2. Template sensor with `state_class: measurement`
+    3. Python script with custom dual-limit logic
+  - **Use case example**: East temperature (5-min updates) + West temperature (15-min updates) = Combined sensor with large time gaps
+  - **Result**: Guaranteed minimum records even for slow-updating external sensors
+
+---
+
 ## [3.1.2] - 2025-12-09
 
 ### ✨ Added
@@ -522,7 +753,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `calculate_rain_probability_enhanced()` - Multi-factor rain probability
 
 ### 📝 Documentation
-- Updated SENSORS_GUIDE.md with enhanced sensors
 - Updated README.md with complete sensor list
 - Added section on using modern sensors with algorithms
 - Documented new weather entity features

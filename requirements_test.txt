@@ -1,0 +1,20 @@
+# Testing dependencies for Local Weather Forecast integration
+
+# Core testing framework
+pytest>=9.0.0
+pytest-asyncio>=0.24.0
+pytest-cov>=6.0.0
+pytest-xdist>=3.6.0  # For parallel test execution
+
+# Home Assistant (minimal version for imports)
+homeassistant>=2024.12.0
+
+# Code quality (optional)
+# pylint>=3.0.0
+# black>=24.0.0
+# isort>=5.13.0
+# mypy>=1.8.0
+
+# Optional but recommended
+pytest-timeout>=2.3.0  # Timeout for hanging tests
+

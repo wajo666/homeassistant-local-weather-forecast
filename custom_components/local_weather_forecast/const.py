@@ -62,10 +62,19 @@ LANGUAGE_INDEX: Final = {
 }
 
 # Sensor update intervals
-PRESSURE_CHANGE_MINUTES: Final = 180
-PRESSURE_SAMPLING_SIZE: Final = 1890
-TEMPERATURE_CHANGE_MINUTES: Final = 60
-TEMPERATURE_SAMPLING_SIZE: Final = 140
+# These define the time window for calculating changes
+# Actual number of stored records depends on sensor update frequency
+# e.g., if sensor updates every 5 minutes:
+#   - PRESSURE: 180 min ÷ 5 min = ~36 records
+#   - TEMPERATURE: 60 min ÷ 5 min = ~12 records
+#
+# IMPORTANT: We keep BOTH time-based AND count-based limits:
+#   - Time limit ensures we don't use stale data (>3h old)
+#   - Count limit ensures we have enough records even if sensor updates irregularly
+PRESSURE_CHANGE_MINUTES: Final = 180  # 3 hours
+TEMPERATURE_CHANGE_MINUTES: Final = 60  # 1 hour
+PRESSURE_MIN_RECORDS: Final = 36  # Minimum records to keep (even if older than 180 min)
+TEMPERATURE_MIN_RECORDS: Final = 12  # Minimum records to keep (even if older than 60 min)
 
 # Pressure thresholds
 PRESSURE_TREND_RISING: Final = 1.6
@@ -127,6 +136,19 @@ FOG_RISK_NONE: Final = "none"
 FOG_RISK_LOW: Final = "low"
 FOG_RISK_MEDIUM: Final = "medium"
 FOG_RISK_HIGH: Final = "high"
+
+# Snow risk levels
+SNOW_RISK_NONE: Final = "none"
+SNOW_RISK_LOW: Final = "low"
+SNOW_RISK_MEDIUM: Final = "medium"
+SNOW_RISK_HIGH: Final = "high"
+
+# Frost/Ice risk levels
+FROST_RISK_NONE: Final = "none"
+FROST_RISK_LOW: Final = "low"
+FROST_RISK_MEDIUM: Final = "medium"
+FROST_RISK_HIGH: Final = "high"
+FROST_RISK_CRITICAL: Final = "critical"
 
 # Trend states
 TREND_IMPROVING: Final = "improving"

@@ -11,6 +11,7 @@ from homeassistant.components.weather import (
     ATTR_CONDITION_FOG,
     ATTR_CONDITION_PARTLYCLOUDY,
     ATTR_CONDITION_RAINY,
+    ATTR_CONDITION_SNOWY,
     ATTR_CONDITION_SUNNY,
     Forecast,
     WeatherEntity,
@@ -407,9 +408,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         _LOGGER.debug(f"Weather: Error processing rain sensor: {e}")
                         pass
 
-            # PRIORITY 2: Check for fog conditions (high humidity + low dewpoint spread)
-            # Fog is a visible weather phenomenon and should override forecast
-            # NOTE: Fog is primarily a nighttime/early morning phenomenon
+            # PRIORITY 2: Check for snow/ice/fog conditions (current observable weather)
+            # These are visible weather phenomena and should override forecast
             from datetime import datetime as dt
             temp = self.native_temperature
             humidity = self.humidity
@@ -419,12 +419,49 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 dewpoint_spread = temp - dewpoint
                 current_hour = dt.now().hour
 
+                # SNOW CONDITIONS (temperature ≤ 4°C + high humidity + precipitation likely):
+                # Snow detected when temp is freezing + high moisture + near saturation
+                if temp <= 0 and humidity > 80 and dewpoint_spread < 2.0:
+                    # Get rain probability to check if precipitation is likely
+                    rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+                    rain_prob = 0
+                    if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
+                        try:
+                            rain_prob = float(rain_prob_sensor.state)
+                        except (ValueError, TypeError):
+                            pass
+
+                    if rain_prob > 60:  # High snow risk
+                        _LOGGER.info(
+                            f"Weather: SNOW detected - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
+                            f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
+                        )
+                        return ATTR_CONDITION_SNOWY
+
+                # Medium snow risk (0-2°C range)
+                elif 0 < temp <= 2 and humidity > 70 and dewpoint_spread < 3.0:
+                    rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+                    rain_prob = 0
+                    if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
+                        try:
+                            rain_prob = float(rain_prob_sensor.state)
+                        except (ValueError, TypeError):
+                            pass
+
+                    if rain_prob > 40:  # Medium snow risk
+                        _LOGGER.info(
+                            f"Weather: SNOW likely - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
+                            f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
+                        )
+                        return ATTR_CONDITION_SNOWY
+
                 # FOG CONDITIONS (meteorologically justified):
                 # Fog occurs when dewpoint spread is very low and humidity is high
                 # This can happen anytime (day or night) when conditions are met
                 # - Dewpoint spread < 1.5°C = CRITICAL fog risk
                 # - Humidity > 85% = high moisture content
                 # - Combined = actual fog likely present
+                # NOTE: Check fog AFTER snow (snow takes priority if temp is freezing)
                 if dewpoint_spread < 1.5 and humidity > 85:
                     _LOGGER.info(
                         f"Weather: FOG detected - dewpoint spread={dewpoint_spread:.1f}°C, "
@@ -494,12 +531,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     _LOGGER.debug(f"Weather: Fallback to rainy (pressure={pressure})")
                     return ATTR_CONDITION_RAINY
                 elif pressure < 1013:
+                    _LOGGER.debug(f"Weather: Fallback to cloudy (pressure={pressure})")
                     return ATTR_CONDITION_CLOUDY
                 elif pressure < 1020:
+                    _LOGGER.debug(f"Weather: Fallback to partly cloudy (pressure={pressure})")
                     return ATTR_CONDITION_PARTLYCLOUDY
                 else:
                     if self._is_night():
+                        _LOGGER.debug(f"Weather: Fallback to clear night (pressure={pressure})")
                         return ATTR_CONDITION_CLEAR_NIGHT
+                    _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
                     return ATTR_CONDITION_SUNNY
 
             return ATTR_CONDITION_PARTLYCLOUDY
@@ -525,11 +566,15 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # Check current time
             if sun_entity:
                 # sun.sun state is "above_horizon" or "below_horizon"
-                return sun_entity.state == "below_horizon"
+                is_night = sun_entity.state == "below_horizon"
+                _LOGGER.debug(f"Weather: Night check from sun.sun entity: {is_night} (state={sun_entity.state})")
+                return is_night
             else:
                 # Fallback to simple time check if sun entity not available
                 current_hour = dt_util.now().hour
-                return current_hour >= 19 or current_hour < 7
+                is_night = current_hour >= 19 or current_hour < 7
+                _LOGGER.debug(f"Weather: Night check from time: {is_night} (hour={current_hour})")
+                return is_night
         else:
             # For future times, compare with sunrise/sunset
             if sun_entity:
@@ -610,18 +655,69 @@ class LocalWeatherForecastWeather(WeatherEntity):
         if feels_like_temp is not None:
             attrs["comfort_level"] = get_comfort_level(feels_like_temp)
             attrs["feels_like"] = round(feels_like_temp, 2)
+            _LOGGER.debug(f"Weather: Comfort level={attrs['comfort_level']}, feels_like={attrs['feels_like']}°C")
         else:
             # Should never happen due to feels_like fallbacks, but keep as safety
             attrs["comfort_level"] = "unknown"
             attrs["feels_like"] = 0.0
+            _LOGGER.debug("Weather: No feels_like temperature available")
 
         # Add fog risk if we have dewpoint
         dewpoint = self.native_dew_point
         if temp is not None and dewpoint is not None:
             spread = temp - dewpoint
-            attrs["fog_risk"] = get_fog_risk(temp, dewpoint)
+            fog_risk_level = get_fog_risk(temp, dewpoint)
+            attrs["fog_risk"] = fog_risk_level
             attrs["dewpoint_spread"] = round(spread, 2)
             attrs["dew_point"] = round(dewpoint, 2)
+            _LOGGER.debug(
+                f"Weather: Fog risk={fog_risk_level}, temp={temp:.1f}°C, "
+                f"dewpoint={dewpoint:.1f}°C, spread={spread:.1f}°C"
+            )
+
+        # Add snow risk and frost/ice risk
+        humidity = self.humidity
+        if temp is not None and humidity is not None and dewpoint is not None:
+            # Get rain probability for snow risk calculation
+            rain_prob = 0
+            rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+            if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    rain_prob = float(rain_prob_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+
+            from .calculations import get_snow_risk, get_frost_risk
+
+            # Calculate snow risk
+            spread = temp - dewpoint
+            snow_risk = get_snow_risk(temp, humidity, spread, rain_prob)
+            attrs["snow_risk"] = snow_risk
+            _LOGGER.debug(
+                f"Weather: Snow risk={snow_risk}, temp={temp:.1f}°C, "
+                f"humidity={humidity:.1f}%, rain_prob={rain_prob}%"
+            )
+
+            # Calculate frost/ice risk
+            wind_speed = self.native_wind_speed or 0.0
+            frost_risk = get_frost_risk(temp, dewpoint, wind_speed, humidity)
+            attrs["frost_risk"] = frost_risk
+            _LOGGER.debug(
+                f"Weather: Frost risk={frost_risk}, temp={temp:.1f}°C, "
+                f"dewpoint={dewpoint:.1f}°C, wind={wind_speed:.1f} m/s"
+            )
+
+            # Log CRITICAL warnings
+            if frost_risk == "critical":
+                _LOGGER.warning(
+                    f"⚠️ CRITICAL: BLACK ICE WARNING! Temperature={temp:.1f}°C, "
+                    f"Humidity={humidity:.1f}%, Spread={spread:.1f}°C"
+                )
+            if snow_risk == "high":
+                _LOGGER.info(
+                    f"❄️ High snow risk: Temperature={temp:.1f}°C, Humidity={humidity:.1f}%, "
+                    f"Rain probability={rain_prob}%"
+                )
 
         # Add wind classification (Beaufort Scale) and atmospheric stability
         wind_speed = self.native_wind_speed
@@ -642,8 +738,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     attrs["wind_gust"] = round(wind_gust, 2)
                     gust_ratio = wind_gust / wind_speed
                     attrs["gust_ratio"] = round(gust_ratio, 2)
-                    attrs["atmosphere_stability"] = self._get_atmosphere_stability(wind_speed, gust_ratio)
-                except (ValueError, TypeError):
+                    stability = self._get_atmosphere_stability(wind_speed, gust_ratio)
+                    attrs["atmosphere_stability"] = stability
+                    _LOGGER.debug(
+                        f"Weather: Wind gust={wind_gust:.2f} m/s, ratio={gust_ratio:.2f}, "
+                        f"stability={stability}"
+                    )
+                except (ValueError, TypeError) as e:
+                    _LOGGER.debug(f"Weather: Error processing wind gust: {e}")
                     pass
 
         # Add enhanced forecast details from Enhanced sensor

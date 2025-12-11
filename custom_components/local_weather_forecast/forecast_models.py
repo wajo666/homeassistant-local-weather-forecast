@@ -10,10 +10,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from .zambretti import ZambrettiForecaster
-
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from .forecast_calculator import ZambrettiForecaster
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,12 +60,19 @@ class PressureModel:
             predicted_change = linear_6h + additional
 
         # Realistic limits: pressure doesn't change more than ±20 hPa in 24h
-        predicted_change = max(-20, min(20, predicted_change))
+        predicted_change = max(-20.0, min(20.0, predicted_change))
 
         predicted_pressure = self.current + predicted_change
 
         # Absolute limits: 950-1050 hPa (Zambretti range)
-        return max(950, min(1050, predicted_pressure))
+        result = max(950.0, min(1050.0, predicted_pressure))
+
+        _LOGGER.debug(
+            f"PressureModel: {hours_ahead}h → {result:.1f} hPa "
+            f"(current={self.current:.1f}, change={predicted_change:+.1f}, rate={self.change_3h:+.1f}/3h)"
+        )
+
+        return result
 
     def get_trend(self, hours_ahead: int) -> str:
         """Get pressure trend description.
@@ -81,11 +87,18 @@ class PressureModel:
         change = future_pressure - self.current
 
         if change > 1.0:
-            return "rising"
+            trend = "rising"
         elif change < -1.0:
-            return "falling"
+            trend = "falling"
         else:
-            return "steady"
+            trend = "steady"
+
+        _LOGGER.debug(
+            f"PressureTrend: {hours_ahead}h → {trend} "
+            f"(current={self.current:.1f}, future={future_pressure:.1f}, Δ={change:+.1f})"
+        )
+
+        return trend
 
 
 class TemperatureModel:
@@ -156,7 +169,14 @@ class TemperatureModel:
             else:
                 predicted_temp = self.current - max_total_change
 
-        return round(predicted_temp, 1)
+        result = round(predicted_temp, 1)
+
+        _LOGGER.debug(
+            f"TempModel: {hours_ahead}h → {result:.1f}°C "
+            f"(current={self.current:.1f}, trend={trend_change:+.1f}, diurnal={diurnal_adjustment:+.1f})"
+        )
+
+        return result
 
     def _calculate_diurnal_effect(
         self,
@@ -203,7 +223,7 @@ class HourlyForecastGenerator:
         hass: HomeAssistant,
         pressure_model: PressureModel,
         temp_model: TemperatureModel,
-        zambretti: ZambrettiForecaster,
+        zambretti: "ZambrettiForecaster",
         wind_direction: int = 0,
         wind_speed: float = 0.0,
         latitude: float = 0.0
@@ -316,23 +336,29 @@ class HourlyForecastGenerator:
 
         # Strong weather
         if any(word in text_lower for word in ["storm", "thunder", "gale"]):
+            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → lightning-rainy (storm keywords)")
             return "lightning-rainy"
 
         # Rain
         if forecast_num >= 20 or any(word in text_lower for word in ["rain", "shower", "wet"]):
             if "heavy" in text_lower:
+                _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → pouring (heavy rain)")
                 return "pouring"
+            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → rainy")
             return "rainy"
 
         # Poor weather
         if forecast_num >= 15 or any(word in text_lower for word in ["unsettled", "changeable"]):
+            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → partlycloudy (poor weather)")
             return "partlycloudy"
 
         # Fair weather
         if forecast_num <= 5 or any(word in text_lower for word in ["fine", "fair", "settled"]):
+            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → sunny (fair weather)")
             return "sunny"
 
         # Default: partly cloudy
+        _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → partlycloudy (default)")
         return "partlycloudy"
 
     def _calculate_rain_probability(
@@ -376,7 +402,14 @@ class HourlyForecastGenerator:
             base_prob -= 5  # Rising pressure decreases rain
 
         # Clamp to 0-100
-        return max(0, min(100, base_prob))
+        result = max(0, min(100, base_prob))
+
+        _LOGGER.debug(
+            f"RainProb: Z{forecast_num} @ {pressure:.1f}hPa ({trend}) → {result}% "
+            f"(base={base_prob})"
+        )
+
+        return result
 
 
 class DailyForecastGenerator:
@@ -477,5 +510,11 @@ class DailyForecastGenerator:
             condition_counts[cond] = condition_counts.get(cond, 0) + 1
 
         # Return most common
-        return max(condition_counts, key=condition_counts.get)
+        dominant = max(condition_counts, key=condition_counts.get)
+
+        _LOGGER.debug(
+            f"DominantCondition: {dominant} (counts: {condition_counts})"
+        )
+
+        return dominant
 
