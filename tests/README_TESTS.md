@@ -6,9 +6,9 @@ Comprehensive test suite covering meteorological calculations, forecast algorith
 
 ## 📊 Test Statistics
 
-**Total: 464 tests across 12 test files**
+**Total: 476 tests across 13 test files**
 
-- ✅ **464 tests passing** (100% pass rate)
+- ✅ **476 tests passing** (100% pass rate)
 - ⚡ **~10 seconds execution time**
 - 🎯 **~98% code coverage** for critical functions
 
@@ -23,7 +23,7 @@ All weather calculations, forecast algorithms, unit conversions, and helper func
 # Install dependencies
 pip install -r requirements_test.txt
 
-# Run all tests (464 tests, all pass)
+# Run all tests (476 tests, all pass)
 pytest tests/ -v
 
 # Run with coverage report
@@ -85,10 +85,10 @@ pytest tests/test_const.py tests/test_forecast_data.py -v
 
 | File | Tests | Status | Description |
 |------|-------|--------|-------------|
-| `test_calculations.py` | 70 | ✅ 70/70 | Meteorological calculations (dewpoint, heat index, fog risk, etc.) |
-| `test_config_flow.py` | 17 | ✅ 17/17 | Configuration flow and options flow |
+| `test_calculations.py` | 86 | ✅ 86/86 | Meteorological calculations (dewpoint, heat index, fog risk, snow, frost, UV) |
+| `test_config_flow.py` | 16 | ✅ 16/16 | Configuration flow and options flow |
 | `test_const.py` | 36 | ✅ 36/36 | Constants validation and consistency |
-| `test_extreme_conditions.py` | 20 | ✅ 20/20 | Extreme atmospheric conditions (900-1100 hPa, all elevations) |
+| `test_extreme_conditions.py` | 18 | ✅ 18/18 | Extreme atmospheric conditions (900-1100 hPa, all elevations) |
 | `test_forecast_calculator.py` | 35 | ✅ 35/35 | Forecast calculation models |
 | `test_forecast_data.py` | 35 | ✅ 35/35 | Multilingual forecast data integrity |
 | `test_forecast_models.py` | 43 | ✅ 43/43 | Advanced forecast models (pressure, temperature) |
@@ -97,43 +97,45 @@ pytest tests/test_const.py tests/test_forecast_data.py -v
 | `test_sensor_change.py` | 13 | ✅ 13/13 | Pressure/Temperature change sensors |
 | `test_unit_conversion.py` | 57 | ✅ 57/57 | Unit conversion (pressure, temp, wind, precipitation) |
 | `test_weather.py` | 39 | ✅ 39/39 | Weather entity helper functions and logic |
-| `test_zambretti.py` | 32 | ✅ 32/32 | Zambretti algorithm |
-| **TOTAL** | **464** | ✅ **464/464** | **100% Pass Rate** |
+| `test_zambretti.py` | 31 | ✅ 31/31 | Zambretti algorithm (formulas, consistency, all z-numbers) |
+| **TOTAL** | **476** | ✅ **476/476** | **100% Pass Rate** |
 
 ## 🧪 Test Coverage by Module
 
-### ✅ calculations.py (70 tests)
+### ✅ calculations.py (86 tests)
 
 **Core Meteorological Functions:**
-- `calculate_dewpoint()` - Dew point calculation
-- `calculate_heat_index()` - Heat index for hot conditions
-- `calculate_wind_chill()` - Wind chill for cold conditions
-- `calculate_apparent_temperature()` - Feels-like temperature
-- `get_comfort_level()` - Human comfort zones
-- `get_fog_risk()` - Fog probability assessment
-- `calculate_rain_probability_enhanced()` - Enhanced rain probability
-- `interpolate_forecast()` - Forecast interpolation
-- `calculate_visibility_from_humidity()` - Visibility estimation
-- `calculate_uv_index_from_solar_radiation()` - UV index calculation
-- `calculate_solar_radiation_from_uv_index()` - Reverse UV calculation
-- `get_snow_risk()` - ❄️ Snow probability assessment
-- `get_frost_risk()` - 🧊 Frost/black ice warning
-- `get_uv_protection_level()` - UV protection recommendations
-- `estimate_solar_radiation_from_time_and_clouds()` - Solar estimation
-- `get_uv_risk_category()` - UV risk categorization
+- `calculate_dewpoint()` - Dew point calculation (6 tests)
+- `calculate_heat_index()` - Heat index for hot conditions (4 tests)
+- `calculate_wind_chill()` - Wind chill for cold conditions (3 tests)
+- `calculate_apparent_temperature()` - Feels-like temperature (5 tests)
+- `get_comfort_level()` - Human comfort zones (7 tests)
+- `get_fog_risk()` - Fog probability assessment (5 tests)
+- `calculate_rain_probability_enhanced()` - Enhanced rain probability (6 tests)
+- `interpolate_forecast()` - Forecast interpolation (4 tests)
+- `calculate_visibility_from_humidity()` - Visibility estimation (5 tests)
+- `calculate_uv_index_from_solar_radiation()` - UV index calculation (6 tests)
+- `calculate_solar_radiation_from_uv_index()` - Reverse UV calculation (5 tests)
+- `get_snow_risk()` - ❄️ Snow probability assessment (6 tests)
+- `get_frost_risk()` - 🧊 Frost/black ice warning (6 tests)
+- `get_uv_protection_level()` - UV protection recommendations (6 tests)
+- `estimate_solar_radiation_from_time_and_clouds()` - Solar estimation (6 tests)
+- `get_uv_risk_category()` - UV risk categorization (6 tests)
 
-### ✅ zambretti.py (32 tests)
+### ✅ zambretti.py (31 tests)
 
 **Zambretti Forecast Algorithm:**
-- `calculate_zambretti_forecast()` - Main forecast function
+- `calculate_zambretti_forecast()` - Main forecast function (12 tests)
   - Falling pressure formula: `z = round(127 - 0.12 * p0)`
   - Steady pressure formula: `z = round(144 - 0.13 * p0)`
   - Rising pressure formula: `z = round(185 - 0.16 * p0)`
   - Seasonal adjustments (winter -1 for steady, summer +1 for rising)
   - Wind corrections
   - All languages (de, en, el, it, sk)
-- `_map_zambretti_to_forecast()` - Z-number to forecast index mapping
-- `_map_zambretti_to_letter()` - Z-number to letter code (A-Z) mapping
+- `_map_zambretti_to_forecast()` - Z-number to forecast index mapping (7 tests)
+- `_map_zambretti_to_letter()` - Z-number to letter code (A-Z) mapping (8 tests)
+- Mathematical formula validation (3 tests)
+- Consistency tests (1 test)
 
 **Test Coverage:**
 - ✅ All pressure trends (falling, steady, rising)
@@ -369,26 +371,27 @@ pytest tests/test_const.py tests/test_forecast_data.py -v
 - No typos in English
 - Special character escaping
 
-## 🔍 Test Quality Metrics
+### ✅ Test Quality Metrics
 
 ### Coverage by Category:
 
 | Category | Coverage | Tests |
 |----------|----------|-------|
-| **Meteorological Calculations** | 100% | 70 |
-| **Forecast Algorithms** | 100% | 152 |
+| **Meteorological Calculations** | 100% | 86 |
+| **Forecast Algorithms** | 100% | 137 |
 | **Unit Conversions** | 100% | 57 |
 | **Language Support** | 100% | 45 |
-| **Configuration** | 95% | 17 |
+| **Configuration** | 95% | 16 |
 | **Sensors** | 90% | 13 |
 | **Weather Entity** | 85% | 39 |
 | **Data Integrity** | 100% | 71 |
+| **Extreme Conditions** | 100% | 18 |
 
 ### Test Types:
 
-- ✅ **Unit Tests**: 390 tests (84%)
-- ✅ **Integration Tests**: 57 tests (12%)
-- ✅ **Edge Case Tests**: 17 tests (4%)
+- ✅ **Unit Tests**: 400 tests (84%)
+- ✅ **Integration Tests**: 60 tests (13%)
+- ✅ **Edge Case Tests**: 16 tests (3%)
 
 ## 🎯 Key Features Tested
 
@@ -464,13 +467,13 @@ See `.github/workflows/test.yml` for CI configuration.
 
 ## 🚦 Test Status
 
-All tests passing: ✅ **464/464** (100%)
+All tests passing: ✅ **476/476** (100%)
 
 **Every module is fully tested and functional!**
 
 All **critical weather calculations, forecast algorithms, unit conversions, sensor logic, and weather entity helpers** are fully tested and passing.
 
-Last updated: 2025-12-11
+Last updated: 2025-12-12
 
 ---
 
