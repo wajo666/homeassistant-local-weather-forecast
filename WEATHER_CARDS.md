@@ -1,13 +1,6 @@
 # Weather Card Examples for Lovelace UI
 
-**📦 Version:** v3.1.3 (2025-12-10)  
 **🎨 Purpose:** Lovelace UI card examples for Local Weather Forecast integration
-
-**🆕 v3.1.3 Features:**
-- ❄️ Snow risk detection (temperature, humidity, precipitation)
-- 🧊 Ice/frost risk detection (temperature, dew point)
-- 🌫️ Enhanced fog detection
-- 🌡️ Extended comfort analysis
 
 ---
 
@@ -142,14 +135,14 @@ cards:
 
 ---
 
-## 🌟 Card 3: Advanced Mushroom Card (v3.1.0 Enhanced Features)
+## 🌟 Card 3: Advanced Mushroom Card (Enhanced Features)
 
 ```yaml
 type: custom:vertical-stack-in-card
 cards:
   # Title
   - type: custom:mushroom-title-card
-    title: Weather Forecast v3.1.0
+    title: Weather Forecast
     subtitle: 'Enhanced with Fog Risk & Stability'
   
   # Main forecast card
@@ -346,7 +339,7 @@ forecast_type: hourly
 
 **Kompletná karta so VŠETKÝMI dostupnými informáciami zorganizovanými do logických celkov**
 
-**🆕 Nové v3.1.3:**
+**✨ Funkcie:**
 - ❄️ Detekcia rizika snehu (teplota, vlhkosť, zrážky)
 - 🧊 Detekcia rizika poľadovice/námrazy (teplota, rosný bod)
 - 🌫️ Vylepšená detekcia hmly
@@ -359,7 +352,7 @@ cards:
   # HLAVIČKA
   # ========================================================================
   - type: custom:mushroom-title-card
-    title: Predpoveď počasia v3.1.0
+    title: Predpoveď počasia
     subtitle: Kompletná atmosférická analýza
   
   # ========================================================================
@@ -834,26 +827,6 @@ cards:
 
 ---
 
-## 🎯 Card Selection Guide
-
-| Card Type | Use Case | Complexity | Features |
-|-----------|----------|------------|----------|
-| **Simple Entities** | Basic info | ⭐ Easy | No custom cards needed |
-| **Basic Mushroom** | Nice looking | ⭐⭐ Medium | Current + 6h + 12h forecast |
-| **Advanced Mushroom** | Full features | ⭐⭐⭐ Advanced | Fog risk, wind type, stability |
-| **Compact Mobile** | Mobile view | ⭐ Easy | Quick stats, small screen |
-| **Comparison** | Method details | ⭐⭐ Medium | Compare Zambretti vs Negretti |
-| **Weather Entity** | Standard HA | ⭐ Easy | Daily/hourly forecast |
-| **Complete Dashboard (SK)** | All data | ⭐⭐⭐⭐ Expert | ALL sensors + snow/ice/fog warnings |
-
----
-
-## 📚 Additional Resources
-
-- **[README.md](README.md)** - Installation and configuration
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history
-
----
 
 ## 📋 Card 8: Complete Weather Entity Details (All Attributes)
 
@@ -956,7 +929,7 @@ entities:
     attribute: visibility_estimate
     name: Visibility Estimate
   
-  # Snow & Ice (v3.1.3+)
+  # Snow & Ice
   - type: section
     label: ❄️ Snow & Ice Risk
   - entity: weather.local_weather_forecast_weather
@@ -1218,6 +1191,26 @@ cards:
 
 ---
 
-**Last updated:** 2025-12-09  
-**Version:** v3.1.1
+## 🎯 Card Selection Guide
 
+| Card Type | Use Case | Complexity | Features |
+|-----------|----------|------------|----------|
+| **Simple Entities** | Basic info | ⭐ Easy | No custom cards needed |
+| **Basic Mushroom** | Nice looking | ⭐⭐ Medium | Current + 6h + 12h forecast |
+| **Advanced Mushroom** | Full features | ⭐⭐⭐ Advanced | Fog risk, wind type, stability |
+| **Compact Mobile** | Mobile view | ⭐ Easy | Quick stats, small screen |
+| **Comparison** | Method details | ⭐⭐ Medium | Compare Zambretti vs Negretti |
+| **Weather Entity** | Standard HA | ⭐ Easy | Daily/hourly forecast |
+| **Complete Dashboard (SK)** | All data | ⭐⭐⭐⭐ Expert | ALL sensors + snow/ice/fog warnings |
+| **Complete Weather Entity** | All attributes | ⭐⭐ Medium | 25+ weather entity attributes |
+
+---
+
+## 📚 Additional Resources
+
+- **[README.md](README.md)** - Installation and configuration
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history
+
+---
+
+**Documentation for Lovelace UI card examples**

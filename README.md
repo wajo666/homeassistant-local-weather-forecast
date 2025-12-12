@@ -3,8 +3,8 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/wajo666/homeassistant-local-weather-forecast.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-3.1.3-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-464%20passed-brightgreen.svg)](tests/README_TESTS.md)
+[![Version](https://img.shields.io/badge/version-3.1.4-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-476%20passed-brightgreen.svg)](tests/README_TESTS.md)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/README_TESTS.md)
 [![Developer](https://img.shields.io/badge/Developer-wajo666-green.svg)](https://github.com/wajo666)
 
@@ -32,6 +32,16 @@ This integration was inspired by the original work of **[@HAuser1234](https://gi
 - ❄️ **Snow Risk Detection** - 4-level snow probability (high/medium/low/none)
 - 🧊 **Frost/Ice Warning** - Critical black ice detection with 5 risk levels
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
+
+---
+
+## 📋 System Requirements
+
+| Component | Minimum Version | Recommended |
+|-----------|----------------|-------------|
+| **Home Assistant** | 2024.12.0 | Latest stable |
+| **Python** | 3.12 | 3.12 or 3.13 |
+| **HACS** | 1.32.0+ | Latest |
 
 ---
 
