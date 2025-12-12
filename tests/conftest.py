@@ -106,10 +106,8 @@ class MockFlowHandler:
             # Check elevation
             elevation = user_input.get("elevation")
             if elevation is not None:
-                if elevation < -500:
-                    errors["elevation"] = "elevation_too_low"
-                elif elevation > 8850:
-                    errors["elevation"] = "elevation_too_high"
+                if not (0 <= elevation <= 9000):
+                    errors["elevation"] = "invalid_elevation"
 
             # Check pressure sensor (required)
             if "pressure_sensor" in user_input:

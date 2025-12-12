@@ -129,8 +129,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Validate elevation
             elevation = user_input.get(CONF_ELEVATION, DEFAULT_ELEVATION)
-            _LOGGER.debug("Validating elevation: %s", elevation)
-            if elevation < 0 or elevation > 9000:
+            if not (0 <= elevation <= 9000):
                 _LOGGER.error("Invalid elevation: %s (must be 0-9000m)", elevation)
                 errors[CONF_ELEVATION] = "invalid_elevation"
 

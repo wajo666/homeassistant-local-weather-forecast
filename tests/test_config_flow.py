@@ -1,4 +1,5 @@
 """Tests for Local Weather Forecast config flow."""
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -204,6 +205,7 @@ class TestConfigFlow:
             },
         )
 
+
         assert result2["type"] == data_entry_flow.FlowResultType.FORM
         assert result2["errors"] == {CONF_ELEVATION: "invalid_elevation"}
 
@@ -385,8 +387,7 @@ class TestOptionsFlow:
             {"unit_of_measurement": "mm/h", "device_class": "precipitation_intensity"},
         )
 
-        entry = config_entries.ConfigEntry(
-            version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title="Local Weather Forecast",
             data={
@@ -394,7 +395,7 @@ class TestOptionsFlow:
                 CONF_ELEVATION: DEFAULT_ELEVATION,
                 CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
             },
-            source=config_entries.SOURCE_USER,
+            source="user",
         )
 
         hass.config_entries._entries[entry.entry_id] = entry
@@ -430,8 +431,7 @@ class TestOptionsFlow:
             {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
         )
 
-        entry = config_entries.ConfigEntry(
-            version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title="Local Weather Forecast",
             data={
@@ -439,7 +439,7 @@ class TestOptionsFlow:
                 CONF_ELEVATION: DEFAULT_ELEVATION,
                 CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
             },
-            source=config_entries.SOURCE_USER,
+            source="user",
         )
 
         hass.config_entries._entries[entry.entry_id] = entry
@@ -485,8 +485,7 @@ class TestOptionsFlow:
             {"unit_of_measurement": "%"},
         )
 
-        entry = config_entries.ConfigEntry(
-            version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title="Local Weather Forecast",
             data={
@@ -494,7 +493,7 @@ class TestOptionsFlow:
                 CONF_ELEVATION: DEFAULT_ELEVATION,
                 CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
             },
-            source=config_entries.SOURCE_USER,
+            source="user",
         )
 
         hass.config_entries._entries[entry.entry_id] = entry
@@ -525,8 +524,7 @@ class TestOptionsFlow:
             {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
         )
 
-        entry = config_entries.ConfigEntry(
-            version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title="Local Weather Forecast",
             data={
@@ -535,7 +533,7 @@ class TestOptionsFlow:
                 CONF_ELEVATION: DEFAULT_ELEVATION,
                 CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
             },
-            source=config_entries.SOURCE_USER,
+            source="user",
         )
 
         hass.config_entries._entries[entry.entry_id] = entry
@@ -563,8 +561,7 @@ class TestOptionsFlow:
             {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
         )
 
-        entry = config_entries.ConfigEntry(
-            version=1,
+        entry = MockConfigEntry(
             domain=DOMAIN,
             title="Local Weather Forecast",
             data={
@@ -572,7 +569,7 @@ class TestOptionsFlow:
                 CONF_ELEVATION: DEFAULT_ELEVATION,
                 CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
             },
-            source=config_entries.SOURCE_USER,
+            source="user",
         )
 
         hass.config_entries._entries[entry.entry_id] = entry
