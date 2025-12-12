@@ -7,6 +7,8 @@
   "documentation": "https://github.com/wajo666/homeassistant-local-weather-forecast",
   "integration_type": "device",
   "iot_class": "calculated",
-  "requirements": []
+  "issue_tracker": "https://github.com/wajo666/homeassistant-local-weather-forecast/issues",
+  "requirements": [],
+  "version": "3.1.4"
 }
 
