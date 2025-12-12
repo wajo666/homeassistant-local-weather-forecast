@@ -176,14 +176,14 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
     }
     result = mapping.get(z)
     if result is None:
-        # This should never happen after clamping, but keep defensive check
+        # This should never happen after clamping with valid input
         _LOGGER.error(
-            f"Zambretti: UNMAPPED z-number {z} - this should not happen! "
-            f"Check clamping logic. Falling back to forecast_type=0"
+            f"Zambretti: UNMAPPED z-number {z} - invalid input! "
+            f"Valid range is 1-31."
         )
-        result = 0  # Fallback to "Settled Fine"
-    else:
-        _LOGGER.debug(f"Zambretti: Mapped z={z} → forecast_index={result}")
+        return None  # Return None for invalid input
+
+    _LOGGER.debug(f"Zambretti: Mapped z={z} → forecast_index={result}")
     return result
 
 
