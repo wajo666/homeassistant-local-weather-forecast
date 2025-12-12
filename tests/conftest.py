@@ -74,23 +74,27 @@ class MockStates:
 class MockFlowHandler:
     """Mock flow handler."""
 
-    def __init__(self, hass):
+    def __init__(self, hass, flow_type="config"):
         """Initialize mock flow handler."""
         self.hass = hass
         self._flows = {}
         self._flow_counter = 0
+        self._flow_type = flow_type  # "config" or "options"
 
-    async def async_init(self, domain, context=None, data=None):
+    async def async_init(self, domain_or_entry_id, context=None, data=None):
         """Initialize a flow."""
         from homeassistant.data_entry_flow import FlowResultType
 
         self._flow_counter += 1
         flow_id = f"test_flow_{self._flow_counter}"
 
+        # Options flow uses "init" step, config flow uses "user" step
+        step_id = "init" if self._flow_type == "options" else "user"
+
         return {
             "type": FlowResultType.FORM,
             "flow_id": flow_id,
-            "step_id": "user",
+            "step_id": step_id,
             "data_schema": None,
             "errors": {},
         }
@@ -185,8 +189,8 @@ class MockConfigEntries:
         """Initialize mock config entries."""
         self.hass = hass
         self._entries = {}
-        self.flow = MockFlowHandler(hass)
-        self.options = MockFlowHandler(hass)
+        self.flow = MockFlowHandler(hass, flow_type="config")
+        self.options = MockFlowHandler(hass, flow_type="options")
 
     def async_entries(self, domain=None):
         """Get all entries."""
