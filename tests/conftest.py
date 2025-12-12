@@ -118,17 +118,24 @@ class MockFlowHandler:
                 if not (0 <= elevation <= 9000):
                     errors["elevation"] = "invalid_elevation"
 
-            # Check pressure sensor (required)
-            if "pressure_sensor" in user_input:
-                sensor_id = user_input["pressure_sensor"]
-                if sensor_id and not self.hass.states.get(sensor_id):
-                    errors["pressure_sensor"] = "sensor_not_found"
+            # Check all sensor fields - both required and optional
+            sensor_fields = [
+                "pressure_sensor",
+                "temperature_sensor",
+                "humidity_sensor",
+                "wind_speed_sensor",
+                "wind_direction_sensor",
+                "wind_gust_sensor",
+                "dewpoint_sensor",
+                "rain_rate_sensor",
+            ]
 
-            # Check temperature sensor (optional)
-            if "temperature_sensor" in user_input:
-                sensor_id = user_input.get("temperature_sensor")
-                if sensor_id and not self.hass.states.get(sensor_id):
-                    errors["temperature_sensor"] = "sensor_not_found"
+            for field in sensor_fields:
+                if field in user_input:
+                    sensor_id = user_input.get(field)
+                    # Only validate if sensor_id is not empty/None
+                    if sensor_id and not self.hass.states.get(sensor_id):
+                        errors[field] = "sensor_not_found"
 
             # Convert empty strings to None
             for key in list(user_input.keys()):
