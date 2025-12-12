@@ -80,6 +80,7 @@ class MockFlowHandler:
         self._flows = {}
         self._flow_counter = 0
         self._flow_type = flow_type  # "config" or "options"
+        self._flow_to_entry_id = {}  # Map flow_id to entry_id for options flow
 
     async def async_init(self, domain_or_entry_id, context=None, data=None):
         """Initialize a flow."""
@@ -87,6 +88,10 @@ class MockFlowHandler:
 
         self._flow_counter += 1
         flow_id = f"test_flow_{self._flow_counter}"
+
+        # For options flow, domain_or_entry_id is the entry_id
+        if self._flow_type == "options":
+            self._flow_to_entry_id[flow_id] = domain_or_entry_id
 
         # Options flow uses "init" step, config flow uses "user" step
         step_id = "init" if self._flow_type == "options" else "user"
@@ -131,14 +136,30 @@ class MockFlowHandler:
                     user_input[key] = None
 
         if errors:
+            step_id = "init" if self._flow_type == "options" else "user"
             return {
                 "type": FlowResultType.FORM,
                 "flow_id": flow_id,
-                "step_id": "user",
+                "step_id": step_id,
                 "errors": errors,
             }
 
-        # Check for duplicates (already configured)
+        # Options flow - update existing entry
+        if self._flow_type == "options":
+            # Get the entry_id from the flow_id mapping
+            entry_id = self._flow_to_entry_id.get(flow_id)
+            existing_entry = self.hass.config_entries._entries.get(entry_id)
+            if existing_entry and user_input:
+                # Update entry data with new values
+                existing_entry.data.update(user_input)
+                return {
+                    "type": FlowResultType.CREATE_ENTRY,
+                    "flow_id": flow_id,
+                    "title": existing_entry.title,
+                    "data": existing_entry.data,
+                }
+
+        # Config flow - check for duplicates (already configured)
         if user_input and "pressure_sensor" in user_input:
             for entry in self.hass.config_entries.async_entries("local_weather_forecast"):
                 if entry.data.get("pressure_sensor") == user_input.get("pressure_sensor"):
@@ -165,7 +186,7 @@ class MockFlowHandler:
             if sensor not in data:
                 data[sensor] = None
 
-        # Create and store the entry
+        # Create and store the entry (config flow only)
         entry = MockConfigEntry(
             domain="local_weather_forecast",
             data=data,
