@@ -14,7 +14,7 @@ jobs:
     name: Run Tests
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout code
@@ -32,15 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install 'pycares>=4.4.0' 'aiodns>=3.2.0'
           pip install -r requirements_test.txt
-          # Install appropriate Home Assistant version based on Python version
-          if [ "${{ matrix.python-version }}" == "3.11" ]; then
-            echo "Installing Home Assistant <2024.4.0 for Python 3.11"
-            pip install 'psutil-home-assistant==0.0.1'
-            pip install 'homeassistant<2024.4.0'
-          else
-            echo "Installing latest Home Assistant for Python ${{ matrix.python-version }}"
-            pip install homeassistant
-          fi
+          pip install homeassistant
 
       - name: Run tests
         run: |
