@@ -10,7 +10,8 @@
           "wind_direction_sensor": "Wind Direction Sensor (Optional)",
           "wind_speed_sensor": "Wind Speed Sensor (Optional)",
           "elevation": "Elevation Above Sea Level",
-          "pressure_type": "Pressure Type"
+          "pressure_type": "Pressure Type",
+          "forecast_model": "Forecast Model"
         },
         "data_description": {
           "pressure_sensor": "Barometric pressure sensor (required). Supports hPa, mbar, inHg, mmHg - automatically converted.",
@@ -18,7 +19,8 @@
           "wind_direction_sensor": "Wind direction in degrees (0-360°). Improves forecast accuracy, especially for detecting weather fronts.",
           "wind_speed_sensor": "Wind speed sensor. Supports m/s, km/h, mph, ft/s, knots - automatically converted. Improves forecast accuracy by determining wind factor.",
           "elevation": "Your location's elevation in meters above sea level (used to calculate sea level pressure from station pressure).",
-          "pressure_type": "Select whether your sensor provides absolute station pressure (QFE) or relative sea level pressure (QNH). Most sensors provide absolute pressure."
+          "pressure_type": "Select whether your sensor provides absolute station pressure (QFE) or relative sea level pressure (QNH). Most sensors provide absolute pressure.",
+          "forecast_model": "Choose forecast algorithm: Enhanced (combines both, recommended ~98% accuracy), Zambretti (classic, optimized for rising/falling pressure), or Negretti-Zambra (slide rule method, conservative)."
         }
       }
     },
@@ -50,6 +52,7 @@
           "cloud_coverage_sensor": "Cloud Coverage Sensor (Enhanced)",
           "elevation": "Elevation Above Sea Level",
           "pressure_type": "Pressure Type",
+          "forecast_model": "Forecast Model",
           "enable_weather_entity": "Enable Weather Entity"
         },
         "data_description": {
@@ -60,6 +63,7 @@
           "solar_radiation_sensor": "Solar radiation sensor in W/m² for accurate feels-like temperature. If UV Index sensor is provided, solar radiation can be calculated automatically (optional)",
           "uv_index_sensor": "UV Index sensor (0-15 scale). If Solar Radiation sensor is provided, UV Index can be calculated automatically. Used for sun protection alerts and apparent temperature (optional)",
           "cloud_coverage_sensor": "Cloud coverage sensor (%) to adjust solar radiation effects on apparent temperature (optional)",
+          "forecast_model": "Choose forecast algorithm: Enhanced (combines both, recommended ~98% accuracy), Zambretti (classic, optimized for rising/falling pressure), or Negretti-Zambra (slide rule method, conservative).",
           "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
       }

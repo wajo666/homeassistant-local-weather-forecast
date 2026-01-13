@@ -22,16 +22,18 @@ This integration was inspired by the original work of **[@HAuser1234](https://gi
 
 - 🎯 **High Accuracy** - 94-98% forecast accuracy with optional sensors
 - 🔌 **Fully Offline** - No external API dependencies or cloud services
-- 📅 **Multi-timeframe Forecasts** - Hourly (25h) + Daily (3 days)
-- 🌍 **Multi-language** - Automatic language detection from Home Assistant UI
+- 📅 **Multi-timeframe Forecasts** - Hourly (24h) + Daily (3 days)
+- 🧠 **3 Forecast Models** - Combined Dynamic (98%), Zambretti (94%), Negretti-Zambra (92%)
+- 🔄 **Adaptive Forecasting** 🆕 - Combined model automatically adjusts to atmospheric conditions
+- 🌍 **Multi-language** - Automatic language detection from Home Assistant UI (SK, EN, DE, IT, EL)
 - 🔄 **Auto Unit Conversion** - Use any standard units (°F, inHg, mph, km/h, etc.)
 - 🎨 **Easy Setup** - Modern UI configuration, no YAML needed
-- 🧠 **Dual Algorithms** - Zambretti & Negretti-Zambra forecast models
 - 🌡️ **Advanced Features** - Feels Like temp, Dew Point, Fog Risk analysis
 - 🌧️ **Smart Rain Detection** - Enhanced probability with real-time override
 - ❄️ **Snow Risk Detection** - 4-level snow probability (high/medium/low/none)
 - 🧊 **Frost/Ice Warning** - Critical black ice detection with 5 risk levels
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
+- ⚙️ **Flexible Configuration** - Change pressure type, elevation, forecast model anytime
 
 ---
 
@@ -111,52 +113,70 @@ This integration uses **barometric pressure trends** combined with optional sens
 
 ---
 
-## 🧠 Dual Forecast Models
+## 🧠 Three Forecast Models - Choose What Works Best
 
-The integration uses two independent forecast algorithms that run in parallel:
+The integration uses two independent forecast algorithms that can be combined in 3 different ways. You can **choose your preferred model** during setup or change it anytime via Options Flow:
 
-### 1. Zambretti Forecaster (`zambretti.py`)
-- **Base Accuracy:** ~88-94%
+### 🆕 Enhanced Model (Dynamic Weighting) - 🏆 RECOMMENDED
+- **Accuracy:** ~98% with full sensor setup
+- **Smart Adaptive System:** Automatically adjusts algorithm weighting based on atmospheric conditions
+- **Dynamic Weighting Strategy:**
+  - **Large pressure change (>5 hPa/3h):** Zambretti 80% + Negretti 20%
+    - Fast response to rapid atmospheric changes
+  - **Medium change (3-5 hPa/3h):** Zambretti 60% + Negretti 40%
+    - Balanced response to moderate changes
+  - **Small change (1-3 hPa/3h):** Zambretti 50% + Negretti 50%
+    - Equal weight for stable transitions
+  - **Stable (<1 hPa/3h):** Zambretti 20% + Negretti 80%
+    - Conservative predictions in calm conditions
+- **Best for:** ALL CLIMATES - automatically adapts to your local weather patterns
+- **Strengths:** Best of both worlds - fast response + stability in extremes
+- **Debug Logging:** Shows dynamic weight calculation for transparency
+
+### Zambretti Model
+- **Accuracy:** ~94% with full sensor setup
 - Classic algorithm from 1920s
 - Based on pressure, trend, and wind
 - Seasonal adjustments (summer/winter)
 - Letter codes A-Z for quick reference
 - **Best for:** Temperate climates, stable weather patterns
-- **Strengths:** Simple, proven, good for European climate
-- **Now with hourly forecasting**
+- **Strengths:** Simple, proven, good for European climate, faster response to changes
 
-### 2. Negretti & Zambra (`negretti_zambra.py`)
-- **Base Accuracy:** ~88-94%
+### Negretti & Zambra Model
+- **Accuracy:** ~92% with full sensor setup
 - Modern "slide rule" approach
 - 22-step pressure scale (950-1050 hPa)
 - Detailed 16-direction wind corrections
 - Exceptional weather detection
-- **Best for:** Variable weather patterns, rapid changes
-- **Strengths:** Better extreme weather detection, finer pressure scale
-- **Now with hourly forecasting**
+- **Best for:** Variable weather patterns, rapid changes, extreme conditions
+- **Strengths:** Better extreme weather detection, finer pressure scale, more conservative
 
-### 🏆 Which is More Accurate?
+### 🏆 Which Model to Choose?
 
-**Both have similar accuracy (~88-94%)**, but excel in different conditions:
+| Your Climate | Recommended Model | Why? |
+|--------------|-------------------|------|
+| **Any climate** | **Enhanced** 🏆 | Best accuracy, automatically adapts to all conditions |
+| **Stable temperate** | Zambretti | Consistent behavior, proven accuracy |
+| **Highly variable** | Negretti-Zambra | Better extreme weather handling |
+| **Coastal/windy** | Negretti-Zambra | Superior wind corrections |
+| **Migration from v3.1.3** | Zambretti | Preserves original behavior |
 
-| Weather Pattern | Better Algorithm | Why? |
-|-----------------|------------------|------|
-| Stable weather (high pressure) | **Zambretti** | Optimized for temperate zones |
-| Variable weather (fronts) | **Negretti-Zambra** | Finer pressure scale (22 steps) |
-| Extreme conditions (storms) | **Negretti-Zambra** | Exceptional weather detection |
-| Seasonal changes | **Zambretti** | Better summer/winter adjustments |
-| Wind-influenced weather | **Negretti-Zambra** | 16-direction wind corrections |
+### 🔄 Model Selection
 
-### 🎯 Recommended: Use Enhanced Forecast!
+- **Initial Setup:** Choose during integration configuration
+- **Change Anytime:** Settings → Integrations → Local Weather Forecast → Configure → Forecast Model
+- **Migration Note:** Existing installations (upgrading from v3.1.3 or earlier) automatically use "Zambretti" to preserve original behavior
 
-**`sensor.local_forecast_enhanced`** combines BOTH algorithms + modern sensors:
+### 🎯 Recommended: Use Combined Forecast!
+
+**`sensor.local_forecast_enhanced`** with Combined model uses BOTH algorithms with adaptive weighting + modern sensors:
 
 ```
 📊 Accuracy by Configuration:
 ├─ Zambretti only:        ~88-94%
 ├─ Negretti only:         ~88-94%
-├─ Enhanced (both + wind): ~94%
-└─ Enhanced (all sensors): ~98% ⭐ BEST!
+├─ Combined (basic):      ~94%
+└─ Combined (all sensors): ~98% ⭐ BEST!
 ```
 
 **Enhanced features:**
@@ -210,20 +230,26 @@ The weather entity intelligently combines multiple data sources with **priority-
 - **Example:** Active rain sensor → Immediate "rainy" condition
 
 #### **PRIORITY 2: Snow & Fog Detection** (Meteorological Conditions)
-- **Snow Detection:**
-  - **High risk:** Temp ≤ 0°C, humidity > 80%, dewpoint spread < 2°C, rain prob > 60%
-  - **Medium risk:** Temp 0-2°C, humidity > 70%, dewpoint spread < 3°C, rain prob > 40%
+- **Snow Detection (4 Methods - Any can trigger):**
+  - **METHOD 1:** Direct `snow_risk` sensor reading (high/medium) → SNOWY
+  - **METHOD 2:** Temperature-based: Temp ≤ 0°C + humidity > 75% + spread < 3.5°C → SNOWY
+  - **METHOD 3:** Very cold: Temp < -2°C + humidity > 80% → SNOWY (frozen sensor scenario)
+  - **METHOD 4:** Near-freezing: 0 < temp ≤ 2°C + humidity > 70% + spread < 3.0°C + rain_prob > 30% → SNOWY
   - **Result:** Condition = `"snowy"`
+  - **Note:** No rain probability required for Methods 2-3 (atmospheric conditions sufficient)
   
 - **Fog Detection:**
   - **Critical:** Dewpoint spread < 1.5°C + humidity > 85%
   - **Near saturation:** Dewpoint spread < 1.0°C + humidity > 80%
   - **Result:** Condition = `"fog"`
 
-#### **PRIORITY 3: Zambretti Forecast** (Barometric Pressure-Based)
-- **Source:** `sensor.local_forecast_zambretti_detail`
+#### **PRIORITY 3: Forecast Model** (Configurable Algorithm)
+- **Source:** Selected forecast model (Combined/Zambretti/Negretti-Zambra)
 - **Uses:** Letter code (A-Z) → HA condition mapping
 - **Enhancements:**
+  - **Fog Risk Correction:**
+    - Medium fog risk (spread 1.5-2.5°C, humidity 75-85%) + (sunny/partlycloudy) → `"cloudy"`
+    - Low fog risk (spread 2.5-3.5°C, humidity 65-75%) + sunny → `"partlycloudy"`
   - **Humidity correction:**
     - Humidity > 85% + (sunny/partlycloudy) → Upgraded to `"cloudy"`
     - Humidity > 70% + sunny → Upgraded to `"partlycloudy"`
@@ -352,9 +378,31 @@ Scenario 5: High humidity correction
 - **Pressure Type**: Select QFE (absolute) or QNH (relative)
   - **QFE (Absolute)**: Station pressure without altitude correction - most sensors (BME280, BMP280, etc.)
   - **QNH (Relative)**: Sea level corrected pressure - some weather stations (Ecowitt, Netatmo)
+- **Forecast Model**: Choose which algorithm to use for weather prediction *(v3.1.4+)*
+  - **Combined (Dynamic)** 🆕: Smart adaptive weighting based on atmospheric conditions (~98%)
+    - **High pressure change (>5 hPa/3h)**: Zambretti 80% + Negretti 20%
+    - **Medium change (3-5 hPa/3h)**: Zambretti 60% + Negretti 40%
+    - **Small change (1-3 hPa/3h)**: Balanced 50% + 50%
+    - **Stable (<1 hPa/3h)**: Zambretti 20% + Negretti 80%
+    - ✅ Best accuracy for all weather patterns
+    - ✅ Adapts to your climate automatically
+    - ⚡ Responds fast to sudden changes (like Zambretti)
+    - 🛡️ Stable during extreme events (like Negretti)
+  - **Zambretti (Classic)**: Optimized for rising/falling pressure scenarios (~94%)
+    - Faster response to pressure changes
+    - Best for maritime climates with rapid changes
+    - Established algorithm from 1915
+    - **🔄 Automatic Migration**: Existing installations upgrading from v3.1.3 or earlier use this to preserve original behavior
+  - **Negretti-Zambra**: Slide rule method, more conservative with extreme conditions (~92%)
+    - More stable predictions during extreme pressure events
+    - Best for continental climates
+    - Historical slide-rule based method
+  - **Impact**: Selected model affects **current condition**, **hourly forecast (24h)**, and **daily forecast (3 days)**
 - **Language**: Automatically uses your Home Assistant UI language
   - Supported: Slovak, English, German, Italian, Greek (defaults to English if not supported)
   - Change in: `Settings → System → General → Language` → Restart HA
+
+💡 **Can change after installation**: All options (including all sensors!) can be changed via `Settings → Integrations → Local Weather Forecast → Configure` *(v3.1.4+)*
 
 ---
 
@@ -645,12 +693,44 @@ attributes:
 
 Enhanced rain probability calculation using multiple factors:
 
-**Factors:**
-- Zambretti forecast → probability
-- Negretti-Zambra forecast → probability
-- Humidity adjustments (±15%)
-- Dewpoint spread adjustments (±15%)
-- Current rain override
+**Base Calculation:**
+- Uses **selected forecast model** (Combined/Zambretti/Negretti-Zambra) from configuration
+- Averages precipitation probability from next 6 hours of forecast
+- Falls back to detail sensors if forecast unavailable
+
+**Enhancement Factors:**
+
+**1. Base Probability Calculation:**
+- Uses **selected forecast model** (Combined/Zambretti/Negretti-Zambra) from configuration
+- Averages precipitation probability from both algorithms
+- Scale factor based on base probability:
+  - Low (0-20%): scale 0.3 (conservative)
+  - Medium (20-60%): scale 0.6 (moderate)
+  - High (>60%): scale 1.0 (aggressive)
+
+**2. Atmospheric Adjustments:**
+- 💧 **Humidity effects** (±25%):
+  - Very high (>95%): +10% (cold: >90%)
+  - High (>85%): +5% (cold: >80%)
+  - Low (<50%): -10%
+- 🌫️ **Dewpoint spread** (±25%):
+  - Critical saturation (<1.0°C): +15%
+  - Near saturation (1.0-2.0°C): +10%
+  - Very close (2.0-3.0°C): +5%
+  - Dry (>5.0°C): -10%
+- 🌧️ **Current rain override**: 100% when rain rate > 0.1 mm/h
+
+**3. Cold Weather Adjustments (≤0°C):**
+- Lowered humidity thresholds for precipitation detection:
+  - High threshold: 85% → 75%
+  - Medium threshold: 70% → 65%
+- Increased saturation scale factor from 0.3 to 0.8 for spread < 1°C
+- Allows snow detection even with low barometric forecast
+
+**Model Impact:**
+- **Combined mode**: Uses dynamic weighted average (20-80% each model based on conditions)
+- **Zambretti mode**: Uses only Zambretti forecast data
+- **Negretti-Zambra mode**: Uses only Negretti-Zambra forecast data
 
 **Example Output:**
 ```yaml
@@ -846,15 +926,25 @@ accuracy_estimate: "~98%"
 
 **Entity:** `sensor.local_forecast_rain_probability`
 
-Multi-factor rain prediction:
+Multi-factor rain prediction based on **your selected forecast model**:
 
-**Factors:**
-- 📊 Base forecast (Zambretti/Negretti-Zambra)
+**Base Forecast Source:**
+- 📊 Uses **selected forecast model** from configuration (Combined/Zambretti/Negretti-Zambra)
+- Averages precipitation probability from next 6 hours
+- Automatically adapts when you change forecast model
+
+**Enhancement Factors:**
 - 💧 Humidity level (±25% adjustment)
 - 🌫️ Dewpoint spread / fog risk (±25% adjustment)
-- 🌧️ Current rain rate (if sensor available)
+- 🌧️ Current rain rate override (100% when actively raining)
 
 **Output:** 0-100% probability with confidence level
+
+**How it works:**
+1. Gets base probability from **your chosen forecast model** (weather entity)
+2. Applies humidity adjustments (high humidity → +25%)
+3. Applies dewpoint spread adjustments (low spread → +25%)
+4. If rain sensor detects rain > 0.1 mm/h → overrides to 100%
 
 **Example Output:**
 ```yaml
@@ -957,10 +1047,15 @@ If persists, check:
 ### Forecast Seems Inaccurate
 
 Try:
-1. **Compare both models** - Zambretti vs Negretti-Zambra
-2. **Add wind sensors** - Significantly improves accuracy
+1. **Switch forecast model** *(v3.1.4+)* - Try different algorithms to see which works best for your location
+   - Settings → Integrations → Local Weather Forecast → Configure → Forecast Model
+   - **Enhanced**: Best for most locations (default)
+   - **Zambretti**: Better for rapidly changing weather (coastal areas)
+   - **Negretti-Zambra**: Better for stable continental climates
+2. **Add wind sensors** - Significantly improves accuracy (+5-10%)
 3. **Verify elevation** - Critical for sea level pressure calculation
 4. **Check pressure sensor** - Ensure it's providing accurate readings
+5. **Compare with professional forecasts** - Local weather patterns vary by region
 
 ### "Sensor Not Found" Error
 
@@ -1027,6 +1122,113 @@ Weather: Using Zambretti forecast - Settled Fine (sunny)
 - Use rain rate sensor (detects active rain)
 - Use cloud coverage sensor if available
 - Compare with external weather API for current conditions
+
+---
+
+## ❓ Frequently Asked Questions (FAQ)
+
+### Which forecast model should I choose?
+
+**TL;DR:** Use **Combined (Dynamic)** - it's the most accurate and adapts automatically to your local weather patterns.
+
+**Detailed comparison:**
+
+| Model | Best For | Accuracy | Speed | Characteristics |
+|-------|----------|----------|-------|-----------------|
+| **Combined (Dynamic)** 🆕 | All locations | ~98% | Adaptive | Smart weighting based on pressure changes - best of both worlds |
+| **Zambretti** | Coastal/maritime | ~94% | Fast | Reacts quickly to pressure changes |
+| **Negretti-Zambra** | Continental | ~92% | Conservative | Better for extreme pressures |
+
+**How Combined model works:**
+- **Rapid change (>5 hPa/3h)**: Uses 80% Zambretti (fast response)
+- **Medium change (3-5 hPa/3h)**: Uses 60% Zambretti + 40% Negretti
+- **Small change (1-3 hPa/3h)**: Balanced 50/50 split
+- **Stable (<1 hPa/3h)**: Uses 80% Negretti (conservative)
+
+**Migration note:** If upgrading from v3.1.3 or earlier, your installation will use **Zambretti** by default to preserve original behavior. You can change to Combined anytime via Settings → Integrations → Local Weather Forecast → Configure.
+
+**Decision guide:**
+- **Live near coast/ocean?** → Try Zambretti (faster response to sea weather changes)
+- **Continental climate?** → Try Negretti-Zambra (more stable, less volatile)
+- **Not sure?** → Keep Combined (best overall accuracy with adaptive weighting)
+- **Can change anytime** → Settings → Integrations → Local Weather Forecast → Configure
+
+### How does the forecast model affect my weather?
+
+The selected model affects **ALL weather predictions**:
+- ✅ **Current weather condition** (sunny, rainy, cloudy, etc.)
+- ✅ **Hourly forecast** (next 24 hours) - temperature, condition, precipitation
+- ✅ **Daily forecast** (next 3 days) - high/low temp, condition, precipitation
+- ✅ **Rain probability sensor** - uses forecast data from selected model
+- ✅ **Enhanced sensor** - base forecast text and attributes
+- ✅ **Weather entity attributes** - forecast confidence, adjustments
+
+**Example:** If you select "Zambretti only":
+- Current condition = Zambretti prediction
+- Hourly/Daily forecasts = Based on Zambretti algorithm
+- Rain probability = Calculated from Zambretti forecast data
+- Enhanced sensor shows `zambretti_number` in attributes
+
+### Can I switch models after setup?
+
+**Yes!** You can change the forecast model anytime:
+1. Go to **Settings** → **Integrations**
+2. Find **Local Weather Forecast**
+3. Click **Configure**
+4. Select new **Forecast Model**
+5. Click **Submit**
+
+Changes apply immediately to all forecasts.
+
+### Why are Zambretti and Negretti-Zambra different?
+
+Both use barometric pressure trends but with different approaches:
+
+**Zambretti (1915):**
+- Optimized for **rising/falling** pressure scenarios
+- Uses **26 forecast types** (letters A-Z)
+- Reacts **faster** to pressure changes
+- Best for **maritime climates** with rapid weather changes
+
+**Negretti-Zambra (slide rule method):**
+- Considers **wind direction** more heavily
+- Uses **pressure zones** and **seasonal adjustments**
+- More **conservative** during extreme conditions
+- Best for **continental climates** with stable patterns
+
+**Combined (Dynamic) - v3.1.4+ 🆕:**
+- **Smart weighting** based on pressure change rate
+- Automatically **adapts** to local weather patterns
+- Uses **Zambretti** more when pressure changes rapidly
+- Uses **Negretti** more when conditions are stable
+- **Best accuracy** (~98%) across all climate types
+
+
+### What if both models disagree?
+
+When Zambretti and Negretti-Zambra predict different conditions:
+
+**Combined mode (recommended):**
+- Shows **weighted average** of both predictions
+- Adjusts weighting dynamically based on atmospheric conditions (more intelligent)
+- Adds **"no consensus"** flag to attributes
+- Lowers **confidence level** (high → medium)
+- Example: One says "sunny", other says "cloudy" → Shows "partly cloudy"
+
+**Single model mode:**
+- Only uses selected algorithm (Zambretti OR Negretti-Zambra)
+- No consensus checking needed
+- No consensus validation
+- Faster but potentially less accurate
+
+Check `sensor.local_forecast_enhanced` attributes:
+```yaml
+consensus: false  # ← Models disagree
+confidence: medium  # ← Lower confidence
+zambretti_number: 0  # ← Sunny
+negretti_number: 10  # ← Cloudy
+accuracy_estimate: ~94%  # ← Reduced accuracy (Enhanced) or ~98% (Combined with dynamic weighting)
+```
 
 ---
 

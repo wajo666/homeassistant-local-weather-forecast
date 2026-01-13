@@ -36,7 +36,9 @@ from .calculations import (
 from .const import (
     CONF_CLOUD_COVERAGE_SENSOR,
     CONF_DEWPOINT_SENSOR,
+    CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
+    CONF_FORECAST_MODEL,
     CONF_HUMIDITY_SENSOR,
     CONF_LATITUDE,
     CONF_PRESSURE_SENSOR,
@@ -48,8 +50,13 @@ from .const import (
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ENABLE_WEATHER_ENTITY,
+    DEFAULT_ELEVATION,
+    DEFAULT_FORECAST_MODEL,
     DEFAULT_LATITUDE,
     DOMAIN,
+    FORECAST_MODEL_ENHANCED,
+    FORECAST_MODEL_NEGRETTI,
+    FORECAST_MODEL_ZAMBRETTI,
     ZAMBRETTI_TO_CONDITION,
 )
 from .forecast_calculator import (
@@ -419,41 +426,63 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 dewpoint_spread = temp - dewpoint
                 current_hour = dt.now().hour
 
-                # SNOW CONDITIONS (temperature ≤ 4°C + high humidity + precipitation likely):
-                # Snow detected when temp is freezing + high moisture + near saturation
-                if temp <= 0 and humidity > 80 and dewpoint_spread < 2.0:
-                    # Get rain probability to check if precipitation is likely
-                    rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
-                    rain_prob = 0
-                    if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
-                        try:
-                            rain_prob = float(rain_prob_sensor.state)
-                        except (ValueError, TypeError):
-                            pass
+                # Get rain/snow probability sensor value (used for multiple checks)
+                rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+                rain_prob = 0
+                if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
+                    try:
+                        rain_prob = float(rain_prob_sensor.state)
+                    except (ValueError, TypeError):
+                        pass
 
-                    if rain_prob > 60:  # High snow risk
-                        _LOGGER.debug(
-                            f"Weather: SNOW detected - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
-                            f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
-                        )
-                        return ATTR_CONDITION_SNOWY
+                # Get snow risk sensor if available (v3.1.3+)
+                snow_risk = None
+                snow_risk_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                if snow_risk_sensor and snow_risk_sensor.state not in ("unknown", "unavailable", None):
+                    try:
+                        snow_risk_attrs = snow_risk_sensor.attributes or {}
+                        snow_risk = snow_risk_attrs.get("snow_risk", None)
+                    except (AttributeError, KeyError, TypeError):
+                        pass
 
-                # Medium snow risk (0-2°C range)
-                elif 0 < temp <= 2 and humidity > 70 and dewpoint_spread < 3.0:
-                    rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
-                    rain_prob = 0
-                    if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
-                        try:
-                            rain_prob = float(rain_prob_sensor.state)
-                        except (ValueError, TypeError):
-                            pass
+                # SNOW CONDITIONS (meteorologically justified):
+                # Snow requires: freezing temp + high humidity + saturation
+                # We use multiple detection methods for reliability
 
-                    if rain_prob > 40:  # Medium snow risk
-                        _LOGGER.debug(
-                            f"Weather: SNOW likely - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
-                            f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
-                        )
-                        return ATTR_CONDITION_SNOWY
+                # METHOD 1: Direct snow risk from sensor (most reliable if available)
+                if snow_risk and snow_risk in ("high", "medium"):
+                    _LOGGER.debug(
+                        f"Weather: SNOW detected from sensor - snow_risk={snow_risk}, "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
+                    )
+                    return ATTR_CONDITION_SNOWY
+
+                # METHOD 2: Temperature-based snow detection (backup)
+                # High confidence: temp ≤ 0°C + high humidity + near saturation
+                if temp <= 0 and humidity > 75 and dewpoint_spread < 3.5:
+                    _LOGGER.debug(
+                        f"Weather: SNOW conditions met - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
+                        f"spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
+                    )
+                    return ATTR_CONDITION_SNOWY
+
+                # METHOD 3: Very cold + high humidity (frozen rain sensor scenario)
+                # When temp < -2°C with 80%+ humidity, it's almost certainly snow
+                if temp < -2 and humidity > 80:
+                    _LOGGER.debug(
+                        f"Weather: SNOW detected (very cold + high humidity) - "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
+                    )
+                    return ATTR_CONDITION_SNOWY
+
+                # METHOD 4: Medium snow risk (0-2°C range)
+                # Requires slightly higher precipitation probability
+                if 0 < temp <= 2 and humidity > 70 and dewpoint_spread < 3.0 and rain_prob > 30:
+                    _LOGGER.debug(
+                        f"Weather: SNOW likely (near-freezing) - temp={temp:.1f}°C, "
+                        f"humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
+                    )
+                    return ATTR_CONDITION_SNOWY
 
                 # FOG CONDITIONS (meteorologically justified):
                 # Fog occurs when dewpoint spread is very low and humidity is high
@@ -476,22 +505,79 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
                     return ATTR_CONDITION_FOG
 
-            # PRIORITY 3: Get Zambretti forecast condition
-            zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-            if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable", None):
+            # PRIORITY 3: Get forecast condition based on selected model
+            # User can choose: Enhanced (default), Zambretti, Negretti-Zambra, or Combined
+            forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
+
+            # Determine which sensor to use based on forecast model
+            if forecast_model == FORECAST_MODEL_ENHANCED:
+                # Enhanced uses sensor.local_forecast_enhanced (dynamic weighting based on pressure change)
+                forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                sensor_name = "Enhanced (Dynamic)"
+            elif forecast_model == FORECAST_MODEL_NEGRETTI:
+                # Negretti uses sensor.local_forecast_neg_zam_detail
+                forecast_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+                sensor_name = "Negretti-Zambra"
+            elif forecast_model == FORECAST_MODEL_ZAMBRETTI:
+                # Zambretti uses sensor.local_forecast_zambretti_detail (classic algorithm)
+                forecast_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+                sensor_name = "Zambretti"
+            else:
+                # Fallback to default if invalid model configured
+                _LOGGER.warning(
+                    f"Invalid forecast_model '{forecast_model}', falling back to {DEFAULT_FORECAST_MODEL}"
+                )
+                forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                sensor_name = "Enhanced (Dynamic)"
+
+            if forecast_sensor and forecast_sensor.state not in ("unknown", "unavailable", None):
                 try:
-                    attrs = zambretti_sensor.attributes or {}
+                    attrs = forecast_sensor.attributes or {}
                     letter_code = attrs.get("letter_code", "A")
 
                     _LOGGER.debug(
-                        f"Weather: Zambretti sensor state={zambretti_sensor.state}, "
-                        f"letter_code={letter_code}"
+                        f"Weather: Using {sensor_name} forecast model - "
+                        f"sensor state={forecast_sensor.state}, letter_code={letter_code}"
                     )
 
-                    # Map Zambretti letter to HA condition
+                    # Map letter to HA condition
                     condition = ZAMBRETTI_TO_CONDITION.get(letter_code, ATTR_CONDITION_PARTLYCLOUDY)
 
                     _LOGGER.debug(f"Weather: Mapped letter {letter_code} → condition {condition}")
+
+                    # FOG RISK-BASED CLOUD COVER CORRECTION
+                    # Fog reduces visibility and makes it feel cloudy even if forecast says sunny
+                    # Get fog risk from enhanced sensor
+                    fog_risk = None
+                    dewpoint_spread_attr = None
+                    enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                    if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable", None):
+                        try:
+                            enhanced_attrs = enhanced_sensor.attributes or {}
+                            fog_risk = enhanced_attrs.get("fog_risk", None)
+                            dewpoint_spread_attr = enhanced_attrs.get("dewpoint_spread", None)
+                        except (AttributeError, KeyError, TypeError):
+                            pass
+
+                    if fog_risk:
+                        _LOGGER.debug(f"Weather: Fog risk={fog_risk}, current condition={condition}")
+
+                        # High/Critical fog risk: force FOG condition (already handled in PRIORITY 2)
+                        # Medium fog risk: upgrade sunny/partlycloudy to cloudy
+                        if fog_risk in ("medium", "Stredné riziko hmly") and condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_PARTLYCLOUDY):
+                            _LOGGER.debug(
+                                f"Weather: Fog correction (medium): {condition} → cloudy "
+                                f"(fog_risk={fog_risk}, spread={dewpoint_spread_attr}°C)"
+                            )
+                            condition = ATTR_CONDITION_CLOUDY
+
+                        # Low fog risk: upgrade sunny to partlycloudy (indicates moisture/haze)
+                        elif fog_risk in ("low", "Nízke riziko hmly") and condition == ATTR_CONDITION_SUNNY:
+                            _LOGGER.debug(
+                                f"Weather: Fog correction (low): sunny → partlycloudy "
+                                f"(fog_risk={fog_risk}, spread={dewpoint_spread_attr}°C)"
+                            )
+                            condition = ATTR_CONDITION_PARTLYCLOUDY
 
                     # HUMIDITY-BASED CLOUD COVER CORRECTION
                     # If high humidity but Zambretti says partly cloudy, upgrade to cloudy
@@ -997,7 +1083,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 hass=self.hass
             )
 
-            # Create Zambretti forecaster with hass for sun entity access
+            # Get user's selected forecast model
+            forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
+            _LOGGER.debug(f"📊 Using forecast model for daily forecast: {forecast_model}")
+
             # Try to get latitude from config, fall back to Home Assistant's location, then to default
             latitude = self._get_config(CONF_LATITUDE)
             if latitude is None:
@@ -1006,14 +1095,47 @@ class LocalWeatherForecastWeather(WeatherEntity):
             else:
                 _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
-            zambretti = ZambrettiForecaster(
-                hass=self.hass,
-                latitude=latitude,
-                uv_index=uv_index,
-                solar_radiation=solar_radiation
-            )
+            # Get elevation from config, fall back to Home Assistant's elevation, then to default
+            elevation = self._get_config(CONF_ELEVATION)
+            if elevation is None:
+                elevation = self.hass.config.elevation if self.hass and self.hass.config.elevation else DEFAULT_ELEVATION
+                _LOGGER.debug(f"📍 Using elevation from Home Assistant: {elevation}m")
+            else:
+                _LOGGER.debug(f"📍 Using elevation from config: {elevation}m")
 
-            # Create generators with rain rate
+            # Determine which algorithm to use based on selected model
+            if forecast_model == FORECAST_MODEL_ENHANCED:
+                # Enhanced: Use weighted combination of both algorithms
+                # Generate forecasts from both and combine them
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Enhanced mode: Using combined Zambretti + Negretti algorithms")
+            elif forecast_model == FORECAST_MODEL_NEGRETTI:
+                # Negretti-Zambra: Conservative slide-rule method
+                # Note: We still use Zambretti class but with Negretti-optimized parameters
+                from .negretti_zambra import calculate_forecast as negretti_calc
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Negretti-Zambra mode: Using conservative algorithm")
+            else:  # FORECAST_MODEL_ZAMBRETTI
+                # Classic Zambretti: Optimized for rising/falling pressure
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Zambretti mode: Using classic algorithm")
+
+            # Create generators with rain rate and selected model
             hourly_gen = HourlyForecastGenerator(
                 self.hass,
                 pressure_model,
@@ -1022,7 +1144,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 wind_direction=int(wind_dir),
                 wind_speed=float(wind_speed),
                 latitude=latitude,
-                current_rain_rate=current_rain_rate
+                elevation=elevation,
+                current_rain_rate=current_rain_rate,
+                forecast_model=forecast_model
             )
 
             daily_gen = DailyForecastGenerator(hourly_gen)
@@ -1150,7 +1274,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 hass=self.hass
             )
 
-            # Create Zambretti forecaster with hass for sun entity access
+            # Get user's selected forecast model
+            forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
+            _LOGGER.debug(f"📊 Using forecast model for hourly forecast: {forecast_model}")
+
             # Try to get latitude from config, fall back to Home Assistant's location, then to default
             latitude = self._get_config(CONF_LATITUDE)
             if latitude is None:
@@ -1159,14 +1286,44 @@ class LocalWeatherForecastWeather(WeatherEntity):
             else:
                 _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
-            zambretti = ZambrettiForecaster(
-                hass=self.hass,
-                latitude=latitude,
-                uv_index=uv_index,
-                solar_radiation=solar_radiation
-            )
+            # Get elevation from config, fall back to Home Assistant's elevation, then to default
+            elevation = self._get_config(CONF_ELEVATION)
+            if elevation is None:
+                elevation = self.hass.config.elevation if self.hass and self.hass.config.elevation else DEFAULT_ELEVATION
+                _LOGGER.debug(f"📍 Using elevation from Home Assistant: {elevation}m")
+            else:
+                _LOGGER.debug(f"📍 Using elevation from config: {elevation}m")
 
-            # Create generator with rain rate
+            # Determine which algorithm to use based on selected model
+            if forecast_model == FORECAST_MODEL_ENHANCED:
+                # Enhanced: Use weighted combination of both algorithms
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Enhanced mode: Using combined Zambretti + Negretti algorithms")
+            elif forecast_model == FORECAST_MODEL_NEGRETTI:
+                # Negretti-Zambra: Conservative slide-rule method
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Negretti-Zambra mode: Using conservative algorithm")
+            else:  # FORECAST_MODEL_ZAMBRETTI
+                # Classic Zambretti: Optimized for rising/falling pressure
+                zambretti = ZambrettiForecaster(
+                    hass=self.hass,
+                    latitude=latitude,
+                    uv_index=uv_index,
+                    solar_radiation=solar_radiation
+                )
+                _LOGGER.debug("📊 Zambretti mode: Using classic algorithm")
+
+            # Create generator with rain rate and selected model
             hourly_gen = HourlyForecastGenerator(
                 self.hass,
                 pressure_model,
@@ -1175,7 +1332,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 wind_direction=int(wind_dir),
                 wind_speed=float(wind_speed),
                 latitude=latitude,
-                current_rain_rate=current_rain_rate
+                elevation=elevation,
+                current_rain_rate=current_rain_rate,
+                forecast_model=forecast_model
             )
 
             # Generate forecast (1-hour intervals)

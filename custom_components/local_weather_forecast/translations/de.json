@@ -10,7 +10,8 @@
           "wind_direction_sensor": "Windrichtungssensor (Optional)",
           "wind_speed_sensor": "Windgeschwindigkeitssensor (Optional)",
           "elevation": "Höhe über dem Meeresspiegel",
-          "pressure_type": "Drucktyp"
+          "pressure_type": "Drucktyp",
+          "forecast_model": "Vorhersagemodell"
         },
         "data_description": {
           "pressure_sensor": "Barometrischer Drucksensor (erforderlich). Unterstützt hPa, mbar, inHg, mmHg - automatisch konvertiert.",
@@ -18,7 +19,8 @@
           "wind_direction_sensor": "Windrichtung in Grad (0-360°). Verbessert Vorhersagegenauigkeit, besonders für Frontenerkennung.",
           "wind_speed_sensor": "Windgeschwindigkeitssensor. Unterstützt m/s, km/h, mph, ft/s, Knoten - automatisch konvertiert. Verbessert Vorhersagegenauigkeit durch Windfaktor.",
           "elevation": "Höhe Ihres Standorts in Metern über dem Meeresspiegel (zur Berechnung des Drucks auf Meereshöhe).",
-          "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck."
+          "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck.",
+          "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen ~98% Genauigkeit), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ)."
         }
       }
     },
@@ -50,6 +52,7 @@
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (Erweitert)",
           "elevation": "Höhe über dem Meeresspiegel",
           "pressure_type": "Drucktyp",
+          "forecast_model": "Vorhersagemodell",
           "enable_weather_entity": "Wetter-Entität aktivieren"
         },
         "data_description": {
@@ -60,6 +63,7 @@
           "solar_radiation_sensor": "Solarstrahlungssensor in W/m² für genaue gefühlte Temperatur. Wenn UV-Index-Sensor bereitgestellt wird, kann Solarstrahlung automatisch berechnet werden (optional)",
           "uv_index_sensor": "UV-Index-Sensor (0-15 Skala). Wenn Solarstrahlungssensor bereitgestellt wird, kann UV-Index automatisch berechnet werden. Wird für Sonnenschutzwarnungen und gefühlte Temperatur verwendet (optional)",
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (%) zur Anpassung der Solarstrahlungseffekte auf die gefühlte Temperatur (optional)",
+          "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen ~98% Genauigkeit), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ).",
           "enable_weather_entity": "Erstellen Sie eine Wetter-Entität für Wetterkarten und Automatisierungen"
         }
       }

@@ -1837,6 +1837,15 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
     async def async_update(self) -> None:
         """Update the enhanced forecast."""
+        # Get forecast model from config (options first, then data fallback, then default)
+        from .const import CONF_FORECAST_MODEL, FORECAST_MODEL_ENHANCED
+        forecast_model = (
+            self.config_entry.options.get(CONF_FORECAST_MODEL)
+            or self.config_entry.data.get(CONF_FORECAST_MODEL)
+            or FORECAST_MODEL_ENHANCED
+        )
+        _LOGGER.debug(f"Enhanced: Using forecast model: {forecast_model}")
+
         # Get base forecasts
         main_sensor = self.hass.states.get("sensor.local_forecast")
         if not main_sensor or main_sensor.state in ("unknown", "unavailable"):
@@ -1962,10 +1971,10 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             if dewpoint_spread < 1.5:
                 adjustments.append("critical_fog_risk")
                 adjustment_details.append(get_adjustment_text(self.hass, "critical_fog_risk", f"{dewpoint_spread:.1f}"))
-            elif dewpoint_spread < 2.5:
+            elif 1.5 <= dewpoint_spread < 2.5:
                 adjustments.append("high_fog_risk")
                 adjustment_details.append(get_adjustment_text(self.hass, "high_fog_risk", f"{dewpoint_spread:.1f}"))
-            elif dewpoint_spread < 4:
+            elif 2.5 <= dewpoint_spread < 4:
                 adjustments.append("medium_fog_risk")
                 adjustment_details.append(get_adjustment_text(self.hass, "medium_fog_risk", f"{dewpoint_spread:.1f}"))
 
@@ -1987,7 +1996,65 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             )
 
         # Build enhanced forecast text
-        base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
+        # Select base forecast based on model configuration
+        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
+
+        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+            # Use Zambretti exclusively
+            base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
+            _LOGGER.debug(f"Enhanced: Using Zambretti forecast: {base_text}")
+        elif forecast_model == FORECAST_MODEL_NEGRETTI:
+            # Use Negretti & Zambra exclusively
+            base_text = negretti[0] if len(negretti) > 0 else "Unknown"
+            _LOGGER.debug(f"Enhanced: Using Negretti forecast: {base_text}")
+        else:
+            # FORECAST_MODEL_ENHANCED - Use dynamic weighting based on pressure trend
+            # Calculate weight based on pressure change (from PressureChange sensor)
+            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+            pressure_change = 0.0
+            if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    pressure_change = float(pressure_change_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+
+            # Calculate Zambretti weight (0.0 to 1.0)
+            # Rapid changes → higher Zambretti weight (faster response)
+            # Stable pressure → lower Zambretti weight (conservative Negretti)
+            abs_change = abs(pressure_change)
+            if abs_change >= 3.0:
+                zambretti_weight = 0.75  # Rapid change - trust Zambretti more
+            elif abs_change >= 1.5:
+                zambretti_weight = 0.65  # Moderate change
+            elif abs_change >= 0.5:
+                zambretti_weight = 0.55  # Small change
+            else:
+                zambretti_weight = 0.40  # Stable - trust Negretti more
+
+            negretti_weight = 1.0 - zambretti_weight
+
+            _LOGGER.debug(
+                f"Enhanced: Dynamic weighting - pressure_change={pressure_change:.2f} hPa, "
+                f"zambretti_weight={zambretti_weight:.2f}, negretti_weight={negretti_weight:.2f}"
+            )
+
+            # Use weighted combination - prefer the one with higher weight
+            # But if they agree (consensus), use either
+            zambretti_num = zambretti[1] if len(zambretti) > 1 else 0
+            negretti_num = negretti[1] if len(negretti) > 1 else 0
+
+            if abs(zambretti_num - negretti_num) <= 1:
+                # They agree - use Zambretti text (more detailed)
+                base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
+                _LOGGER.debug(f"Enhanced: Consensus detected, using Zambretti: {base_text}")
+            elif zambretti_weight >= 0.6:
+                # Strong pressure change - trust Zambretti
+                base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
+                _LOGGER.debug(f"Enhanced: Rapid pressure change, using Zambretti: {base_text}")
+            else:
+                # Stable conditions - trust Negretti
+                base_text = negretti[0] if len(negretti) > 0 else "Unknown"
+                _LOGGER.debug(f"Enhanced: Stable pressure, using Negretti: {base_text}")
 
         if adjustment_details:
             enhanced_text = f"{base_text}. {', '.join(adjustment_details)}"
@@ -1999,14 +2066,27 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         negretti_num = negretti[1] if len(negretti) > 1 else 0
         consensus = abs(zambretti_num - negretti_num) <= 1
 
-        if consensus and not adjustments:
-            confidence = "very_high"
-        elif consensus or len(adjustments) <= 1:
-            confidence = "high"
-        elif len(adjustments) <= 2:
-            confidence = "medium"
+        # Confidence depends on model selection
+        if forecast_model == FORECAST_MODEL_ENHANCED:
+            # Enhanced model - confidence based on consensus + adjustments
+            if consensus and not adjustments:
+                confidence = "very_high"
+            elif consensus or len(adjustments) <= 1:
+                confidence = "high"
+            elif len(adjustments) <= 2:
+                confidence = "medium"
+            else:
+                confidence = "low"
         else:
-            confidence = "low"
+            # Single model (Zambretti or Negretti) - confidence based on adjustments only
+            if not adjustments:
+                confidence = "high"
+            elif len(adjustments) <= 1:
+                confidence = "high"
+            elif len(adjustments) <= 2:
+                confidence = "medium"
+            else:
+                confidence = "low"
 
         # Get fog risk
         fog_risk = "none"
@@ -2043,6 +2123,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         self._state = enhanced_text
         _LOGGER.debug(f"Enhanced: Setting state to: {enhanced_text}")
         self._attributes = {
+            "forecast_model": forecast_model,  # NEW: Show which model is being used
             "base_forecast": base_text,
             "zambretti_number": zambretti_num,
             "negretti_number": negretti_num,
@@ -2053,9 +2134,14 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "humidity": round(humidity, 2) if humidity is not None else None,
             "dew_point": round(dewpoint, 2) if dewpoint is not None else None,
             "dewpoint_spread": round(dewpoint_spread, 2) if dewpoint_spread is not None else None,
-            "fog_risk": get_fog_risk_text(self.hass, fog_risk),  # Translated
-            "snow_risk": get_snow_risk_text(self.hass, snow_risk),  # Translated
-            "frost_risk": get_frost_risk_text(self.hass, frost_risk),  # Translated
+            # RAW values for automations (English keys)
+            "fog_risk": fog_risk,  # "none", "low", "medium", "high", "critical"
+            "snow_risk": snow_risk,  # "none", "low", "medium", "high"
+            "frost_risk": frost_risk,  # "none", "low", "medium", "high", "critical"
+            # Translated values for UI display
+            "fog_risk_text": get_fog_risk_text(self.hass, fog_risk),
+            "snow_risk_text": get_snow_risk_text(self.hass, snow_risk),
+            "frost_risk_text": get_frost_risk_text(self.hass, frost_risk),
             "wind_speed": round(wind_speed, 2) if wind_speed is not None else None,
             "wind_gust": round(wind_gust, 2) if wind_gust is not None else None,
             "gust_ratio": round(gust_ratio, 2) if gust_ratio is not None else None,
@@ -2189,18 +2275,19 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             humidity,
             None,  # cloud_coverage not available
             dewpoint_spread,
+            temp,  # Pass temperature for cold-weather adjustments
         )
         _LOGGER.debug(f"RainProb: Enhanced calculation result - probability={probability}, confidence={confidence}")
 
         # Get current rain rate
         rain_rate_sensor_id = self.config_entry.options.get(CONF_RAIN_RATE_SENSOR) or self.config_entry.data.get(CONF_RAIN_RATE_SENSOR)
-        _LOGGER.info(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
+        _LOGGER.debug(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
         current_rain = 0.0
         if rain_rate_sensor_id:
             # Wait for entity to become available (useful during HA restart)
             rain_state = self.hass.states.get(rain_rate_sensor_id)
             if not rain_state or rain_state.state in ("unknown", "unavailable"):
-                _LOGGER.info(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not yet available, waiting...")
+                _LOGGER.debug(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not yet available, waiting...")
                 await self._wait_for_entity(rain_rate_sensor_id, timeout=15, retry_interval=0.5)
 
             # Extended debugging
@@ -2214,20 +2301,23 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, 0.0, use_history=False, sensor_type="precipitation")
             if current_rain_value is not None:
                 current_rain = current_rain_value
-                _LOGGER.info(f"RainProb: Current rain rate = {current_rain} mm/h")
+                _LOGGER.debug(f"RainProb: Current rain rate = {current_rain} mm/h")
             else:
                 _LOGGER.warning(f"RainProb: Rain rate sensor returned None (state={rain_state.state if rain_state else 'NOT_FOUND'})")
         else:
             _LOGGER.warning("RainProb: No rain rate sensor configured!")
 
-        # If currently raining, probability is 100%
-        if current_rain > 0.1:
-            _LOGGER.info(f"RainProb: Currently raining ({current_rain} mm/h), setting probability to 100%")
-            probability = 100
+        # If currently raining, override probability to HIGH
+        if current_rain > 0.01:  # More than 0.01 mm/h = active precipitation (lowered from 0.1)
+            _LOGGER.debug(
+                f"RainProb: Active precipitation detected ({current_rain:.3f} mm/h), "
+                f"overriding probability from {probability}% to 95%"
+            )
+            probability = 95
             confidence = "very_high"
 
         self._state = round(probability)
-        _LOGGER.info(f"RainProb: Setting state to: {round(probability)}%")
+        _LOGGER.debug(f"RainProb: Setting state to: {round(probability)}%")
         self._attributes = {
             "zambretti_probability": round(zambretti_prob),
             "negretti_probability": round(negretti_prob),

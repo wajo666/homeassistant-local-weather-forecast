@@ -251,9 +251,9 @@ def get_fog_risk(temperature: float, dewpoint: float) -> str:
 
     if spread > 4:
         return FOG_RISK_NONE
-    elif spread > 2.5:
+    elif spread >= 2.5:
         return FOG_RISK_LOW
-    elif spread > 1.5:
+    elif spread >= 1.5:
         return FOG_RISK_MEDIUM
     else:
         return FOG_RISK_HIGH
@@ -265,6 +265,7 @@ def calculate_rain_probability_enhanced(
     humidity: Optional[float] = None,
     cloud_coverage: Optional[float] = None,
     dewpoint_spread: Optional[float] = None,
+    temperature: Optional[float] = None,
 ) -> tuple[int, str]:
     """
     Calculate enhanced rain probability combining multiple factors.
@@ -283,6 +284,8 @@ def calculate_rain_probability_enhanced(
         humidity: Relative humidity in % (optional)
         cloud_coverage: Cloud coverage in % (optional)
         dewpoint_spread: Temperature - Dewpoint in °C (optional)
+        temperature: Current temperature in °C (optional, for snow/cold adjustments)
+
 
     Returns:
         Tuple of (probability %, confidence level)
@@ -296,9 +299,19 @@ def calculate_rain_probability_enhanced(
     _LOGGER.debug(f"RainCalc: Base probability = {base_prob}%")
 
     # Determine scaling factor based on base probability
+    # Special case: If dewpoint spread is critical (<1.0°C), use higher scale
+    # because high saturation = likely precipitation, not just fog
     if base_prob <= 10:
-        # Low base probability - use minimal adjustments (fog/dew != rain)
-        scale = 0.3
+        # Check if it's critical saturation (near 100% RH)
+        if dewpoint_spread is not None and dewpoint_spread < 1.0:
+            scale = 0.8  # High saturation = likely precipitation
+            _LOGGER.debug(
+                f"RainCalc: Using scale=0.8 (critical saturation despite low base, spread={dewpoint_spread:.1f}°C)"
+            )
+        else:
+            # Low base probability - use minimal adjustments (fog/dew != rain)
+            scale = 0.3
+            _LOGGER.debug("RainCalc: Using scale=0.3 (low base probability, normal adjustments)")
     elif base_prob <= 30:
         # Medium-low - moderate adjustments
         scale = 0.6
@@ -315,19 +328,34 @@ def calculate_rain_probability_enhanced(
     adjustments = []
 
     # Humidity factor
+    # Adjust threshold based on temperature - cold air holds less moisture
     if humidity is not None:
-        if humidity > 85:
+        # Determine humidity threshold based on temperature
+        if temperature is not None and temperature <= 0:
+            high_humidity_threshold = 75  # Lower for freezing temps (80% at 0°C ≈ 90% at 10°C)
+            medium_humidity_threshold = 65
+        else:
+            high_humidity_threshold = 85  # Normal for warmer temps
+            medium_humidity_threshold = 70
+
+        if humidity > high_humidity_threshold:
             adjustments.append(10)  # High humidity
-            _LOGGER.debug(f"RainCalc: Adding +10 for high humidity ({humidity}%)")
-        elif humidity > 70:
+            _LOGGER.debug(
+                f"RainCalc: Adding +10 for high humidity ({humidity:.1f}%, "
+                f"threshold={high_humidity_threshold}%, temp={temperature if temperature is not None else 'N/A'}°C)"
+            )
+        elif humidity > medium_humidity_threshold:
             adjustments.append(5)
-            _LOGGER.debug(f"RainCalc: Adding +5 for humidity ({humidity}%)")
+            _LOGGER.debug(
+                f"RainCalc: Adding +5 for humidity ({humidity:.1f}%, "
+                f"threshold={medium_humidity_threshold}%, temp={temperature if temperature is not None else 'N/A'}°C)"
+            )
         elif humidity < 40:
             adjustments.append(-15)  # Very dry
-            _LOGGER.debug(f"RainCalc: Adding -15 for very dry ({humidity}%)")
+            _LOGGER.debug(f"RainCalc: Adding -15 for very dry ({humidity:.1f}%)")
         elif humidity < 60:
             adjustments.append(-5)
-            _LOGGER.debug(f"RainCalc: Adding -5 for dry ({humidity}%)")
+            _LOGGER.debug(f"RainCalc: Adding -5 for dry ({humidity:.1f}%)")
 
     # Cloud coverage factor
     if cloud_coverage is not None:
@@ -565,20 +593,20 @@ def get_snow_risk(
     dewpoint_spread = abs(temperature - dewpoint)
 
     # HIGH RISK: Very cold, high humidity, near saturation
-    # Temperature ≤ 0°C, humidity > 80%, spread < 2°C
-    if temperature <= 0 and humidity > 80 and dewpoint_spread < 2:
-        # If precipitation probability is known and high, confirm high risk
-        if precipitation_prob is not None and precipitation_prob > 60:
-            _LOGGER.debug(f"SnowRisk: HIGH - T={temperature:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}%")
-            return SNOW_RISK_HIGH
-        # Even without precip prob, these conditions favor snow if it does precipitate
-        result = SNOW_RISK_HIGH if precipitation_prob is None else SNOW_RISK_MEDIUM
-        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={'unknown' if precipitation_prob is None else f'{precipitation_prob}%'}")
-        return result
+    # Temperature ≤ 0°C, humidity > 75%, spread < 2°C
+    # These atmospheric conditions strongly favor snow formation
+    if temperature <= 0 and humidity > 75 and dewpoint_spread < 2:
+        # Always HIGH risk when humidity > 75% at/below freezing
+        # Precipitation probability only adds confirmation, not requirement
+        _LOGGER.debug(
+            f"SnowRisk: HIGH - T={temperature:.1f}°C (≤0°C), RH={humidity:.1f}% (>75%), "
+            f"spread={dewpoint_spread:.1f}°C (<2°C), precip={precipitation_prob if precipitation_prob is not None else 'unknown'}%"
+        )
+        return SNOW_RISK_HIGH
 
     # MEDIUM RISK: Cold, decent humidity
-    # Temperature 0-2°C, humidity > 70%, spread < 3°C
-    if temperature <= 2 and humidity > 70 and dewpoint_spread < 3:
+    # Temperature 0-2°C, humidity > 65%, spread < 3°C
+    if temperature <= 2 and humidity > 65 and dewpoint_spread < 3:
         result = SNOW_RISK_MEDIUM if (precipitation_prob is not None and precipitation_prob > 40) else SNOW_RISK_LOW
         _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C (0-2°C), RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}%")
         return result

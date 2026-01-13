@@ -17,6 +17,7 @@ from .const import (
     CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
+    CONF_FORECAST_MODEL,
     CONF_HUMIDITY_SENSOR,
     CONF_PRESSURE_SENSOR,
     CONF_PRESSURE_TYPE,
@@ -29,8 +30,12 @@ from .const import (
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
     DEFAULT_ENABLE_WEATHER_ENTITY,
+    DEFAULT_FORECAST_MODEL,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
+    FORECAST_MODEL_ENHANCED,
+    FORECAST_MODEL_NEGRETTI,
+    FORECAST_MODEL_ZAMBRETTI,
     PRESSURE_TYPE_ABSOLUTE,
     PRESSURE_TYPE_RELATIVE,
 )
@@ -218,6 +223,30 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Optional(
+                    CONF_FORECAST_MODEL,
+                    default=user_input.get(CONF_FORECAST_MODEL, DEFAULT_FORECAST_MODEL)
+                    if user_input
+                    else DEFAULT_FORECAST_MODEL,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_ENHANCED,
+                                label="Enhanced (Recommended) - Weighted combination with consensus scoring"
+                            ),
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_ZAMBRETTI,
+                                label="Zambretti - Classic algorithm (faster pressure changes)"
+                            ),
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_NEGRETTI,
+                                label="Negretti & Zambra - Slide rule algorithm (conservative)"
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
                     CONF_PRESSURE_TYPE,
                     default=user_input.get(CONF_PRESSURE_TYPE, DEFAULT_PRESSURE_TYPE)
                     if user_input
@@ -269,7 +298,26 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             _LOGGER.debug("Options flow user input: %s", user_input)
 
-            # Validate sensors if changed (with safe access to prevent HA crashes)
+            # Validate required pressure sensor
+            if pressure_sensor := user_input.get(CONF_PRESSURE_SENSOR):
+                try:
+                    _LOGGER.debug("Validating pressure sensor: %s", pressure_sensor)
+                    pressure_state = self.hass.states.get(pressure_sensor)
+                    if not pressure_state:
+                        _LOGGER.error("Pressure sensor not found: %s", pressure_sensor)
+                        errors[CONF_PRESSURE_SENSOR] = "sensor_not_found"
+                    else:
+                        _LOGGER.debug("Pressure sensor found: %s (state=%s, unit=%s)",
+                                    pressure_sensor,
+                                    pressure_state.state,
+                                    pressure_state.attributes.get("unit_of_measurement"))
+                except Exception as e:
+                    _LOGGER.error("Error validating pressure sensor %s: %s", pressure_sensor, e)
+                    errors[CONF_PRESSURE_SENSOR] = "sensor_validation_error"
+            else:
+                errors[CONF_PRESSURE_SENSOR] = "sensor_not_found"
+
+            # Validate optional sensors if changed (with safe access to prevent HA crashes)
             if temp_sensor := user_input.get(CONF_TEMPERATURE_SENSOR):
                 try:
                     _LOGGER.debug("Validating optional temperature sensor: %s", temp_sensor)
@@ -495,7 +543,18 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
 
         options_schema = vol.Schema(
             {
-                # Core sensors
+                # Required sensors
+                vol.Required(
+                    CONF_PRESSURE_SENSOR,
+                    description={"suggested_value": current_config.get(CONF_PRESSURE_SENSOR)},
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="sensor",
+                        device_class="atmospheric_pressure",
+                        multiple=False,
+                    )
+                ),
+                # Core optional sensors
                 vol.Optional(
                     CONF_TEMPERATURE_SENSOR,
                     description={"suggested_value": current_config.get(CONF_TEMPERATURE_SENSOR)}
@@ -625,6 +684,28 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         step=1,
                         unit_of_measurement="m",
                         mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_FORECAST_MODEL,
+                    default=current_config.get(CONF_FORECAST_MODEL, DEFAULT_FORECAST_MODEL),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_ENHANCED,
+                                label="Enhanced (Recommended) - Weighted combination with consensus scoring"
+                            ),
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_ZAMBRETTI,
+                                label="Zambretti - Classic algorithm (faster pressure changes)"
+                            ),
+                            selector.SelectOptionDict(
+                                value=FORECAST_MODEL_NEGRETTI,
+                                label="Negretti & Zambra - Slide rule algorithm (conservative)"
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Optional(

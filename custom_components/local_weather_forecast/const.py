@@ -28,10 +28,16 @@ CONF_LATITUDE: Final = "latitude"
 CONF_ENABLE_WEATHER_ENTITY: Final = "enable_weather_entity"
 CONF_ENABLE_EXTENDED_SENSORS: Final = "enable_extended_sensors"
 CONF_FORECAST_INTERVAL: Final = "forecast_interval"
+CONF_FORECAST_MODEL: Final = "forecast_model"  # v3.1.4+ - Which forecast model to use
 
 # Pressure types
 PRESSURE_TYPE_ABSOLUTE: Final = "absolute"  # QFE - Station pressure
 PRESSURE_TYPE_RELATIVE: Final = "relative"  # QNH - Sea level pressure
+
+# Forecast models (v3.1.4+)
+FORECAST_MODEL_ZAMBRETTI: Final = "zambretti"  # Original Zambretti algorithm
+FORECAST_MODEL_NEGRETTI: Final = "negretti"    # Negretti & Zambra slide rule algorithm
+FORECAST_MODEL_ENHANCED: Final = "enhanced"    # Dynamic weighting: adapts based on pressure change rate (best accuracy)
 
 # Defaults
 DEFAULT_ELEVATION: Final = 0
@@ -41,6 +47,7 @@ DEFAULT_PRESSURE_TYPE: Final = PRESSURE_TYPE_ABSOLUTE
 DEFAULT_ENABLE_WEATHER_ENTITY: Final = False
 DEFAULT_ENABLE_EXTENDED_SENSORS: Final = False
 DEFAULT_FORECAST_INTERVAL: Final = 3  # hours
+DEFAULT_FORECAST_MODEL: Final = FORECAST_MODEL_ENHANCED  # v3.1.4+ - Default to enhanced (best accuracy)
 
 # Languages (available in UI configuration)
 LANGUAGES: Final = {
@@ -106,10 +113,10 @@ ZAMBRETTI_TO_CONDITION: Final = {
     "M": "rainy",             # Unsettled, probably improving (code 12)
     "N": "rainy",             # Showery, bright intervals (code 13)
     "O": "rainy",             # Showery, becoming more unsettled (code 14)
-    "P": "pouring",           # Changeable, some rain (code 15)
-    "Q": "pouring",           # Unsettled, short fine intervals (code 16)
-    "R": "pouring",           # Unsettled, rain later (code 17)
-    "S": "pouring",           # Unsettled, some rain (code 18)
+    "P": "rainy",             # Changeable, some rain (code 15)
+    "Q": "rainy",             # Unsettled, short fine intervals (code 16)
+    "R": "rainy",             # Unsettled, rain later (code 17)
+    "S": "rainy",             # Unsettled, some rain (code 18)
     "T": "pouring",           # Mostly very unsettled (code 19)
     "U": "pouring",           # Occasional rain, worsening (code 20)
     "V": "pouring",           # Rain at times, very unsettled (code 21)

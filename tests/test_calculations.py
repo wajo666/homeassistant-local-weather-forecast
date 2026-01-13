@@ -184,23 +184,23 @@ class TestGetFogRisk:
 
     def test_no_fog_risk(self):
         """Test no fog risk with large temperature-dewpoint spread."""
-        assert get_fog_risk(20.0, 10.0) == "none"
+        assert get_fog_risk(20.0, 10.0) == "none"  # spread = 10.0
 
     def test_low_fog_risk(self):
         """Test low fog risk."""
-        assert get_fog_risk(20.0, 17.0) == "low"
+        assert get_fog_risk(20.0, 17.0) == "low"  # spread = 3.0 (>= 2.5 and <= 4)
 
     def test_medium_fog_risk(self):
         """Test medium fog risk."""
-        assert get_fog_risk(10.0, 7.5) == "medium"  # spread = 2.5, which is medium (1.5-2.5)
+        assert get_fog_risk(10.0, 8.0) == "medium"  # spread = 2.0 (>= 1.5 and < 2.5)
 
     def test_high_fog_risk(self):
         """Test high fog risk with small spread."""
-        assert get_fog_risk(8.0, 7.0) == "high"
+        assert get_fog_risk(8.0, 7.0) == "high"  # spread = 1.0 (< 1.5)
 
     def test_critical_fog_conditions(self):
         """Test critical fog conditions (spread < 1°C)."""
-        assert get_fog_risk(5.0, 4.5) == "high"
+        assert get_fog_risk(5.0, 4.5) == "high"  # spread = 0.5 (< 1.5)
 
 
 class TestCalculateRainProbabilityEnhanced:
@@ -232,8 +232,9 @@ class TestCalculateRainProbabilityEnhanced:
         prob, conf = calculate_rain_probability_enhanced(
             5, 5, humidity=95.0, dewpoint_spread=0.5
         )
-        # Even with high humidity and saturation, low base prob shouldn't spike
-        assert prob < 20
+        # Even with high humidity and saturation, low base prob shouldn't spike too much
+        # However, critical conditions (95% humidity + 0.5°C spread) should add significant probability
+        assert prob < 30  # Adjusted to reflect realistic critical conditions
 
     def test_high_base_probability_scaling(self):
         """Test that high base probability boosts adjustments."""
@@ -248,6 +249,46 @@ class TestCalculateRainProbabilityEnhanced:
             50, 50, humidity=30.0, dewpoint_spread=10.0
         )
         assert prob < 50
+
+    def test_critical_saturation_with_low_base(self):
+        """Test that critical saturation (spread <1°C) uses higher scale factor."""
+        # Low base (0%) + critical saturation (0.4°C) + high humidity (80%)
+        # Should use scale=0.8 instead of 0.3
+        prob, conf = calculate_rain_probability_enhanced(
+            0, 0, humidity=80.6, dewpoint_spread=0.4, temperature=0.0
+        )
+        # With scale=0.8: (10 + 15) × 0.8 = 20% (instead of ~7.5% with scale=0.3)
+        assert prob >= 18, f"Expected ≥18%, got {prob}%"
+        assert prob <= 22, f"Expected ≤22%, got {prob}%"
+
+    def test_cold_weather_humidity_threshold(self):
+        """Test that cold weather (≤0°C) uses lower humidity threshold (75% vs 85%)."""
+        # At 0°C, 80% humidity should trigger +10 adjustment (threshold=75%)
+        prob1, _ = calculate_rain_probability_enhanced(
+            0, 0, humidity=80.0, temperature=0.0, dewpoint_spread=0.5
+        )
+        # At 10°C, 80% humidity should NOT trigger +10 (threshold=85%)
+        prob2, _ = calculate_rain_probability_enhanced(
+            0, 0, humidity=80.0, temperature=10.0, dewpoint_spread=0.5
+        )
+        # Cold weather should have higher probability due to lower threshold
+        assert prob1 > prob2, f"Cold weather ({prob1}%) should have higher prob than warm ({prob2}%)"
+
+    def test_snowing_conditions_realistic(self):
+        """Test realistic snowing conditions: 0°C, 80.6% humidity, 0.4°C spread."""
+        # This is the reported scenario from the user
+        prob, conf = calculate_rain_probability_enhanced(
+            0, 0,  # Zambretti/Negretti say "Settled Fine" (0%)
+            humidity=80.6,
+            dewpoint_spread=0.4,
+            temperature=0.0
+        )
+        # Expected:
+        # - Humidity 80.6% > 75% (cold threshold) → +10
+        # - Dewpoint 0.4°C < 1.0°C → +15 + scale=0.8
+        # - Total: (10 + 15) × 0.8 = 20%
+        assert prob >= 18, f"Snowing conditions should show ≥18%, got {prob}%"
+        assert prob <= 22, f"Snowing conditions should show ≤22%, got {prob}%"
 
 
 class TestInterpolateForecast:
@@ -415,6 +456,30 @@ class TestGetSnowRisk:
         """Test snow risk at exactly 0°C."""
         result = get_snow_risk(0.0, 82.0, -0.5, precipitation_prob=65)
         assert result == "high"
+
+    def test_high_risk_with_low_precip_prob(self):
+        """
+        Test that HIGH risk is returned when atmospheric conditions favor snow,
+        even if precipitation probability is known but < 60%.
+
+        Bug fix (v3.1.4): Previously returned MEDIUM, now correctly returns HIGH.
+        Real-world case: 80.6% humidity, 0°C, spread 1.4°C → HIGH risk.
+        """
+        # Case 1: User's actual conditions
+        result = get_snow_risk(0.0, 80.6, -1.4, precipitation_prob=45)
+        assert result == "high", "Should be HIGH risk with 80.6% humidity at 0°C (precip_prob < 60%)"
+
+        # Case 2: Edge case - exactly 75% humidity
+        result = get_snow_risk(0.0, 75.1, -1.0, precipitation_prob=30)
+        assert result == "high", "Should be HIGH risk with 75.1% humidity at 0°C"
+
+        # Case 3: No precipitation probability provided
+        result = get_snow_risk(-0.5, 80.0, -1.5, precipitation_prob=None)
+        assert result == "high", "Should be HIGH risk when precip_prob is None"
+
+        # Case 4: Precipitation probability > 60% (confirmation)
+        result = get_snow_risk(-1.0, 85.0, -1.8, precipitation_prob=70)
+        assert result == "high", "Should be HIGH risk when precip_prob > 60%"
 
 
 class TestGetFrostRisk:

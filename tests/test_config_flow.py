@@ -554,7 +554,7 @@ class TestOptionsFlow:
         assert entry.data[CONF_WIND_GUST_SENSOR] is None
 
     async def test_options_flow_invalid_elevation(self, hass: HomeAssistant):
-        """Test validation error for invalid elevation in options flow."""
+        """Test options flow with invalid elevation."""
         hass.states.async_set(
             "sensor.test_pressure",
             "1013.25",
@@ -586,3 +586,79 @@ class TestOptionsFlow:
         assert result2["type"] == data_entry_flow.FlowResultType.FORM
         assert result2["errors"] == {CONF_ELEVATION: "invalid_elevation"}
 
+    async def test_options_flow_change_pressure_sensor(self, hass: HomeAssistant):
+        """Test changing pressure sensor via options flow."""
+        # Create old and new pressure sensors
+        hass.states.async_set(
+            "sensor.old_pressure",
+            "1013.25",
+            {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
+        )
+        hass.states.async_set(
+            "sensor.new_pressure",
+            "1015.5",
+            {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
+        )
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Local Weather Forecast",
+            data={
+                CONF_PRESSURE_SENSOR: "sensor.old_pressure",
+                CONF_ELEVATION: DEFAULT_ELEVATION,
+                CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
+            },
+            source="user",
+        )
+
+        hass.config_entries._entries[entry.entry_id] = entry
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        assert result["type"] == data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "init"
+
+        # Change pressure sensor
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_PRESSURE_SENSOR: "sensor.new_pressure",
+            },
+        )
+
+        assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+        assert entry.data[CONF_PRESSURE_SENSOR] == "sensor.new_pressure"
+
+    async def test_options_flow_pressure_sensor_not_found(self, hass: HomeAssistant):
+        """Test options flow with non-existent pressure sensor."""
+        hass.states.async_set(
+            "sensor.test_pressure",
+            "1013.25",
+            {"unit_of_measurement": "hPa", "device_class": "atmospheric_pressure"},
+        )
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="Local Weather Forecast",
+            data={
+                CONF_PRESSURE_SENSOR: "sensor.test_pressure",
+                CONF_ELEVATION: DEFAULT_ELEVATION,
+                CONF_PRESSURE_TYPE: DEFAULT_PRESSURE_TYPE,
+            },
+            source="user",
+        )
+
+        hass.config_entries._entries[entry.entry_id] = entry
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+
+        # Try to change to non-existent sensor
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_PRESSURE_SENSOR: "sensor.nonexistent_pressure",
+            },
+        )
+
+        assert result2["type"] == data_entry_flow.FlowResultType.FORM
+        assert result2["errors"] == {CONF_PRESSURE_SENSOR: "sensor_not_found"}

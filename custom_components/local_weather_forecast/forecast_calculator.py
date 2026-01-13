@@ -17,7 +17,12 @@ from typing import TypedDict
 
 from homeassistant.core import HomeAssistant
 
-from .const import ZAMBRETTI_TO_CONDITION
+from .const import (
+    ZAMBRETTI_TO_CONDITION,
+    FORECAST_MODEL_ZAMBRETTI,
+    FORECAST_MODEL_NEGRETTI,
+    FORECAST_MODEL_ENHANCED,
+)
 from .zambretti import calculate_zambretti_forecast
 
 
@@ -797,7 +802,9 @@ class HourlyForecastGenerator:
         wind_direction: int = 0,
         wind_speed: float = 0.0,
         latitude: float = 50.0,
-        current_rain_rate: float = 0.0
+        current_rain_rate: float = 0.0,
+        forecast_model: str = FORECAST_MODEL_ENHANCED,
+        elevation: float = 0.0
     ):
         """Initialize hourly forecast generator.
 
@@ -810,6 +817,8 @@ class HourlyForecastGenerator:
             wind_speed: Current wind speed in m/s
             latitude: Location latitude
             current_rain_rate: Current precipitation rate in mm/h
+            forecast_model: Which model to use (FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED)
+            elevation: Elevation in meters above sea level
         """
         self.hass = hass
         self.pressure_model = pressure_model
@@ -819,6 +828,8 @@ class HourlyForecastGenerator:
         self.wind_speed = wind_speed
         self.latitude = latitude
         self.current_rain_rate = current_rain_rate
+        self.forecast_model = forecast_model
+        self.elevation = elevation
 
     def generate(
         self,
@@ -857,11 +868,88 @@ class HourlyForecastGenerator:
                 wind_speed=self.wind_speed
             )
 
-            forecast_text, forecast_num, letter_code = zambretti_result
+            zambretti_text, zambretti_num, zambretti_letter = zambretti_result
+
+            # Get Negretti-Zambra forecast if needed
+            negretti_letter = None
+            negretti_num = None
+
+            if self.forecast_model in (FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED):
+                try:
+                    from .negretti_zambra import calculate_negretti_zambra_forecast
+                    from .language import get_language_index
+
+                    lang_index = get_language_index(self.hass)
+
+                    negretti_result = calculate_negretti_zambra_forecast(
+                        future_pressure,
+                        pressure_change,
+                        [self.wind_speed, self.wind_direction, "N", 0],  # wind_data
+                        lang_index,
+                        self.elevation
+                    )
+                    negretti_text, negretti_num, negretti_letter = negretti_result
+                except Exception as e:
+                    _LOGGER.debug(f"Negretti-Zambra calculation failed: {e}, using Zambretti")
+                    negretti_letter = zambretti_letter
+                    negretti_num = zambretti_num
+
+            # Select forecast based on model preference
+            if self.forecast_model == FORECAST_MODEL_ZAMBRETTI:
+                forecast_letter = zambretti_letter
+                forecast_num = zambretti_num
+                _LOGGER.debug(f"Using Zambretti forecast: {zambretti_letter}")
+            elif self.forecast_model == FORECAST_MODEL_NEGRETTI and negretti_letter:
+                forecast_letter = negretti_letter
+                forecast_num = negretti_num
+                _LOGGER.debug(f"Using Negretti-Zambra forecast: {negretti_letter}")
+            else:  # FORECAST_MODEL_ENHANCED - dynamic priority based on pressure change
+                if negretti_letter:
+                    # Calculate dynamic weights based on pressure change rate
+                    abs_change = abs(pressure_change)
+
+                    if abs_change > 5:  # Large change → Zambretti 80%
+                        zambretti_weight = 0.8
+                        negretti_weight = 0.2
+                    elif abs_change > 3:  # Medium change → Zambretti 60%
+                        zambretti_weight = 0.6
+                        negretti_weight = 0.4
+                    elif abs_change > 1:  # Small change → Balanced
+                        zambretti_weight = 0.5
+                        negretti_weight = 0.5
+                    else:  # Stable → Negretti 80%
+                        zambretti_weight = 0.2
+                        negretti_weight = 0.8
+
+                    # Calculate weighted rain probabilities
+                    zambretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)
+                    negretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(negretti_letter, 50)
+
+                    combined_rain = (zambretti_rain * zambretti_weight) + (negretti_rain * negretti_weight)
+
+                    # Select forecast letter based on which model has higher weight
+                    if zambretti_weight >= negretti_weight:
+                        forecast_letter = zambretti_letter
+                        forecast_num = zambretti_num
+                    else:
+                        forecast_letter = negretti_letter
+                        forecast_num = negretti_num
+
+                    _LOGGER.debug(
+                        f"Combined forecast: ΔP={pressure_change:+.1f}hPa → "
+                        f"weights Z:{zambretti_weight:.0%}/N:{negretti_weight:.0%} → "
+                        f"Z:{zambretti_letter}({zambretti_rain}%) + N:{negretti_letter}({negretti_rain}%) = "
+                        f"{forecast_letter}({combined_rain:.0f}%)"
+                    )
+                else:
+                    # Fallback to Zambretti if Negretti unavailable
+                    forecast_letter = zambretti_letter
+                    forecast_num = zambretti_num
+                    _LOGGER.debug(f"Combined forecast (Zambretti fallback): {zambretti_letter}")
 
             # Determine weather condition
             condition = self.zambretti.get_condition(
-                letter_code,
+                forecast_letter,
                 future_time
             )
 
@@ -884,13 +972,13 @@ class HourlyForecastGenerator:
                     f"Rain override: {self.current_rain_rate}mm/h → {condition} (100%)"
                 )
             else:
-                # Calculate rain probability from models
+                # Calculate rain probability from models using selected forecast
                 rain_prob = rain_calc.calculate(
                     current_pressure=self.pressure_model.current_pressure,
                     future_pressure=future_pressure,
                     pressure_trend=pressure_trend,
                     zambretti_code=forecast_num,
-                    zambretti_letter=letter_code
+                    zambretti_letter=forecast_letter
                 )
 
             # Create forecast entry
@@ -1030,7 +1118,8 @@ class ForecastCalculator:
         solar_radiation: float | None = None,
         cloud_cover: float | None = None,
         humidity: float | None = None,
-        current_rain_rate: float = 0.0
+        current_rain_rate: float = 0.0,
+        forecast_model: str = FORECAST_MODEL_ENHANCED
     ) -> list[Forecast]:
         """Generate daily forecast.
 
@@ -1048,6 +1137,7 @@ class ForecastCalculator:
             cloud_cover: Current cloud cover in % (optional)
             humidity: Relative humidity in % (optional, used to estimate cloud cover)
             current_rain_rate: Current rain rate in mm/h (optional)
+            forecast_model: Which model to use (FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED)
 
         Returns:
             List of daily Forecast objects
@@ -1073,7 +1163,8 @@ class ForecastCalculator:
             wind_direction,
             wind_speed,
             latitude,
-            current_rain_rate
+            current_rain_rate,
+            forecast_model
         )
 
         daily_gen = DailyForecastGenerator(hourly_gen)
@@ -1094,7 +1185,8 @@ class ForecastCalculator:
         solar_radiation: float | None = None,
         cloud_cover: float | None = None,
         humidity: float | None = None,
-        current_rain_rate: float = 0.0
+        current_rain_rate: float = 0.0,
+        forecast_model: str = FORECAST_MODEL_ENHANCED
     ) -> list[Forecast]:
         """Generate hourly forecast.
 
@@ -1112,6 +1204,7 @@ class ForecastCalculator:
             cloud_cover: Current cloud cover in % (optional)
             humidity: Relative humidity in % (optional, used to estimate cloud cover)
             current_rain_rate: Current rain rate in mm/h (optional)
+            forecast_model: Which model to use (FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED)
 
         Returns:
             List of hourly Forecast objects
@@ -1137,7 +1230,8 @@ class ForecastCalculator:
             wind_direction,
             wind_speed,
             latitude,
-            current_rain_rate
+            current_rain_rate,
+            forecast_model
         )
 
         return hourly_gen.generate(hours_count=hours, interval_hours=1)

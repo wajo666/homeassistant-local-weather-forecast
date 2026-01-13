@@ -10,7 +10,8 @@
           "wind_direction_sensor": "Sensore direzione vento (facoltativo)",
           "wind_speed_sensor": "Sensore velocità vento (facoltativo)",
           "elevation": "Altitudine",
-          "pressure_type": "Tipo di pressione"
+          "pressure_type": "Tipo di pressione",
+          "forecast_model": "Modello di previsione"
         },
         "data_description": {
           "pressure_sensor": "Sensore di pressione barometrica (obbligatorio). Deve fornire valori in hPa (ettopascal).",
@@ -18,7 +19,8 @@
           "wind_direction_sensor": "Direzione del vento in gradi (0-360°). Migliora la precisione delle previsioni, specialmente per rilevare i fronti.",
           "wind_speed_sensor": "Velocità del vento in km/h o m/s. Migliora la precisione delle previsioni tramite il fattore vento.",
           "elevation": "L'altitudine della tua posizione in metri (per calcolare la pressione al livello del mare).",
-          "pressure_type": "Seleziona se il tuo sensore fornisce pressione assoluta della stazione (QFE) o pressione relativa al livello del mare (QNH). La maggior parte dei sensori fornisce pressione assoluta."
+          "pressure_type": "Seleziona se il tuo sensore fornisce pressione assoluta della stazione (QFE) o pressione relativa al livello del mare (QNH). La maggior parte dei sensori fornisce pressione assoluta.",
+          "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato ~98% precisione), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo)."
         }
       }
     },
@@ -50,6 +52,7 @@
           "cloud_coverage_sensor": "Sensore copertura nuvolosa (Avanzato)",
           "elevation": "Altitudine",
           "pressure_type": "Tipo di pressione",
+          "forecast_model": "Modello di previsione",
           "enable_weather_entity": "Abilita entità meteo"
         },
         "data_description": {
@@ -60,6 +63,7 @@
           "solar_radiation_sensor": "Sensore radiazione solare in W/m² per temperatura percepita accurata. Se fornito sensore indice UV, la radiazione solare può essere calcolata automaticamente (opzionale)",
           "uv_index_sensor": "Sensore indice UV (scala 0-15). Se fornito sensore radiazione solare, l'indice UV può essere calcolato automaticamente. Utilizzato per allerte protezione solare e temperatura apparente (opzionale)",
           "cloud_coverage_sensor": "Sensore copertura nuvolosa (%) per regolare gli effetti della radiazione solare sulla temperatura apparente (opzionale)",
+          "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato ~98% precisione), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
           "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"
         }
       }

@@ -366,7 +366,8 @@ cards:
       Pocitovo: {{state_attr("weather.local_weather_forecast_weather", "feels_like")}}°C
     icon: |
       {% set condition = states("weather.local_weather_forecast_weather") %}
-      {% if condition == "fog" %}mdi:weather-fog
+      {% if condition == "snowy" %}mdi:weather-snowy
+      {% elif condition == "fog" %}mdi:weather-fog
       {% elif condition == "rainy" %}mdi:weather-rainy
       {% elif condition == "pouring" %}mdi:weather-pouring
       {% elif condition == "cloudy" %}mdi:weather-cloudy
@@ -376,7 +377,8 @@ cards:
       {% else %}mdi:help-circle{% endif %}
     icon_color: |
       {% set condition = states("weather.local_weather_forecast_weather") %}
-      {% if condition == "fog" %}grey
+      {% if condition == "snowy" %}blue
+      {% elif condition == "fog" %}grey
       {% elif condition in ["rainy", "pouring"] %}blue
       {% elif condition == "cloudy" %}grey
       {% else %}orange{% endif %}
@@ -621,7 +623,12 @@ cards:
     cards:
       - type: custom:mushroom-template-card
         primary: |
-          {{state_attr("sensor.local_forecast_enhanced", "fog_risk") | default("Žiadne riziko")}}
+          {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") | lower %}
+          {% if fog == "critical" %}⚠️ KRITICKÉ riziko hmly
+          {% elif fog == "high" %}🌫️ Vysoké riziko hmly
+          {% elif fog == "medium" %}🌁 Stredné riziko hmly
+          {% elif fog == "low" %}☁️ Nízke riziko hmly
+          {% else %}✅ Žiadne riziko hmly{% endif %}
         secondary: |
           Rosný bod: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | default("N/A")}}°C
           Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | default("N/A")}}°C
@@ -632,10 +639,10 @@ cards:
         icon: mdi:weather-fog
         icon_color: |
           {% set fog = state_attr("sensor.local_forecast_enhanced", "fog_risk") | lower %}
-          {% if "kritické" in fog %}red
-          {% elif "vysoké" in fog %}orange
-          {% elif "stredné" in fog %}yellow
-          {% elif "nízke" in fog %}blue
+          {% if fog == "critical" %}red
+          {% elif fog == "high" %}orange
+          {% elif fog == "medium" %}yellow
+          {% elif fog == "low" %}blue
           {% else %}green{% endif %}
         layout: vertical
         multiline_secondary: true
@@ -673,49 +680,51 @@ cards:
     cards:
       - type: custom:mushroom-template-card
         primary: |
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
-          {% if risk == "critical" %}⚠️ KRITICKÉ RIZIKO SNEHU
-          {% elif risk == "high" %}❄️ Vysoké riziko snehu
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "snow_risk") | lower %}
+          {% if risk == "high" %}❄️ Vysoké riziko snehu
           {% elif risk == "medium" %}🌨️ Stredné riziko snehu
           {% elif risk == "low" %}☁️ Nízke riziko snehu
-          {% else %}Žiadne riziko snehu{% endif %}
+          {% else %}✅ Žiadne riziko snehu{% endif %}
         secondary: |
           Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature") | default("N/A")}}°C
           Vlhkosť: {{state_attr("sensor.local_forecast_enhanced", "humidity") | default("N/A")}}%
           {% set rain_prob = states("sensor.local_forecast_rain_probability") | int(0) %}
           Zrážky: {{rain_prob}}%
           
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
-          {% if risk in ["high", "critical"] %}⚠️ Očakávaj sneženie!{% endif %}
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "snow_risk") | lower %}
+          {% if risk == "high" %}⚠️ Očakávaj sneženie!{% endif %}
         icon: mdi:snowflake
         icon_color: |
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "snow_risk") %}
-          {% if risk == "critical" %}red
-          {% elif risk == "high" %}orange
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "snow_risk") | lower %}
+          {% if risk == "high" %}orange
           {% elif risk == "medium" %}blue
           {% elif risk == "low" %}cyan
           {% else %}grey{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_enhanced
       
       - type: custom:mushroom-template-card
         primary: |
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
-          {% if risk == "critical" %}🚨 KRITICKÉ RIZIKO NÁMRAZY
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "frost_risk") | lower %}
+          {% if risk == "critical" %}🚨 KRITICKÉ - Čierna ľadovka
           {% elif risk == "high" %}⚠️ Vysoké riziko námrazy
           {% elif risk == "medium" %}❄️ Stredné riziko námrazy
           {% elif risk == "low" %}💧 Nízke riziko námrazy
-          {% else %}Žiadne riziko námrazy{% endif %}
+          {% else %}✅ Žiadne riziko námrazy{% endif %}
         secondary: |
           Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature") | default("N/A")}}°C
           Rosný bod: {{state_attr("sensor.local_forecast_enhanced", "dew_point") | default("N/A")}}°C
           Spread: {{state_attr("sensor.local_forecast_enhanced", "dewpoint_spread") | default("N/A")}}°C
+          Vietor: {{state_attr("sensor.local_forecast_enhanced", "wind_speed") | default("N/A")}} m/s
           
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "frost_risk") | lower %}
           {% if risk in ["high", "critical"] %}⚠️ POZOR - klzké cesty!{% endif %}
         icon: mdi:snowflake-alert
         icon_color: |
-          {% set risk = state_attr("weather.local_weather_forecast_weather", "ice_risk") %}
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "frost_risk") | lower %}
           {% if risk == "critical" %}red
           {% elif risk == "high" %}orange
           {% elif risk == "medium" %}yellow
@@ -723,6 +732,9 @@ cards:
           {% else %}grey{% endif %}
         layout: vertical
         multiline_secondary: true
+        tap_action:
+          action: more-info
+          entity: sensor.local_forecast_enhanced
   
   # ========================================================================
   # PREDPOVEĎ NA 6H A 12H (ZAMBRETTI DETAIL)
@@ -932,14 +944,14 @@ entities:
   # Snow & Ice
   - type: section
     label: ❄️ Snow & Ice Risk
-  - entity: weather.local_weather_forecast_weather
+  - entity: sensor.local_forecast_enhanced
     type: attribute
     attribute: snow_risk
     name: Snow Risk
-  - entity: weather.local_weather_forecast_weather
+  - entity: sensor.local_forecast_enhanced
     type: attribute
-    attribute: ice_risk
-    name: Ice/Frost Risk
+    attribute: frost_risk
+    name: Frost Risk
   
   # Rain Forecast
   - type: section
@@ -1175,6 +1187,56 @@ cards:
         icon_color: blue
         layout: vertical
         multiline_secondary: true
+  
+  # ========== SECTION 7: SNOW & ICE RISK ==========
+  - type: custom:mushroom-title-card
+    title: ❄️ Snow & Ice Risk
+    subtitle: ''
+  
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        primary: Snow Risk
+        secondary: |
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "snow_risk") %}
+          {% if risk == "high" %}❄️ Vysoké riziko
+          {% elif risk == "medium" %}🌨️ Stredné riziko
+          {% elif risk == "low" %}☁️ Nízke riziko
+          {% elif risk == "none" %}Žiadne riziko
+          {% else %}Žiadne riziko{% endif %}
+          
+          Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature")}}°C
+        icon: mdi:snowflake
+        icon_color: |
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "snow_risk") %}
+          {% if risk == "high" %}orange
+          {% elif risk == "medium" %}blue
+          {% elif risk == "none" %}grey
+          {% else %}grey{% endif %}
+        layout: vertical
+        multiline_secondary: true
+      
+      - type: custom:mushroom-template-card
+        primary: Frost Risk
+        secondary: |
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "frost_risk") %}
+          {% if risk == "critical" %}🚨 KRITICKÉ riziko
+          {% elif risk == "high" %}⚠️ Vysoké riziko
+          {% elif risk == "medium" %}❄️ Stredné riziko
+          {% elif risk == "low" %}💧 Nízke riziko
+          {% elif risk == "none" %}Žiadne riziko
+          {% else %}Žiadne riziko{% endif %}
+          
+          Teplota: {{state_attr("weather.local_weather_forecast_weather", "temperature")}}°C
+        icon: mdi:snowflake-alert
+        icon_color: |
+          {% set risk = state_attr("sensor.local_forecast_enhanced", "frost_risk") %}
+          {% if risk == "critical" %}red
+          {% elif risk == "high" %}orange
+          {% elif risk == "medium" %}yellow
+          {% else %}grey{% endif %}
+        layout: vertical
+        multiline_secondary: true
 ```
 
 **📋 Available Attributes:**
@@ -1182,12 +1244,23 @@ cards:
 - `humidity`, `pressure`, `pressure_trend`
 - `wind_speed`, `wind_gust`, `wind_bearing`, `gust_ratio`
 - `wind_type`, `wind_beaufort_scale`, `atmosphere_stability`
-- `dew_point`, `dewpoint_spread`, `fog_risk`, `visibility_estimate`
+- `dew_point`, `dewpoint_spread`
+- **Risk Attributes (RAW values for automations):**
+  - `fog_risk` - "none", "low", "medium", "high", "critical"
+  - `snow_risk` - "none", "low", "medium", "high"
+  - `frost_risk` - "none", "low", "medium", "high", "critical"
+- **Risk Attributes (Translated for UI):**
+  - `fog_risk_text` - e.g., "Žiadne riziko hmly", "KRITICKÉ riziko hmly"
+  - `snow_risk_text` - e.g., "Žiadne riziko snehu", "Vysoké riziko snehu"
+  - `frost_risk_text` - e.g., "Žiadne riziko námrazy", "Vysoké riziko námrazy"
+- `visibility_estimate`
 - `rain_probability`, `rain_confidence`
 - `forecast_zambretti`, `zambretti_number`
 - `forecast_negretti_zambra`, `neg_zam_number`
 - `forecast_short_term`, `forecast_confidence`
 - `forecast_adjustments`, `forecast_adjustment_details`
+
+**💡 Tip:** Use RAW values (`fog_risk`, `snow_risk`, `frost_risk`) in templates for comparisons. Use `_text` versions for direct display.
 
 ---
 
