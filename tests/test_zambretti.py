@@ -50,8 +50,10 @@ class TestMapZambrettiToLetter:
         assert _map_zambretti_to_letter(23) == "F"
 
     def test_map_unknown_fallback(self):
-        """Test fallback for unknown z-number."""
-        assert _map_zambretti_to_letter(99) == "A"
+        """Test clamping for out-of-range z-numbers."""
+        # z > 33 should clamp to 33 → letter 'Z'
+        assert _map_zambretti_to_letter(99) == "Z"
+        # z < 1 should clamp to 1 → letter 'A'
         assert _map_zambretti_to_letter(0) == "A"
         assert _map_zambretti_to_letter(-1) == "A"
 
@@ -102,10 +104,12 @@ class TestMapZambrettiToForecast:
         assert _map_zambretti_to_forecast(23) == 5
 
     def test_map_unmapped_number(self):
-        """Test unmapped z-number returns None."""
-        assert _map_zambretti_to_forecast(99) is None
-        assert _map_zambretti_to_forecast(0) is None
-        assert _map_zambretti_to_forecast(-1) is None
+        """Test clamping for out-of-range z-numbers."""
+        # z > 33 should clamp to 33 → forecast_index 25
+        assert _map_zambretti_to_forecast(99) == 25
+        # z < 1 should clamp to 1 → forecast_index 0
+        assert _map_zambretti_to_forecast(0) == 0
+        assert _map_zambretti_to_forecast(-1) == 0
 
     def test_map_all_valid_numbers(self):
         """Test that all valid z-numbers return forecast indices."""

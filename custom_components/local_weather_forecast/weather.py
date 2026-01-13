@@ -114,7 +114,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         # Log rain sensor configuration at startup
         rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
         if rain_sensor_id:
-            _LOGGER.info(f"Weather: Rain sensor configured: {rain_sensor_id}")
+            _LOGGER.debug(f"Weather: Rain sensor configured: {rain_sensor_id}")
 
     def _get_config(self, key: str) -> Any:
         """Get configuration value from options or data."""
@@ -366,7 +366,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                         # Log sensor detection on first run
                         if self._last_rain_value is None and self._last_rain_time is None:
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: Rain sensor detected as ACCUMULATION sensor (mm): "
                                 f"entity={rain_rate_sensor_id}, "
                                 f"device_class={device_class}, "
@@ -383,7 +383,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             if current_rain > 0:
                                 # Netatmo shows last increment (0.101, 0.202, etc.)
                                 is_raining_now = True
-                                _LOGGER.info(
+                                _LOGGER.debug(
                                     f"Weather: Netatmo rain detected: {current_rain} mm → RAINING"
                                 )
                             else:
@@ -432,7 +432,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             pass
 
                     if rain_prob > 60:  # High snow risk
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"Weather: SNOW detected - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
                             f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                         )
@@ -449,7 +449,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             pass
 
                     if rain_prob > 40:  # Medium snow risk
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"Weather: SNOW likely - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
                             f"dewpoint_spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                         )
@@ -463,14 +463,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # - Combined = actual fog likely present
                 # NOTE: Check fog AFTER snow (snow takes priority if temp is freezing)
                 if dewpoint_spread < 1.5 and humidity > 85:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Weather: FOG detected - dewpoint spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, hour={current_hour}"
                     )
                     return ATTR_CONDITION_FOG
                 # Near-fog conditions (very low spread + high humidity)
                 elif dewpoint_spread < 1.0 and humidity > 80:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Weather: FOG detected (near saturation) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, hour={current_hour}"
                     )
@@ -502,14 +502,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                         # Very high humidity (>85%) = overcast conditions
                         if humidity > 85 and condition in (ATTR_CONDITION_PARTLYCLOUDY, ATTR_CONDITION_SUNNY):
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: Humidity correction: {condition} → cloudy "
                                 f"(RH={humidity:.1f}% > 85%)"
                             )
                             condition = ATTR_CONDITION_CLOUDY
                         # High humidity (70-85%) = mostly cloudy if Zambretti says sunny
                         elif humidity > 70 and condition == ATTR_CONDITION_SUNNY:
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: Humidity correction: sunny → partlycloudy "
                                 f"(RH={humidity:.1f}% > 70%)"
                             )
@@ -709,12 +709,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
             # Log CRITICAL warnings
             if frost_risk == "critical":
-                _LOGGER.warning(
-                    f"⚠️ CRITICAL: BLACK ICE WARNING! Temperature={temp:.1f}°C, "
+                _LOGGER.debug(
+                    f"FrostRisk: CRITICAL BLACK ICE - Temperature={temp:.1f}°C, "
                     f"Humidity={humidity:.1f}%, Spread={spread:.1f}°C"
                 )
             if snow_risk == "high":
-                _LOGGER.info(
+                _LOGGER.debug(
                     f"❄️ High snow risk: Temperature={temp:.1f}°C, Humidity={humidity:.1f}%, "
                     f"Rain probability={rain_prob}%"
                 )

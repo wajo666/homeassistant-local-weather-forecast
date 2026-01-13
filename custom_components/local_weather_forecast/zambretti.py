@@ -85,29 +85,32 @@ def calculate_zambretti_forecast(
     z_original = z
     extreme_condition = None
 
-    if z < 1:
+    if z < 1.0:
         # Extreme high pressure with falling trend
         # This indicates breakdown of anticyclone → weather deteriorating
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Zambretti: EXTREME condition - Very high pressure falling rapidly "
             f"(z={z:.1f}, pressure={p0:.1f} hPa, change={pressure_change:.2f} hPa)"
         )
         extreme_condition = "high_pressure_falling"
         # Map to "Fine, Becoming Less Settled" (forecast_type=3, letter=D)
         z = 3
-        _LOGGER.info(f"Zambretti: Mapping extreme case z={z_original:.1f} → z=3 (Fine, Becoming Less Settled)")
+        _LOGGER.debug(f"Zambretti: Mapping extreme case z={z_original:.1f} → z=3 (Fine, Becoming Less Settled)")
 
-    elif z > 33:
+    elif z > 33.0:
         # Extreme low pressure with rising trend
         # This indicates recovery from storm → weather improving
-        _LOGGER.warning(
+        _LOGGER.debug(
             f"Zambretti: EXTREME condition - Very low pressure rising rapidly "
             f"(z={z:.1f}, pressure={p0:.1f} hPa, change={pressure_change:.2f} hPa)"
         )
         extreme_condition = "low_pressure_rising"
         # Keep at z=33 (Stormy, Much Rain) - still dangerous
         z = 33
-        _LOGGER.info(f"Zambretti: Clamping extreme case z={z_original:.1f} → z=33 (Stormy, Much Rain)")
+        _LOGGER.debug(f"Zambretti: Clamping extreme case z={z_original:.1f} → z=33 (Stormy, Much Rain)")
+
+    # Convert to int for mapping (now guaranteed to be in range 1-33)
+    z = int(round(z))
 
     # Now z is guaranteed to be in range 1-33, safe to map
     forecast_type = _map_zambretti_to_forecast(z)
@@ -118,13 +121,13 @@ def calculate_zambretti_forecast(
 
         # Add note for extreme conditions
         if extreme_condition:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Zambretti: RESULT (EXTREME) - z={z} (original={z_original:.1f}), "
                 f"condition={extreme_condition}, forecast_number={forecast_type}, "
                 f"letter_code={letter_code}, text='{forecast_text}'"
             )
         else:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Zambretti: RESULT - z={z}, forecast_number={forecast_type}, "
                 f"letter_code={letter_code}, text='{forecast_text}'"
             )
@@ -145,6 +148,14 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
     Returns:
         Forecast index or None if unmapped
     """
+    # Defensive clamping - should already be done by caller, but extra safety
+    if z < 1:
+        _LOGGER.warning(f"Zambretti: z={z} < 1, clamping to 1")
+        z = 1
+    elif z > 33:
+        _LOGGER.warning(f"Zambretti: z={z} > 33, clamping to 33")
+        z = 33
+
     _LOGGER.debug(f"Zambretti: Mapping z-number={z}")
     mapping = {
         1: 0, 10: 0, 20: 0,
@@ -196,6 +207,14 @@ def _map_zambretti_to_letter(z: int) -> str:
     Returns:
         Letter code (A-Z) representing weather forecast
     """
+    # Defensive clamping - should already be done by caller, but extra safety
+    if z < 1:
+        _LOGGER.warning(f"Zambretti: z={z} < 1, clamping to 1 for letter mapping")
+        z = 1
+    elif z > 33:
+        _LOGGER.warning(f"Zambretti: z={z} > 33, clamping to 33 for letter mapping")
+        z = 33
+
     mapping = {
         1: "A", 10: "A", 20: "A",
         2: "B", 11: "B", 21: "B",
@@ -226,11 +245,8 @@ def _map_zambretti_to_letter(z: int) -> str:
     }
     result = mapping.get(z, "A")
     if z not in mapping:
-        # This should never happen after clamping, but keep defensive fallback
-        _LOGGER.error(
-            f"Zambretti: UNMAPPED letter for z={z} - this should not happen! "
-            f"Check clamping logic. Falling back to letter 'A'"
-        )
+        # This should never happen after clamping
+        _LOGGER.debug(f"Zambretti: Using default letter 'A' for z={z}")
     else:
         _LOGGER.debug(f"Zambretti: Mapped z={z} → letter '{result}'")
     return result

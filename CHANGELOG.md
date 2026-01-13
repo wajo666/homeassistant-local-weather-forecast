@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This version is currently under development.
 
+### 🐛 Fixed
+
+- **Zambretti Algorithm**: Fixed clamping logic for extreme z-numbers (issue #34)
+  - Fixed issue where z-values > 33 (e.g., z=34) were not being properly clamped
+  - Added explicit float comparison in clamping conditions (`z < 1.0`, `z > 33.0`)
+  - Added defensive clamping in mapping functions as final safeguard
+  - Now properly converts to int after clamping: `z = int(round(z))`
+  - Reported by user in Brasov, RO (543m altitude) with very low pressure conditions
+
+- **Negretti-Zambra Algorithm**: Fixed exceptional weather detection for extreme pressures
+  - Changed pressure bounds comparison to use explicit float types for consistency
+  - Fixed z_option calculation to properly detect exceptional conditions before integer conversion
+  - Changed clamping from `z_option < 0` to `z_option_raw < 0.0` (float comparison)
+  - Changed clamping from `z_option > 21` to `z_option_raw > 21.0` (float comparison)
+  - Added `int(round(z_option_raw))` conversion after clamping to ensure valid lookup index
+  - Added defensive clamping in letter mapping function for consistency with Zambretti
+  - Improved debug logging to show both raw float values and final integer values
+
+- **Frost Risk Logging**: Changed CRITICAL frost risk log messages from WARNING to DEBUG level
+  - Fixed log flooding during frost conditions (black ice warnings every ~30 seconds)
+  - Changed in `calculations.py`: "FrostRisk: CRITICAL - Black ice conditions..."
+  - Changed in `weather.py`: "FrostRisk: CRITICAL BLACK ICE - Temperature=..."
+  - Prevents unnecessary log spam while still providing diagnostic information when debug logging is enabled
+  - Frost risk level still correctly reported in sensor attributes and weather entity
+
 ### 🔧 Changed
 
 - **Minimum Home Assistant version**: Updated to 2024.12.0 (from 2024.1.0)

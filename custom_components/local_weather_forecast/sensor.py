@@ -274,7 +274,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
                             if state.state not in ("unknown", "unavailable", None):
                                 try:
                                     value = float(str(state.state))
-                                    _LOGGER.info(
+                                    _LOGGER.debug(
                                         f"Retrieved historical value {value} for {sensor_id}"
                                     )
                                     return value
@@ -805,7 +805,7 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
 
                     if restored_history:
                         self._history = restored_history
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"PressureChange: Restored {len(self._history)} historical values from previous session"
                         )
             except (ValueError, TypeError):
@@ -946,7 +946,7 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
 
                     if restored_history:
                         self._history = restored_history
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"TemperatureChange: Restored {len(self._history)} historical values from previous session"
                         )
             except (ValueError, TypeError):
@@ -1705,7 +1705,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"Enhanced: Tracking sensor {sensor_key}: {sensor_id}")
 
         # Set up state change tracking
-        _LOGGER.info(f"Enhanced: Tracking {len(entities_to_track)} entities for automatic updates")
+        _LOGGER.debug(f"Enhanced: Tracking {len(entities_to_track)} entities for automatic updates")
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, entities_to_track, self._handle_sensor_update
@@ -1715,7 +1715,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Schedule delayed update to wait for dependent sensors to load
         async def delayed_startup_update():
             await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
-            _LOGGER.info("Enhanced: Running delayed startup update")
+            _LOGGER.debug("Enhanced: Running delayed startup update")
             await self.async_update()
             self.async_write_ha_state()
 
@@ -1895,7 +1895,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             if humidity_sensor:
                 _LOGGER.debug(f"Enhanced: Fallback - fetching humidity from {humidity_sensor}")
                 humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
-                _LOGGER.info(f"Enhanced: Fallback - humidity value = {humidity}")
+                _LOGGER.debug(f"Enhanced: Fallback - humidity value = {humidity}")
             else:
                 _LOGGER.warning("Enhanced: No humidity sensor configured!")
 
@@ -1910,7 +1910,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         dewpoint_spread = None
         if temp is not None and dewpoint is not None:
             dewpoint_spread = temp - dewpoint
-            _LOGGER.info(f"Enhanced: ✓ SPREAD: {temp}°C - {dewpoint}°C = {dewpoint_spread:.1f}°C")
+            _LOGGER.debug(f"Enhanced: ✓ SPREAD: {temp}°C - {dewpoint}°C = {dewpoint_spread:.1f}°C")
         else:
             _LOGGER.warning(f"Enhanced: ✗ Cannot calculate spread - temp={temp}, dewpoint={dewpoint}, humidity={humidity}")
 
@@ -1920,7 +1920,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         )
         # Enhanced sensors are in options, not data!
         wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
-        _LOGGER.info(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed} m/s")
+        _LOGGER.debug(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed} m/s")
         gust_ratio = None
         wind_gust = None
         if wind_gust_sensor_id and wind_speed > 0.1:
@@ -1928,7 +1928,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True, sensor_type="wind_speed")
             if wind_gust is not None and isinstance(wind_gust, (int, float)) and wind_speed > 0.1:
                 gust_ratio = wind_gust / wind_speed
-                _LOGGER.info(f"Enhanced: Calculated gust_ratio={gust_ratio:.2f} (gust={wind_gust} m/s, speed={wind_speed} m/s)")
+                _LOGGER.debug(f"Enhanced: Calculated gust_ratio={gust_ratio:.2f} (gust={wind_gust} m/s, speed={wind_speed} m/s)")
             else:
                 _LOGGER.warning(f"Enhanced: Wind gust sensor returned None")
         else:
@@ -2041,7 +2041,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             )
 
         self._state = enhanced_text
-        _LOGGER.info(f"Enhanced: Setting state to: {enhanced_text}")
+        _LOGGER.debug(f"Enhanced: Setting state to: {enhanced_text}")
         self._attributes = {
             "base_forecast": base_text,
             "zambretti_number": zambretti_num,
@@ -2088,7 +2088,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         # Schedule delayed update to wait for dependent sensors to load
         async def delayed_startup_update():
             await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
-            _LOGGER.info("RainProb: Running delayed startup update")
+            _LOGGER.debug("RainProb: Running delayed startup update")
             await self.async_update()
             self.async_write_ha_state()
 
@@ -2152,7 +2152,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
                 negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
 
-        _LOGGER.info(f"RainProb: Base probabilities - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%")
+        _LOGGER.debug(f"RainProb: Base probabilities - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%")
 
         # Get sensor values for enhancements
         temp = await self._get_sensor_value(
@@ -2161,12 +2161,12 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
         # Enhanced sensors are in options, not data!
         humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
-        _LOGGER.info(f"RainProb: Config humidity sensor = {humidity_sensor}")
+        _LOGGER.debug(f"RainProb: Config humidity sensor = {humidity_sensor}")
         humidity = None
         if humidity_sensor:
             _LOGGER.debug(f"RainProb: Fetching humidity from {humidity_sensor}")
             humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
-            _LOGGER.info(f"RainProb: Humidity value = {humidity}")
+            _LOGGER.debug(f"RainProb: Humidity value = {humidity}")
         else:
             _LOGGER.warning("RainProb: No humidity sensor configured!")
 

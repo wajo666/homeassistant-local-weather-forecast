@@ -53,9 +53,12 @@ def test_map_zambretti_to_letter_f():
 
 
 def test_map_zambretti_to_letter_unknown():
-    """Test mapping for unknown number falls back to A."""
-    assert _map_zambretti_to_letter(99) == "A"
+    """Test mapping for out-of-range numbers gets clamped to valid range."""
+    # z=99 should clamp to 33 → "Z"
+    assert _map_zambretti_to_letter(99) == "Z"
+    # z=0 should clamp to 1 → "A"
     assert _map_zambretti_to_letter(0) == "A"
+    # z=-1 should clamp to 1 → "A"
     assert _map_zambretti_to_letter(-1) == "A"
 
 

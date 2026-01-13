@@ -383,7 +383,7 @@ def calculate_rain_probability_enhanced(
     else:
         confidence = "low"
 
-    _LOGGER.info(
+    _LOGGER.debug(
         f"RainCalc: RESULT - {int(final_prob)}% (confidence={confidence}, "
         f"base={base_prob}%, adjustment={total_adjustment:.1f}, scale={scale})"
     )
@@ -644,8 +644,8 @@ def get_frost_risk(
     # Temperature slightly below 0°C, very high humidity, near saturation
     # This creates conditions for ice formation on surfaces
     if -2 <= temperature <= 0 and humidity is not None and humidity > 90 and dewpoint_spread < 1:
-        _LOGGER.warning(
-            f"⚠️ CRITICAL FROST RISK: Black ice conditions - T={temperature:.1f}°C, "
+        _LOGGER.debug(
+            f"FrostRisk: CRITICAL - Black ice conditions - T={temperature:.1f}°C, "
             f"Dewpoint={dewpoint:.1f}°C, RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
         )
         return FROST_RISK_CRITICAL

@@ -129,30 +129,39 @@ def calculate_negretti_zambra_forecast(
     else:
         _LOGGER.debug(f"Negretti: No summer adjustment (winter month)")
 
-    # Ensure within bounds
-    if z_hp >= bar_top:
+    # Ensure within bounds (use float comparison for consistency)
+    if z_hp >= float(bar_top):
         _LOGGER.debug(f"Negretti: Pressure {z_hp:.1f} hPa exceeds bar_top {bar_top}, clamping to {bar_top - 1}")
-        z_hp = bar_top - 1
+        z_hp = float(bar_top - 1)
 
-    if z_hp < bar_bottom:
+    if z_hp < float(bar_bottom):
         _LOGGER.debug(f"Negretti: Pressure {z_hp:.1f} hPa below bar_bottom {bar_bottom}, clamping to {bar_bottom}")
-        z_hp = bar_bottom
+        z_hp = float(bar_bottom)
 
-    # Calculate option index
-    z_option = int((z_hp - bar_bottom) / constant)
+    # Calculate option index (this will be float, needs clamping)
+    z_option_raw = (z_hp - bar_bottom) / constant
 
-    _LOGGER.debug(f"Negretti: z_hp after adjustments={z_hp:.1f} hPa, z_option={z_option}")
+    _LOGGER.debug(f"Negretti: z_hp after adjustments={z_hp:.1f} hPa, z_option_raw={z_option_raw:.2f}")
 
-    # Check for exceptional weather
+    # Check for exceptional weather and clamp BEFORE converting to int
     is_exceptional = False
-    if z_option < 0:
-        _LOGGER.warning(f"Negretti: EXCEPTIONAL weather detected - z_option={z_option} < 0, clamping to 0")
-        z_option = 0
+    if z_option_raw < 0.0:
+        _LOGGER.warning(
+            f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} < 0, "
+            f"clamping to 0 (pressure={z_hp:.1f} hPa)"
+        )
+        z_option_raw = 0.0
         is_exceptional = True
-    elif z_option > 21:
-        _LOGGER.warning(f"Negretti: EXCEPTIONAL weather detected - z_option={z_option} > 21, clamping to 21")
-        z_option = 21
+    elif z_option_raw > 21.0:
+        _LOGGER.warning(
+            f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} > 21, "
+            f"clamping to 21 (pressure={z_hp:.1f} hPa)"
+        )
+        z_option_raw = 21.0
         is_exceptional = True
+
+    # Convert to int after clamping (now guaranteed to be in range 0-21)
+    z_option = int(round(z_option_raw))
 
     # Select forecast based on trend
     if trend == 1:  # Rising
@@ -178,7 +187,7 @@ def calculate_negretti_zambra_forecast(
     forecast_text += FORECAST_TEXTS[forecast_idx][lang_index]
     letter_code = _map_zambretti_to_letter(forecast_idx + 1)
 
-    _LOGGER.info(
+    _LOGGER.debug(
         f"Negretti: RESULT - forecast_number={forecast_idx}, letter_code={letter_code}, "
         f"text='{forecast_text}'"
     )
@@ -190,11 +199,19 @@ def _map_zambretti_to_letter(z: int) -> str:
     """Map Zambretti number to letter code.
 
     Args:
-        z: Zambretti number (1-33)
+        z: Zambretti number (1-33, should be clamped by caller)
 
     Returns:
         Letter code (A-Z) representing weather forecast
     """
+    # Defensive clamping - should already be done by caller, but extra safety
+    if z < 1:
+        _LOGGER.warning(f"Negretti: z={z} < 1, clamping to 1 for letter mapping")
+        z = 1
+    elif z > 33:
+        _LOGGER.warning(f"Negretti: z={z} > 33, clamping to 33 for letter mapping")
+        z = 33
+
     mapping = {
         1: "A", 10: "A", 20: "A",
         2: "B", 11: "B", 21: "B",
@@ -225,8 +242,8 @@ def _map_zambretti_to_letter(z: int) -> str:
     }
     result = mapping.get(z, "A")
     if z not in mapping:
-        _LOGGER.debug(f"Negretti: Unknown Zambretti number {z}, using fallback letter 'A'")
+        _LOGGER.debug(f"Negretti: Using default letter 'A' for z={z}")
     else:
-        _LOGGER.debug(f"Negretti: Mapped Zambretti number {z} → letter '{result}'")
+        _LOGGER.debug(f"Negretti: Mapped z={z} → letter '{result}'")
     return result
 

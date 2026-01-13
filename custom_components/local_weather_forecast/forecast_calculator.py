@@ -540,13 +540,13 @@ class ZambrettiForecaster:
 
                 # SUNNY/CLEAR → CLOUDY correction (UV much lower than expected)
                 if condition in ("sunny", "clear-night") and cloud_cover_percent > 70:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"UV correction: {condition} → cloudy "
                         f"(UV too low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
                     )
                     condition = "cloudy"
                 elif condition in ("sunny", "clear-night") and cloud_cover_percent > 40:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"UV correction: {condition} → partlycloudy "
                         f"(UV low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
                     )
@@ -554,13 +554,13 @@ class ZambrettiForecaster:
 
                 # CLOUDY → PARTLYCLOUDY correction (UV higher than expected for clouds)
                 elif condition == "cloudy" and cloud_cover_percent < 30:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"UV correction: cloudy → partlycloudy "
                         f"(UV high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
                     )
                     condition = "partlycloudy"
                 elif condition == "cloudy" and cloud_cover_percent < 10:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"UV correction: cloudy → sunny "
                         f"(UV very high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
                     )
@@ -591,16 +591,16 @@ class ZambrettiForecaster:
 
                 # Apply same corrections as UV
                 if condition in ("sunny", "clear-night") and cloud_cover_percent > 70:
-                    _LOGGER.info(f"Solar correction: {condition} → cloudy")
+                    _LOGGER.debug(f"Solar correction: {condition} → cloudy")
                     condition = "cloudy"
                 elif condition in ("sunny", "clear-night") and cloud_cover_percent > 40:
-                    _LOGGER.info(f"Solar correction: {condition} → partlycloudy")
+                    _LOGGER.debug(f"Solar correction: {condition} → partlycloudy")
                     condition = "partlycloudy"
                 elif condition == "cloudy" and cloud_cover_percent < 30:
-                    _LOGGER.info(f"Solar correction: cloudy → partlycloudy")
+                    _LOGGER.debug(f"Solar correction: cloudy → partlycloudy")
                     condition = "partlycloudy"
                 elif condition == "cloudy" and cloud_cover_percent < 10:
-                    _LOGGER.info(f"Solar correction: cloudy → sunny")
+                    _LOGGER.debug(f"Solar correction: cloudy → sunny")
                     condition = "sunny"
 
         # Convert sunny to clear-night during night hours
