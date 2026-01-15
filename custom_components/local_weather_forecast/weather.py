@@ -317,8 +317,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             temp,
             humidity,
             wind_speed_kmh,
-            solar_radiation,
-            cloud_cover
+            solar_radiation
         )
 
     @property
@@ -1262,6 +1261,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (ValueError, TypeError):
                         pass
 
+
+            # Get cloud coverage for temperature model (optional)
+            cloud_cover = None
 
             # Get humidity for cloud cover estimation (optional)
             humidity = self.humidity
