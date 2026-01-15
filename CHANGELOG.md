@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎯 Major Release - Forecast Model Selection & Enhanced Accuracy
 
+### 🐛 Fixed
+
+- **Snow Risk Calculation**: Fixed false HIGH risk when high humidity at freezing but no precipitation
+  - ❄️ **Problem**: System reported HIGH snow risk at 0°C with 87% humidity but only 25% precipitation probability
+  - ✅ **Root Cause**: High humidity + freezing = FOG/FROST, not snow without precipitation!
+  - 🔧 **Solution**: Snow risk now REQUIRES precipitation probability:
+    - **HIGH**: T≤0°C, RH>75%, spread<2°C, **precipitation>60%**
+    - **MEDIUM**: T≤2°C, RH>65%, spread<3°C, **precipitation>40%**
+    - **LOW**: T≤4°C, RH>60%, **precipitation>50%** OR marginal conditions
+    - **Without precipitation**: High humidity at freezing → **LOW risk** (fog/frost warning)
+  - 📊 **Impact**: More accurate snow warnings aligned with actual precipitation forecasts
+
 ### ✨ Added
 
 - **Combined Dynamic Forecast Model** 🆕: Smart adaptive weighting system for best accuracy
@@ -783,8 +795,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Solar Radiation Sensors** (optional, choose one or both):
     - `solar_radiation_sensor`: Solar radiation sensor (W/m²)
     - `uv_index_sensor`: UV index sensor (0-15) - automatically converts to W/m² for forecast
-  - **Cloud Coverage Sensor** (optional):
-    - `cloud_coverage_sensor`: Cloud coverage percentage (0-100%)
   - All sensors optional with intelligent fallback logic
 
 - **Intelligent Rain Detection System**

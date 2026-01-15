@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from .conftest import MockConfigEntry
 
 from custom_components.local_weather_forecast.const import (
-    CONF_CLOUD_COVERAGE_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
@@ -507,14 +506,12 @@ class TestOptionsFlow:
             user_input={
                 CONF_SOLAR_RADIATION_SENSOR: "sensor.test_solar",
                 CONF_UV_INDEX_SENSOR: "sensor.test_uv",
-                CONF_CLOUD_COVERAGE_SENSOR: "sensor.test_cloud",
             },
         )
 
         assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
         assert entry.data[CONF_SOLAR_RADIATION_SENSOR] == "sensor.test_solar"
         assert entry.data[CONF_UV_INDEX_SENSOR] == "sensor.test_uv"
-        assert entry.data[CONF_CLOUD_COVERAGE_SENSOR] == "sensor.test_cloud"
 
     async def test_options_flow_empty_strings_to_none(self, hass: HomeAssistant):
         """Test that empty string sensors are converted to None in options flow."""

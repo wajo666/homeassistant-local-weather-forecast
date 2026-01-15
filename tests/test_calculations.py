@@ -141,8 +141,7 @@ class TestCalculateApparentTemperature:
             temperature=22.0,
             humidity=60.0,
             wind_speed=15.0,
-            solar_radiation=600.0,
-            cloud_cover=30.0
+            solar_radiation=600.0
         )
         assert result is not None
 
@@ -372,12 +371,6 @@ class TestCalculateUVIndexFromSolarRadiation:
         # 200 * 0.04 = 8
         assert 7.0 <= result <= 9.0
 
-    def test_with_cloud_coverage(self):
-        """Test UV index reduction with clouds."""
-        # Use 300 W/m² so we don't hit the 15.0 cap
-        clear = calculate_uv_index_from_solar_radiation(300.0, cloud_coverage=0.0)
-        cloudy = calculate_uv_index_from_solar_radiation(300.0, cloud_coverage=80.0)
-        assert cloudy < clear
 
     def test_capped_at_15(self):
         """Test that UV index is capped at 15."""
@@ -448,38 +441,35 @@ class TestGetSnowRisk:
         assert result == "low"
 
     def test_without_precipitation_probability(self):
-        """Test snow risk without precipitation probability."""
+        """Test snow risk without precipitation probability - should be LOW (fog/frost, not snow)."""
         result = get_snow_risk(-1.0, 85.0, -1.5)
-        assert result == "high"
+        assert result == "low"  # High humidity at freezing = FOG/FROST without precipitation
 
     def test_edge_case_0_degrees(self):
         """Test snow risk at exactly 0°C."""
         result = get_snow_risk(0.0, 82.0, -0.5, precipitation_prob=65)
         assert result == "high"
 
-    def test_high_risk_with_low_precip_prob(self):
+    def test_user_reported_false_positive(self):
         """
-        Test that HIGH risk is returned when atmospheric conditions favor snow,
-        even if precipitation probability is known but < 60%.
+        Test user-reported false positive: HIGH snow risk with low precipitation.
 
-        Bug fix (v3.1.4): Previously returned MEDIUM, now correctly returns HIGH.
-        Real-world case: 80.6% humidity, 0°C, spread 1.4°C → HIGH risk.
+        Scenario: T=0°C, RH=87.15%, dewpoint_spread=1.9°C, precipitation=25%
+        Expected: LOW risk (fog/frost conditions, not snow)
+        Old behavior: HIGH risk (incorrect)
+        New behavior: LOW risk (correct - no precipitation = no snow)
         """
-        # Case 1: User's actual conditions
-        result = get_snow_risk(0.0, 80.6, -1.4, precipitation_prob=45)
-        assert result == "high", "Should be HIGH risk with 80.6% humidity at 0°C (precip_prob < 60%)"
+        result = get_snow_risk(0.0, 87.15, -1.9, precipitation_prob=25)
+        assert result == "low", "Should be LOW - high humidity without precipitation = fog/frost, not snow"
 
-        # Case 2: Edge case - exactly 75% humidity
-        result = get_snow_risk(0.0, 75.1, -1.0, precipitation_prob=30)
-        assert result == "high", "Should be HIGH risk with 75.1% humidity at 0°C"
-
-        # Case 3: No precipitation probability provided
-        result = get_snow_risk(-0.5, 80.0, -1.5, precipitation_prob=None)
-        assert result == "high", "Should be HIGH risk when precip_prob is None"
-
-        # Case 4: Precipitation probability > 60% (confirmation)
-        result = get_snow_risk(-1.0, 85.0, -1.8, precipitation_prob=70)
-        assert result == "high", "Should be HIGH risk when precip_prob > 60%"
+    def test_high_humidity_low_precip_no_snow(self):
+        """
+        Test that LOW risk is returned when atmospheric conditions show high humidity
+        but precipitation probability is low - this indicates FOG/FROST, not snow.
+        """
+        # Ideal snow conditions except precipitation is unlikely
+        result = get_snow_risk(-2.0, 85.0, -2.5, precipitation_prob=30)
+        assert result == "low"  # Fog/frost conditions, not snow
 
 
 class TestGetFrostRisk:
@@ -559,48 +549,47 @@ class TestEstimateSolarRadiationFromTimeAndClouds:
     def test_solar_noon_clear_sky(self):
         """Test solar radiation at noon with clear sky."""
         result = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=12, cloud_coverage=0.0
+            latitude=50.0, hour=12
         )
         assert result > 500.0
 
     def test_nighttime(self):
         """Test that nighttime has zero solar radiation."""
         result = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=0, cloud_coverage=0.0
+            latitude=50.0, hour=0
         )
         assert result == 0.0
 
     def test_morning(self):
         """Test solar radiation in morning."""
         result = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=9, cloud_coverage=0.0
+            latitude=50.0, hour=9
         )
         assert 0.0 < result < 1000.0
 
     def test_evening(self):
         """Test solar radiation in evening."""
         result = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=18, cloud_coverage=0.0
+            latitude=50.0, hour=18
         )
         assert result >= 0.0
 
     def test_cloud_reduction(self):
-        """Test that clouds reduce solar radiation."""
-        clear = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=12, cloud_coverage=0.0
+        """Test that clouds reduce solar radiation (placeholder test)."""
+        # Cloud coverage sensor has been removed from the integration
+        # This test now just validates the function works without cloud data
+        result = estimate_solar_radiation_from_time_and_clouds(
+            latitude=50.0, hour=12
         )
-        cloudy = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=12, cloud_coverage=80.0
-        )
-        assert cloudy < clear
+        assert result > 0.0
 
     def test_high_latitude(self):
         """Test solar radiation at high latitude."""
         mid_lat = estimate_solar_radiation_from_time_and_clouds(
-            latitude=45.0, hour=12, cloud_coverage=0.0
+            latitude=45.0, hour=12
         )
         high_lat = estimate_solar_radiation_from_time_and_clouds(
-            latitude=70.0, hour=12, cloud_coverage=0.0
+            latitude=70.0, hour=12
         )
         assert high_lat < mid_lat
 

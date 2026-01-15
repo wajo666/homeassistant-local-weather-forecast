@@ -50,7 +50,6 @@
           "rain_rate_sensor": "Senzor detekcie dažďa (mm)",
           "solar_radiation_sensor": "Senzor slnečného žiarenia (W/m²)",
           "uv_index_sensor": "Senzor UV indexu (0-15)",
-          "cloud_coverage_sensor": "Senzor oblačnosti (rozšírený)",
           "elevation": "Nadmorská výška",
           "pressure_type": "Typ tlaku",
           "hemisphere": "Hemisféra",
@@ -63,7 +62,6 @@
           "rain_rate_sensor": "Senzor detekcie dažďa s device_class='precipitation'. Podporuje mm, in - automaticky konvertované. Integrácia automaticky detekuje dážď keď hodnota senzora > 0 (Netatmo: prírastky 0.101, 0.202... / Ecowitt WS90: podobne). NEPOUŽÍVAJTE hodinové súčty (voliteľné)",
           "solar_radiation_sensor": "Senzor slnečného žiarenia v W/m² pre presný pocit teploty. Ak je poskytnutý UV Index senzor, slnečné žiarenie sa môže vypočítať automaticky (voliteľné)",
           "uv_index_sensor": "Senzor UV indexu (0-15 stupnica). Ak je poskytnutý senzor slnečného žiarenia, UV index sa môže vypočítať automaticky. Používa sa pre upozornenia na ochranu pred slnkom a pocitovú teplotu (voliteľné)",
-          "cloud_coverage_sensor": "Senzor oblačnosti (%) na úpravu vplyvu slnečného žiarenia na pocitovú teplotu (voliteľné)",
           "hemisphere": "Vaša hemisféra pre sezónne úpravy počasia. Automaticky detekované z polohy Home Assistant (zemepisná šírka >= 0 = Sever, < 0 = Juh).",
           "forecast_model": "Vyberte algoritmus predpovede: Enhanced (kombinuje oba, odporúčané ~98% presnosť), Zambretti (klasický, optimalizovaný pre stúpajúci/klesajúci tlak), alebo Negretti-Zambra (metóda posuvného pravítka, konzervatívny).",
           "enable_weather_entity": "Vytvorte weather entitu ktorú možno použiť v kartách počasia a automatizáciách"

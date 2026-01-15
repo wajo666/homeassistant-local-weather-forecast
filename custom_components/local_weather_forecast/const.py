@@ -14,7 +14,7 @@ CONF_PRESSURE_TYPE: Final = "pressure_type"
 
 # Configuration keys - Optional extended sensors (v3.1.0+)
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"
-CONF_CLOUD_COVERAGE_SENSOR: Final = "cloud_coverage_sensor"
+
 CONF_SOLAR_RADIATION_SENSOR: Final = "solar_radiation_sensor"
 CONF_UV_INDEX_SENSOR: Final = "uv_index_sensor"
 CONF_VISIBILITY_SENSOR: Final = "visibility_sensor"

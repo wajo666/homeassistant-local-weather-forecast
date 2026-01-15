@@ -50,7 +50,6 @@
           "rain_rate_sensor": "Sensore rilevamento pioggia (mm)",
           "solar_radiation_sensor": "Sensore radiazione solare (W/m²)",
           "uv_index_sensor": "Sensore indice UV (0-15)",
-          "cloud_coverage_sensor": "Sensore copertura nuvolosa (Avanzato)",
           "elevation": "Altitudine",
           "pressure_type": "Tipo di pressione",
           "hemisphere": "Emisfero",
@@ -63,7 +62,6 @@
           "rain_rate_sensor": "Sensore rilevamento pioggia con device_class='precipitation' e unit='mm'. L'integrazione rileva automaticamente la pioggia quando il valore del sensore > 0 (Netatmo: incrementi 0.101, 0.202... / Ecowitt WS90: simile). NON utilizzare sensori totali orari (opzionale)",
           "solar_radiation_sensor": "Sensore radiazione solare in W/m² per temperatura percepita accurata. Se fornito sensore indice UV, la radiazione solare può essere calcolata automaticamente (opzionale)",
           "uv_index_sensor": "Sensore indice UV (scala 0-15). Se fornito sensore radiazione solare, l'indice UV può essere calcolato automaticamente. Utilizzato per allerte protezione solare e temperatura apparente (opzionale)",
-          "cloud_coverage_sensor": "Sensore copertura nuvolosa (%) per regolare gli effetti della radiazione solare sulla temperatura apparente (opzionale)",
           "hemisphere": "Il tuo emisfero per adattamenti stagionali meteo. Rilevato automaticamente dalla posizione Home Assistant (latitudine >= 0 = Nord, < 0 = Sud).",
           "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato ~98% precisione), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
           "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"

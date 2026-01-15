@@ -448,13 +448,13 @@ All sensors + Extended:
   - Temperature sensor
   - Wind Direction sensor
   - Wind Speed sensor
-  - Humidity sensor             ← Enables fog detection, enhanced rain %, dew point calc
+  - Humidity sensor             ← Enables fog detection, enhanced rain %, automatic dew point calculation
   - Wind Gust sensor            ← Enables atmospheric stability analysis (gust ratio)
   - Rain Rate sensor            ← Enables real-time rain override (100% probability + weather condition → "rainy" when rain > 0.1 mm/h)
-  - Solar Radiation sensor      ← Enables solar warming in "feels like" temperature
-  - Cloud Coverage sensor       ← Enables cloud-based comfort level refinement
-  - Dewpoint sensor (optional)  ← Alternative to humidity for fog detection
+  - Solar Radiation sensor (W/m²) **OR** UV Index sensor (0-15) ← Enables solar warming in "feels like" temperature (pick one, not both)
 ```
+
+> **Note:** Dew point is **calculated automatically** from temperature and humidity - no external sensor needed.
 
 ### 📊 Sensor Impact on Accuracy & Features
 
@@ -464,12 +464,14 @@ All sensors + Extended:
 | **Temperature** | ⚠️ Optional | Accurate sea level pressure conversion | ⚠️ Uses 15°C default (minor error) |
 | **Wind Direction** | ⚠️ Optional | +5-10% accuracy (Zambretti wind correction) | ⚠️ Uses North (0°) default |
 | **Wind Speed** | ⚠️ Optional | +3-5% accuracy (calm vs windy) | ⚠️ Uses 0 m/s (calm) default |
-| **Humidity** | ⚠️ Optional | **Enables:** Fog risk levels, enhanced rain %, dew point calculation | ⚠️ Fog/dew features disabled |
+| **Humidity** | ⚠️ Optional | **Enables:** Fog risk levels, enhanced rain %, automatic dew point calculation | ⚠️ Fog/dew features disabled |
 | **Wind Gust** | ⚠️ Optional | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
 | **Rain Rate** | ⚠️ Optional | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
-| **Solar Radiation** | ⚠️ Optional | **Enables:** Solar warming effect in "feels like" temperature | ⚠️ Ignores solar heating |
-| **Cloud Coverage** | ⚠️ Optional | **Enables:** Cloud-based comfort level refinement | ⚠️ Uses estimated sky condition |
-| **Dewpoint** | ⚠️ Optional | Alternative to humidity for fog detection (auto-calculated if humidity present) | ⚠️ Calculated from temp+humidity |
+| **Solar Radiation OR UV Index** | ⚠️ Optional | **Enables:** Solar warming effect in "feels like" temperature (uses W/m² or converts UV index) | ⚠️ Ignores solar heating |
+
+> **Solar sensors:** You only need **one** of these:
+> - **Solar Radiation sensor** (W/m²) - Direct measurement, more accurate
+> - **UV Index sensor** (0-15) - Converted to W/m² using standard formula (W/m² ≈ UV Index × 25)
 
 **Summary:**
 - **Minimum Setup**: Pressure only → ~88% accuracy (basic Zambretti forecast)

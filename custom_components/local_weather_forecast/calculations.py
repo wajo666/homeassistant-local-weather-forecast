@@ -138,8 +138,7 @@ def calculate_apparent_temperature(
     temperature: float,
     humidity: Optional[float] = None,
     wind_speed: Optional[float] = None,
-    solar_radiation: Optional[float] = None,
-    cloud_cover: Optional[float] = None
+    solar_radiation: Optional[float] = None
 ) -> float:
     """
     Calculate apparent temperature (feels like).
@@ -150,14 +149,12 @@ def calculate_apparent_temperature(
     - Optional: Humidity (vapor pressure effect)
     - Optional: Wind speed (wind chill effect)
     - Optional: Solar radiation (warming effect)
-    - Optional: Cloud cover (reduces solar warming)
 
     Args:
         temperature: Temperature in °C
         humidity: Relative humidity in % (optional - if None, humidity effect ignored)
         wind_speed: Wind speed in km/h (optional - if None, wind chill ignored)
         solar_radiation: Solar radiation in W/m² (optional - if None, solar warming ignored)
-        cloud_cover: Cloud cover in % (optional - if None, assumed clear sky)
 
     Returns:
         Apparent temperature in °C
@@ -189,15 +186,7 @@ def calculate_apparent_temperature(
             # Typical range: 0-1000 W/m²
             # At 800 W/m² (full sun), adds ~4°C
             solar_factor = solar_radiation / 200.0  # Scale factor
-
-            # Reduce by cloud cover if available
-            if cloud_cover is not None:
-                cloud_reduction = 1.0 - (cloud_cover / 100.0)
-                solar_factor *= cloud_reduction
-                components.append(f"solar_effect={solar_factor:+.1f}°C (cloudy={cloud_cover:.0f}%)")
-            else:
-                components.append(f"solar_effect={solar_factor:+.1f}°C")
-
+            components.append(f"solar_effect={solar_factor:+.1f}°C")
             apparent_temp += solar_factor
 
         result = round(apparent_temp, 1)
@@ -263,7 +252,6 @@ def calculate_rain_probability_enhanced(
     zambretti_prob: int,
     negretti_prob: int,
     humidity: Optional[float] = None,
-    cloud_coverage: Optional[float] = None,
     dewpoint_spread: Optional[float] = None,
     temperature: Optional[float] = None,
 ) -> tuple[int, str]:
@@ -282,7 +270,6 @@ def calculate_rain_probability_enhanced(
         zambretti_prob: Zambretti rain probability (0-100)
         negretti_prob: Negretti-Zambra rain probability (0-100)
         humidity: Relative humidity in % (optional)
-        cloud_coverage: Cloud coverage in % (optional)
         dewpoint_spread: Temperature - Dewpoint in °C (optional)
         temperature: Current temperature in °C (optional, for snow/cold adjustments)
 
@@ -357,20 +344,6 @@ def calculate_rain_probability_enhanced(
             adjustments.append(-5)
             _LOGGER.debug(f"RainCalc: Adding -5 for dry ({humidity:.1f}%)")
 
-    # Cloud coverage factor
-    if cloud_coverage is not None:
-        if cloud_coverage > 90:
-            adjustments.append(10)
-            _LOGGER.debug(f"RainCalc: Adding +10 for overcast ({cloud_coverage}%)")
-        elif cloud_coverage > 70:
-            adjustments.append(5)
-            _LOGGER.debug(f"RainCalc: Adding +5 for cloudy ({cloud_coverage}%)")
-        elif cloud_coverage < 20:
-            adjustments.append(-10)
-            _LOGGER.debug(f"RainCalc: Adding -10 for clear ({cloud_coverage}%)")
-        elif cloud_coverage < 40:
-            adjustments.append(-5)
-            _LOGGER.debug(f"RainCalc: Adding -5 for partly cloudy ({cloud_coverage}%)")
 
     # Dewpoint spread factor (saturation indicator)
     if dewpoint_spread is not None:
@@ -477,7 +450,7 @@ def calculate_visibility_from_humidity(humidity: float, temperature: float) -> O
         return None
 
 
-def calculate_uv_index_from_solar_radiation(solar_radiation: float, cloud_coverage: Optional[float] = None) -> Optional[float]:
+def calculate_uv_index_from_solar_radiation(solar_radiation: float) -> Optional[float]:
     """
     Calculate UV Index from solar radiation.
 
@@ -486,7 +459,6 @@ def calculate_uv_index_from_solar_radiation(solar_radiation: float, cloud_covera
 
     Args:
         solar_radiation: Solar radiation in W/m²
-        cloud_coverage: Optional cloud coverage in % (0-100) to adjust UV for clouds
 
     Returns:
         UV Index (0-15+), or None if calculation fails
@@ -503,11 +475,6 @@ def calculate_uv_index_from_solar_radiation(solar_radiation: float, cloud_covera
         # Base conversion factor (UV-B is about 4-5% of total solar radiation)
         uv_index = solar_radiation * 0.04
 
-        # Adjust for cloud coverage if provided
-        if cloud_coverage is not None and 0 <= cloud_coverage <= 100:
-            # Clouds reduce UV by approximately 30-90% depending on thickness
-            cloud_reduction = 1.0 - (cloud_coverage / 100 * 0.7)  # Max 70% reduction
-            uv_index *= cloud_reduction
 
         # UV index is capped at reasonable maximum
         uv_index = min(uv_index, 15.0)
@@ -517,7 +484,7 @@ def calculate_uv_index_from_solar_radiation(solar_radiation: float, cloud_covera
         return None
 
 
-def calculate_solar_radiation_from_uv_index(uv_index: float, cloud_coverage: Optional[float] = None) -> Optional[float]:
+def calculate_solar_radiation_from_uv_index(uv_index: float) -> Optional[float]:
     """
     Calculate solar radiation from UV Index.
 
@@ -526,7 +493,6 @@ def calculate_solar_radiation_from_uv_index(uv_index: float, cloud_coverage: Opt
 
     Args:
         uv_index: UV Index (0-15+)
-        cloud_coverage: Optional cloud coverage in % (0-100) to adjust estimation
 
     Returns:
         Estimated solar radiation in W/m², or None if calculation fails
@@ -543,11 +509,6 @@ def calculate_solar_radiation_from_uv_index(uv_index: float, cloud_coverage: Opt
         # Reverse calculation: solar_radiation = uv_index / 0.04
         solar_radiation = uv_index / 0.04
 
-        # If cloud coverage was factored in, reverse that too
-        if cloud_coverage is not None and 0 <= cloud_coverage <= 100:
-            cloud_reduction = 1.0 - (cloud_coverage / 100 * 0.7)
-            if cloud_reduction > 0:
-                solar_radiation /= cloud_reduction
 
         return round(solar_radiation, 1)
     except (ValueError, ZeroDivisionError):
@@ -561,18 +522,27 @@ def get_snow_risk(
     precipitation_prob: Optional[int] = None
 ) -> str:
     """
-    Calculate snow risk based on temperature, humidity, and dewpoint.
+    Calculate snow risk based on temperature, humidity, dewpoint, and precipitation probability.
 
-    Snow conditions (meteorologically justified):
-    - Temperature near or below 0°C
-    - High humidity (>70%) indicates moisture for precipitation
-    - Small dewpoint spread indicates saturation
-    - If precipitation probability is provided, it's factored in
+    Snow formation requires ALL of these conditions:
+    - Cold temperature (≤ 4°C)
+    - High humidity (> 60-75% depending on temperature)
+    - Near saturation (dewpoint spread < 2-3°C)
+    - **PRECIPITATION LIKELY** (> 40-60% depending on risk level)
+
+    ⚠️ IMPORTANT: High humidity at freezing WITHOUT precipitation = FOG/FROST, not snow!
+
+    Risk Levels:
+    - HIGH: T≤0°C, RH>75%, spread<2°C, precipitation>60%
+    - MEDIUM: T≤2°C, RH>65%, spread<3°C, precipitation>40%
+    - LOW: T≤4°C, RH>60%, precipitation>50% OR marginal conditions
+    - NONE: Temperature too warm or humidity too low or no precipitation
 
     Args:
         temperature: Temperature in °C
         humidity: Relative humidity in %
         dewpoint: Dew point in °C
+        precipitation_prob: Precipitation probability (0-100%) - REQUIRED for HIGH/MEDIUM risk
         precipitation_prob: Optional precipitation probability (0-100%)
 
     Returns:
@@ -592,30 +562,44 @@ def get_snow_risk(
 
     dewpoint_spread = abs(temperature - dewpoint)
 
-    # HIGH RISK: Very cold, high humidity, near saturation
-    # Temperature ≤ 0°C, humidity > 75%, spread < 2°C
-    # These atmospheric conditions strongly favor snow formation
+    # HIGH RISK: Very cold + high humidity + near saturation + precipitation likely
+    # Temperature ≤ 0°C, humidity > 75%, spread < 2°C, precipitation > 60%
+    # All conditions must be met for snow formation
     if temperature <= 0 and humidity > 75 and dewpoint_spread < 2:
-        # Always HIGH risk when humidity > 75% at/below freezing
-        # Precipitation probability only adds confirmation, not requirement
-        _LOGGER.debug(
-            f"SnowRisk: HIGH - T={temperature:.1f}°C (≤0°C), RH={humidity:.1f}% (>75%), "
-            f"spread={dewpoint_spread:.1f}°C (<2°C), precip={precipitation_prob if precipitation_prob is not None else 'unknown'}%"
-        )
-        return SNOW_RISK_HIGH
+        if precipitation_prob is not None and precipitation_prob > 60:
+            _LOGGER.debug(
+                f"SnowRisk: HIGH - T={temperature:.1f}°C (≤0°C), RH={humidity:.1f}% (>75%), "
+                f"spread={dewpoint_spread:.1f}°C (<2°C), precip={precipitation_prob}% (>60%)"
+            )
+            return SNOW_RISK_HIGH
+        else:
+            # High humidity at freezing = FOG/FROST, not snow without precipitation
+            _LOGGER.debug(
+                f"SnowRisk: LOW - T={temperature:.1f}°C (≤0°C), RH={humidity:.1f}% (>75%), "
+                f"spread={dewpoint_spread:.1f}°C (<2°C), but precip={precipitation_prob if precipitation_prob is not None else 'unknown'}% (≤60%) → fog/frost likely, not snow"
+            )
+            return SNOW_RISK_LOW
 
-    # MEDIUM RISK: Cold, decent humidity
-    # Temperature 0-2°C, humidity > 65%, spread < 3°C
+    # MEDIUM RISK: Cold, decent humidity, moderate precipitation
+    # Temperature 0-2°C, humidity > 65%, spread < 3°C, precipitation > 40%
     if temperature <= 2 and humidity > 65 and dewpoint_spread < 3:
-        result = SNOW_RISK_MEDIUM if (precipitation_prob is not None and precipitation_prob > 40) else SNOW_RISK_LOW
-        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C (0-2°C), RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}%")
+        if precipitation_prob is not None and precipitation_prob > 40:
+            result = SNOW_RISK_MEDIUM
+            _LOGGER.debug(f"SnowRisk: MEDIUM - T={temperature:.1f}°C (0-2°C), RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob}% (>40%)")
+        else:
+            result = SNOW_RISK_LOW
+            _LOGGER.debug(f"SnowRisk: LOW - T={temperature:.1f}°C (0-2°C), RH={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, precip={precipitation_prob if precipitation_prob is not None else 'unknown'}% (≤40%)")
         return result
 
-    # LOW RISK: Near freezing but conditions not ideal
-    # Temperature 2-4°C, humidity > 60%
+    # LOW RISK: Near freezing, moderate conditions
+    # Temperature 2-4°C, humidity > 60%, precipitation > 50%
     if temperature <= 4 and humidity > 60:
-        result = SNOW_RISK_LOW if (precipitation_prob is not None and precipitation_prob > 50) else SNOW_RISK_NONE
-        _LOGGER.debug(f"SnowRisk: {result} - T={temperature:.1f}°C (2-4°C), RH={humidity:.1f}%, precip={precipitation_prob}%")
+        if precipitation_prob is not None and precipitation_prob > 50:
+            result = SNOW_RISK_LOW
+            _LOGGER.debug(f"SnowRisk: LOW - T={temperature:.1f}°C (2-4°C), RH={humidity:.1f}%, precip={precipitation_prob}% (>50%)")
+        else:
+            result = SNOW_RISK_NONE
+            _LOGGER.debug(f"SnowRisk: NONE - T={temperature:.1f}°C (2-4°C), RH={humidity:.1f}%, precip={precipitation_prob if precipitation_prob is not None else 'unknown'}% (≤50%)")
         return result
 
     _LOGGER.debug(f"SnowRisk: none - T={temperature:.1f}°C, RH={humidity:.1f}% (conditions not met)")
@@ -730,18 +714,16 @@ def get_uv_protection_level(uv_index: float) -> str:
 def estimate_solar_radiation_from_time_and_clouds(
     latitude: float,
     hour: int,
-    cloud_coverage: Optional[float] = None,
     month: Optional[int] = None
 ) -> float:
     """
-    Estimate solar radiation based on time of day, location, and cloud coverage.
+    Estimate solar radiation based on time of day and location.
 
     This is used when no solar sensor is available.
 
     Args:
         latitude: Location latitude in degrees
         hour: Hour of day (0-23)
-        cloud_coverage: Cloud coverage in % (0-100)
         month: Month (1-12), if None uses current season estimate
 
     Returns:
@@ -771,10 +753,6 @@ def estimate_solar_radiation_from_time_and_clouds(
         lat_factor = math.cos(math.radians(abs(latitude)))
         radiation *= lat_factor
 
-    # Apply cloud coverage reduction
-    if cloud_coverage is not None and 0 <= cloud_coverage <= 100:
-        cloud_reduction = 1.0 - (cloud_coverage / 100 * 0.8)  # Clouds reduce up to 80%
-        radiation *= cloud_reduction
 
     return round(radiation, 1)
 

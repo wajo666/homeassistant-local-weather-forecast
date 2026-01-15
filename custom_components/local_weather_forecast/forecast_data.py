@@ -111,6 +111,7 @@ ATMOSPHERE_STABILITY = {
 ADJUSTMENT_TEMPLATES = {
     "high_humidity": ("Hohe Luftfeuchtigkeit ({value}%)", "High humidity ({value}%)", "Υψηλή υγρασία ({value}%)", "Alta umidità ({value}%)", "Vysoká vlhkosť ({value}%)"),
     "low_humidity": ("Niedrige Luftfeuchtigkeit ({value}%)", "Low humidity ({value}%)", "Χαμηλή υγρασία ({value}%)", "Bassa umidità ({value}%)", "Nízka vlhkosť ({value}%)"),
+    "critical_fog_risk": ("Kritisches Nebelrisiko (Spread {value}°C)", "CRITICAL fog risk (spread {value}°C)", "ΚΡΙΣΙΜΟΣ κίνδυνος ομίχλης (διαφορά {value}°C)", "Rischio nebbia CRITICO (differenza {value}°C)", "KRITICKÉ riziko hmly (spread {value}°C)"),
     "high_fog_risk": ("Hohes Nebelrisiko (Spread {value}°C)", "High fog risk (spread {value}°C)", "Υψηλός κίνδυνος ομίχλης (διαφορά {value}°C)", "Alto rischio nebbia (differenza {value}°C)", "Vysoké riziko hmly (spread {value}°C)"),
     "medium_fog_risk": ("Mittleres Nebelrisiko (Spread {value}°C)", "Medium fog risk (spread {value}°C)", "Μέτριος κίνδυνος ομίχλης (διαφορά {value}°C)", "Medio rischio nebbia (differenza {value}°C)", "Stredné riziko hmly (spread {value}°C)"),
     "low_fog_risk": ("Niedriges Nebelrisiko (Spread {value}°C)", "Low fog risk (spread {value}°C)", "Χαμηλός κίνδυνος ομίχλης (διαφορά {value}°C)", "Basso rischio nebbia (differenza {value}°C)", "Nízke riziko hmly (spread {value}°C)"),

@@ -13,7 +13,6 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_CLOUD_COVERAGE_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
@@ -527,21 +526,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     _LOGGER.error("Error validating UV index sensor %s: %s", uv_index_sensor, e)
                     errors[CONF_UV_INDEX_SENSOR] = "sensor_validation_error"
 
-            if cloud_coverage_sensor := user_input.get(CONF_CLOUD_COVERAGE_SENSOR):
-                try:
-                    _LOGGER.debug("Validating optional cloud coverage sensor: %s", cloud_coverage_sensor)
-                    cloud_coverage_state = self.hass.states.get(cloud_coverage_sensor)
-                    if cloud_coverage_sensor and not cloud_coverage_state:
-                        _LOGGER.error("Cloud coverage sensor not found: %s", cloud_coverage_sensor)
-                        errors[CONF_CLOUD_COVERAGE_SENSOR] = "sensor_not_found"
-                    else:
-                        _LOGGER.debug("Cloud coverage sensor found: %s (state=%s, unit=%s)",
-                                    cloud_coverage_sensor,
-                                    cloud_coverage_state.state if cloud_coverage_state else None,
-                                    cloud_coverage_state.attributes.get("unit_of_measurement") if cloud_coverage_state else None)
-                except Exception as e:
-                    _LOGGER.error("Error validating cloud coverage sensor %s: %s", cloud_coverage_sensor, e)
-                    errors[CONF_CLOUD_COVERAGE_SENSOR] = "sensor_validation_error"
 
             elevation = user_input.get(CONF_ELEVATION, DEFAULT_ELEVATION)
             _LOGGER.debug("Validating elevation: %s", elevation)
@@ -561,7 +545,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     CONF_RAIN_RATE_SENSOR,
                     CONF_SOLAR_RADIATION_SENSOR,
                     CONF_UV_INDEX_SENSOR,
-                    CONF_CLOUD_COVERAGE_SENSOR,
                 ]
                 for key in optional_sensors:
                     # Convert empty strings to None, ensure key exists even if not provided
@@ -688,17 +671,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     CONF_UV_INDEX_SENSOR,
                     description={"suggested_value": current_config.get(CONF_UV_INDEX_SENSOR)}
                     if current_config.get(CONF_UV_INDEX_SENSOR)
-                    else None,
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor",
-                        multiple=False,
-                    )
-                ),
-                vol.Optional(
-                    CONF_CLOUD_COVERAGE_SENSOR,
-                    description={"suggested_value": current_config.get(CONF_CLOUD_COVERAGE_SENSOR)}
-                    if current_config.get(CONF_CLOUD_COVERAGE_SENSOR)
                     else None,
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(

@@ -34,7 +34,6 @@ from .calculations import (
     get_fog_risk,
 )
 from .const import (
-    CONF_CLOUD_COVERAGE_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
@@ -310,17 +309,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if solar_state and solar_state.state not in ("unknown", "unavailable"):
                 try:
                     solar_radiation = float(solar_state.state)
-                except (ValueError, TypeError):
-                    pass
-
-        # Get cloud coverage (optional)
-        cloud_cover = None
-        cloud_sensor_id = self._get_config(CONF_CLOUD_COVERAGE_SENSOR)
-        if cloud_sensor_id:
-            cloud_state = self.hass.states.get(cloud_sensor_id)
-            if cloud_state and cloud_state.state not in ("unknown", "unavailable"):
-                try:
-                    cloud_cover = float(cloud_state.state)
                 except (ValueError, TypeError):
                     pass
 
@@ -1090,17 +1078,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
             # Get cloud coverage for temperature model (optional)
             cloud_cover = None
-            cloud_sensor_id = self._get_config(CONF_CLOUD_COVERAGE_SENSOR)
-            if cloud_sensor_id:
-                cloud_state = self.hass.states.get(cloud_sensor_id)
-                if cloud_state and cloud_state.state not in ("unknown", "unavailable"):
-                    try:
-                        cloud_cover = float(cloud_state.state)
-                        _LOGGER.debug(f"☁️ Cloud cover: {cloud_cover}%")
-                    except (ValueError, TypeError):
-                        pass
-            else:
-                _LOGGER.debug("☁️ No cloud coverage sensor configured")
 
             # Get humidity for cloud cover estimation (optional)
             humidity = self.humidity
@@ -1285,17 +1262,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (ValueError, TypeError):
                         pass
 
-            # Get cloud coverage for temperature model (optional)
-            cloud_cover = None
-            cloud_sensor_id = self._get_config(CONF_CLOUD_COVERAGE_SENSOR)
-            if cloud_sensor_id:
-                cloud_state = self.hass.states.get(cloud_sensor_id)
-                if cloud_state and cloud_state.state not in ("unknown", "unavailable"):
-                    try:
-                        cloud_cover = float(cloud_state.state)
-                        _LOGGER.debug(f"Cloud cover for hourly forecast: {cloud_cover}%")
-                    except (ValueError, TypeError):
-                        pass
 
             # Get humidity for cloud cover estimation (optional)
             humidity = self.humidity

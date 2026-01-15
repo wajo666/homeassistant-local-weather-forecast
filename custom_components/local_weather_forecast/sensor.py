@@ -2268,7 +2268,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             zambretti_prob,
             negretti_prob,
             humidity,
-            None,  # cloud_coverage not available
             dewpoint_spread,
             temp,  # Pass temperature for cold-weather adjustments
         )
