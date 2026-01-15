@@ -35,7 +35,6 @@ from .calculations import (
 )
 from .const import (
     CONF_CLOUD_COVERAGE_SENSOR,
-    CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
@@ -246,20 +245,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the dew point temperature."""
         if not self.hass:
             return None
-        # Check if user provided a dewpoint sensor
-        dewpoint_sensor = self._get_config(CONF_DEWPOINT_SENSOR)
-        if dewpoint_sensor:
-            state = self.hass.states.get(dewpoint_sensor)
-            if state and state.state not in ("unknown", "unavailable"):
-                try:
-                    value = float(state.state)
-                    # Apply unit conversion
-                    unit = state.attributes.get("unit_of_measurement")
-                    if unit:
-                        return UnitConverter.convert_sensor_value(value, "temperature", unit)
-                    return value
-                except (ValueError, TypeError):
-                    pass
 
         # Calculate from temperature and humidity if available
         temp = self.native_temperature
@@ -406,10 +391,21 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         self._last_rain_value = current_rain
                         self._last_rain_check_time = now
 
-                        # If it's currently raining, return rainy condition
+                        # If precipitation is detected, check temperature to determine if it's rain or snow
                         if is_raining_now:
-                            _LOGGER.debug(f"Weather: Currently raining - override to rainy")
-                            return ATTR_CONDITION_RAINY
+                            temp = self.native_temperature
+                            # If temperature is at or below 2°C, precipitation is SNOW not rain
+                            if temp is not None and temp <= 2:
+                                _LOGGER.debug(
+                                    f"Weather: SNOW detected from precipitation sensor - "
+                                    f"temp={temp:.1f}°C (frozen precipitation)"
+                                )
+                                return ATTR_CONDITION_SNOWY
+                            else:
+                                _LOGGER.debug(
+                                    f"Weather: Currently raining - override to rainy (temp={temp}°C)"
+                                )
+                                return ATTR_CONDITION_RAINY
 
                     except (ValueError, TypeError) as e:
                         _LOGGER.debug(f"Weather: Error processing rain sensor: {e}")
@@ -446,43 +442,64 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         pass
 
                 # SNOW CONDITIONS (meteorologically justified):
-                # Snow requires: freezing temp + high humidity + saturation
+                # Snow requires: freezing temp + high humidity + saturation + PRECIPITATION PROBABILITY
                 # We use multiple detection methods for reliability
+                # IMPORTANT: Snow detection ALWAYS requires rain_prob >= 40% minimum
+                # Without precipitation probability, conditions are just "cold and humid", not "snowing"
 
                 # METHOD 1: Direct snow risk from sensor (most reliable if available)
-                if snow_risk and snow_risk in ("high", "medium"):
+                # High risk requires rain_prob >= 40%, medium risk requires >= 50%
+                # This ensures we don't show "snowy" just because it's cold and humid
+                if snow_risk in ("high", "Vysoké riziko snehu") and rain_prob >= 40:
                     _LOGGER.debug(
-                        f"Weather: SNOW detected from sensor - snow_risk={snow_risk}, "
-                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
+                        f"Weather: SNOW detected from sensor (high risk) - snow_risk={snow_risk}, "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
+                    )
+                    return ATTR_CONDITION_SNOWY
+                elif snow_risk in ("medium", "Stredné riziko snehu") and rain_prob >= 50:
+                    _LOGGER.debug(
+                        f"Weather: SNOW detected from sensor (medium risk) - snow_risk={snow_risk}, "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                     )
                     return ATTR_CONDITION_SNOWY
 
-                # METHOD 2: Temperature-based snow detection (backup)
-                # High confidence: temp ≤ 0°C + high humidity + near saturation
-                if temp <= 0 and humidity > 75 and dewpoint_spread < 3.5:
+                # Log when snow conditions are present but rain_prob is too low
+                # This helps debug why it's showing cloudy/fog instead of snowy
+                if snow_risk in ("high", "medium", "Vysoké riziko snehu", "Stredné riziko snehu"):
                     _LOGGER.debug(
-                        f"Weather: SNOW conditions met - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
+                        f"Weather: Snow risk detected BUT rain_prob too low - snow_risk={snow_risk}, "
+                        f"rain_prob={rain_prob}% (need ≥40% for high, ≥50% for medium), "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C. "
+                        f"Not showing snowy - will fall through to fog/cloudy determination."
+                    )
+
+                # METHOD 2: Temperature-based snow detection (backup)
+                # High confidence: temp ≤ 0°C + high humidity + near saturation + rain_prob >= 40%
+                if temp <= 0 and humidity > 75 and dewpoint_spread < 3.5 and rain_prob >= 40:
+                    _LOGGER.debug(
+                        f"Weather: SNOW conditions met (temp-based) - temp={temp:.1f}°C, humidity={humidity:.1f}%, "
                         f"spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                     )
                     return ATTR_CONDITION_SNOWY
 
-                # METHOD 3: Very cold + high humidity (frozen rain sensor scenario)
-                # When temp < -2°C with 80%+ humidity, it's almost certainly snow
-                if temp < -2 and humidity > 80:
+                # METHOD 3: Very cold + high humidity + saturation (frozen rain sensor scenario)
+                # When temp < -2°C with 85%+ humidity + near saturation, requires rain_prob >= 40%
+                if temp < -2 and humidity > 85 and dewpoint_spread < 2.0 and rain_prob >= 40:
                     _LOGGER.debug(
-                        f"Weather: SNOW detected (very cold + high humidity) - "
-                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C"
+                        f"Weather: SNOW detected (very cold + saturation) - "
+                        f"temp={temp:.1f}°C, humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                     )
                     return ATTR_CONDITION_SNOWY
 
                 # METHOD 4: Medium snow risk (0-2°C range)
-                # Requires slightly higher precipitation probability
-                if 0 < temp <= 2 and humidity > 70 and dewpoint_spread < 3.0 and rain_prob > 30:
+                # Requires higher precipitation probability (60% minimum)
+                if 0 < temp <= 2 and humidity > 70 and dewpoint_spread < 3.0 and rain_prob >= 60:
                     _LOGGER.debug(
                         f"Weather: SNOW likely (near-freezing) - temp={temp:.1f}°C, "
                         f"humidity={humidity:.1f}%, spread={dewpoint_spread:.1f}°C, rain_prob={rain_prob}%"
                     )
                     return ATTR_CONDITION_SNOWY
+
 
                 # FOG CONDITIONS (meteorologically justified):
                 # Fog occurs when dewpoint spread is very low and humidity is high
@@ -545,6 +562,13 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                     _LOGGER.debug(f"Weather: Mapped letter {letter_code} → condition {condition}")
 
+                    # NIGHT/DAY CONVERSION (must be done BEFORE fog/humidity corrections)
+                    # Convert sunny to clear-night if it's night time
+                    # Note: partlycloudy works for both day and night (HA shows correct icon automatically)
+                    if condition == ATTR_CONDITION_SUNNY and self._is_night():
+                        _LOGGER.debug("Weather: Night time detected, converting sunny → clear-night")
+                        condition = ATTR_CONDITION_CLEAR_NIGHT
+
                     # FOG RISK-BASED CLOUD COVER CORRECTION
                     # Fog reduces visibility and makes it feel cloudy even if forecast says sunny
                     # Get fog risk from enhanced sensor
@@ -563,18 +587,22 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         _LOGGER.debug(f"Weather: Fog risk={fog_risk}, current condition={condition}")
 
                         # High/Critical fog risk: force FOG condition (already handled in PRIORITY 2)
-                        # Medium fog risk: upgrade sunny/partlycloudy to cloudy
-                        if fog_risk in ("medium", "Stredné riziko hmly") and condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_PARTLYCLOUDY):
+                        # Medium fog risk: upgrade sunny/clear-night/partlycloudy to cloudy
+                        if fog_risk in ("medium", "Stredné riziko hmly") and condition in (
+                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT, ATTR_CONDITION_PARTLYCLOUDY
+                        ):
                             _LOGGER.debug(
                                 f"Weather: Fog correction (medium): {condition} → cloudy "
                                 f"(fog_risk={fog_risk}, spread={dewpoint_spread_attr}°C)"
                             )
                             condition = ATTR_CONDITION_CLOUDY
 
-                        # Low fog risk: upgrade sunny to partlycloudy (indicates moisture/haze)
-                        elif fog_risk in ("low", "Nízke riziko hmly") and condition == ATTR_CONDITION_SUNNY:
+                        # Low fog risk: upgrade sunny/clear-night to partlycloudy (indicates moisture/haze)
+                        elif fog_risk in ("low", "Nízke riziko hmly") and condition in (
+                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
+                        ):
                             _LOGGER.debug(
-                                f"Weather: Fog correction (low): sunny → partlycloudy "
+                                f"Weather: Fog correction (low): {condition} → partlycloudy "
                                 f"(fog_risk={fog_risk}, spread={dewpoint_spread_attr}°C)"
                             )
                             condition = ATTR_CONDITION_PARTLYCLOUDY
@@ -587,24 +615,31 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         _LOGGER.debug(f"Weather: Current humidity={humidity}%")
 
                         # Very high humidity (>85%) = overcast conditions
-                        if humidity > 85 and condition in (ATTR_CONDITION_PARTLYCLOUDY, ATTR_CONDITION_SUNNY):
+                        if humidity > 85 and condition in (
+                            ATTR_CONDITION_PARTLYCLOUDY,
+                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
+                        ):
                             _LOGGER.debug(
                                 f"Weather: Humidity correction: {condition} → cloudy "
                                 f"(RH={humidity:.1f}% > 85%)"
                             )
                             condition = ATTR_CONDITION_CLOUDY
-                        # High humidity (70-85%) = mostly cloudy if Zambretti says sunny
-                        elif humidity > 70 and condition == ATTR_CONDITION_SUNNY:
+                        # High humidity (70-85%) = mostly cloudy if Zambretti says sunny/clear-night
+                        elif humidity > 70 and condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT):
                             _LOGGER.debug(
-                                f"Weather: Humidity correction: sunny → partlycloudy "
+                                f"Weather: Humidity correction: {condition} → partlycloudy "
                                 f"(RH={humidity:.1f}% > 70%)"
                             )
                             condition = ATTR_CONDITION_PARTLYCLOUDY
+                            # Note: partlycloudy will be converted to clear-night by night conversion below
 
-                    # Check if it's night time (between sunset and sunrise)
-                    if condition == ATTR_CONDITION_SUNNY and self._is_night():
-                        _LOGGER.debug("Weather: Night time, converting sunny → clear-night")
-                        return ATTR_CONDITION_CLEAR_NIGHT
+                    # FINAL NIGHT CONVERSION
+                    # Convert partlycloudy to clear-night during nighttime
+                    if self._is_night() and condition == ATTR_CONDITION_PARTLYCLOUDY:
+                        _LOGGER.debug(
+                            f"Weather: Night conversion: partlycloudy → clear-night (is_night=True)"
+                        )
+                        condition = ATTR_CONDITION_CLEAR_NIGHT
 
                     return condition
                 except (AttributeError, KeyError, TypeError) as e:
@@ -620,8 +655,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     _LOGGER.debug(f"Weather: Fallback to cloudy (pressure={pressure})")
                     return ATTR_CONDITION_CLOUDY
                 elif pressure < 1020:
-                    _LOGGER.debug(f"Weather: Fallback to partly cloudy (pressure={pressure})")
-                    return ATTR_CONDITION_PARTLYCLOUDY
+                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                    # Convert to clear-night during nighttime
+                    if self._is_night():
+                        condition = ATTR_CONDITION_CLEAR_NIGHT
+                    _LOGGER.debug(f"Weather: Fallback to {condition} (pressure={pressure}, is_night={self._is_night()})")
+                    return condition
                 else:
                     if self._is_night():
                         _LOGGER.debug(f"Weather: Fallback to clear night (pressure={pressure})")
@@ -629,10 +668,22 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
                     return ATTR_CONDITION_SUNNY
 
-            return ATTR_CONDITION_PARTLYCLOUDY
+            # Final fallback - convert partlycloudy to clear-night during night
+            fallback_condition = ATTR_CONDITION_PARTLYCLOUDY
+            if self._is_night():
+                fallback_condition = ATTR_CONDITION_CLEAR_NIGHT
+            _LOGGER.debug(f"Weather: Final fallback to {fallback_condition} (is_night={self._is_night()})")
+            return fallback_condition
         except Exception as e:
             _LOGGER.error(f"Error determining weather condition: {e}", exc_info=True)
-            return ATTR_CONDITION_PARTLYCLOUDY
+            # Return clear-night during nighttime, partlycloudy during daytime
+            error_condition = ATTR_CONDITION_PARTLYCLOUDY
+            try:
+                if self._is_night():
+                    error_condition = ATTR_CONDITION_CLEAR_NIGHT
+            except Exception:
+                pass  # If even _is_night() fails, use partlycloudy
+            return error_condition
 
     def _is_night(self, check_time: datetime | None = None) -> bool:
         """Check if it's night time based on sun position.

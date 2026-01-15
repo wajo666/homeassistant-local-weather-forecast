@@ -11,6 +11,7 @@
           "wind_speed_sensor": "Windgeschwindigkeitssensor (Optional)",
           "elevation": "Höhe über dem Meeresspiegel",
           "pressure_type": "Drucktyp",
+          "hemisphere": "Hemisphäre",
           "forecast_model": "Vorhersagemodell"
         },
         "data_description": {
@@ -20,6 +21,7 @@
           "wind_speed_sensor": "Windgeschwindigkeitssensor. Unterstützt m/s, km/h, mph, ft/s, Knoten - automatisch konvertiert. Verbessert Vorhersagegenauigkeit durch Windfaktor.",
           "elevation": "Höhe Ihres Standorts in Metern über dem Meeresspiegel (zur Berechnung des Drucks auf Meereshöhe).",
           "pressure_type": "Wählen Sie, ob Ihr Sensor absoluten Stationsdruck (QFE) oder relativen Meereshöhendruck (QNH) liefert. Die meisten Sensoren liefern absoluten Druck.",
+          "hemisphere": "Ihre Hemisphäre für saisonale Wetteranpassungen. Automatisch erkannt aus Home Assistant Position (Breitengrad >= 0 = Nord, < 0 = Süd).",
           "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen ~98% Genauigkeit), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ)."
         }
       }
@@ -43,15 +45,15 @@
           "temperature_sensor": "Temperatursensor",
           "wind_direction_sensor": "Windrichtungssensor",
           "wind_speed_sensor": "Windgeschwindigkeitssensor",
-          "humidity_sensor": "Luftfeuchtigkeitssensor (Erweitert)",
+          "humidity_sensor": "Feuchtigkeitssensor (Erweitert)",
           "wind_gust_sensor": "Windböensensor (Erweitert)",
-          "rain_rate_sensor": "Regen-Erkennungssensor (mm)",
-          "dewpoint_sensor": "Taupunktsensor (Erweitert)",
+          "rain_rate_sensor": "Regenerkennungssensor (5-Minuten-Schritte)",
           "solar_radiation_sensor": "Solarstrahlungssensor (W/m²)",
           "uv_index_sensor": "UV-Index-Sensor (0-15)",
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (Erweitert)",
           "elevation": "Höhe über dem Meeresspiegel",
           "pressure_type": "Drucktyp",
+          "hemisphere": "Hemisphäre",
           "forecast_model": "Vorhersagemodell",
           "enable_weather_entity": "Wetter-Entität aktivieren"
         },
@@ -59,10 +61,10 @@
           "humidity_sensor": "Luftfeuchtigkeitssensor für verbesserte Nebelerkennung, Taupunktberechnung und Regenwahrscheinlichkeit (optional)",
           "wind_gust_sensor": "Windböensensor zur Erkennung atmosphärischer Stabilität und Unwetterwarnungen (optional)",
           "rain_rate_sensor": "Regen-Erkennungssensor mit device_class='precipitation' und unit='mm'. Die Integration erkennt Regen automatisch wenn Sensorwert > 0 (Netatmo: Schritte 0.101, 0.202... / Ecowitt WS90: ähnlich). KEINE stündlichen Gesamtsensoren verwenden (optional)",
-          "dewpoint_sensor": "Taupunktsensor zum Überschreiben berechneter Werte (optional)",
           "solar_radiation_sensor": "Solarstrahlungssensor in W/m² für genaue gefühlte Temperatur. Wenn UV-Index-Sensor bereitgestellt wird, kann Solarstrahlung automatisch berechnet werden (optional)",
           "uv_index_sensor": "UV-Index-Sensor (0-15 Skala). Wenn Solarstrahlungssensor bereitgestellt wird, kann UV-Index automatisch berechnet werden. Wird für Sonnenschutzwarnungen und gefühlte Temperatur verwendet (optional)",
           "cloud_coverage_sensor": "Wolkenbedeckungssensor (%) zur Anpassung der Solarstrahlungseffekte auf die gefühlte Temperatur (optional)",
+          "hemisphere": "Ihre Hemisphäre für saisonale Wetteranpassungen. Automatisch erkannt aus Home Assistant Position (Breitengrad >= 0 = Nord, < 0 = Süd).",
           "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen ~98% Genauigkeit), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ).",
           "enable_weather_entity": "Erstellen Sie eine Wetter-Entität für Wetterkarten und Automatisierungen"
         }

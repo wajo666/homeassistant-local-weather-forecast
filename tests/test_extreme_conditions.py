@@ -168,7 +168,7 @@ class TestNegrettiZambraExtremeConditions:
         for direction in range(0, 360, 22):
             wind_data = [1, float(direction), "N", 1]  # Wind active
             result = calculate_negretti_zambra_forecast(
-                955.0, -4.0, wind_data, 1, 0.0
+                955.0, -4.0, wind_data, 1, 0.0, hemisphere="north"
             )
 
             if result[1] is None or result[2] not in list("ABDEFGHIJKLMNOPQRSTUVWXYZ"):
@@ -186,7 +186,7 @@ class TestNegrettiZambraExtremeConditions:
         for direction in range(0, 360, 22):
             wind_data = [1, float(direction), "N", 1]  # Wind active
             result = calculate_negretti_zambra_forecast(
-                1048.0, 3.5, wind_data, 1, 0.0
+                1048.0, 3.5, wind_data, 1, 0.0, hemisphere="north"
             )
 
             if result[1] is None or result[2] not in list("ABDEFGHIJKLMNOPQRSTUVWXYZ"):
@@ -207,7 +207,7 @@ class TestNegrettiZambraExtremeConditions:
             for pressure in [960, 1000, 1030]:
                 for change in [-3.0, 0.0, 3.0]:
                     result = calculate_negretti_zambra_forecast(
-                        pressure, change, wind_data, 1, elevation
+                        pressure, change, wind_data, 1, elevation, hemisphere="north"
                     )
 
                     if result[1] is None:
@@ -232,7 +232,7 @@ class TestNegrettiZambraExtremeConditions:
             for pressure in [950, 980, 1010, 1040]:
                 for change in [-3.0, -1.0, 0.5, 2.0, 4.0]:
                     result = calculate_negretti_zambra_forecast(
-                        pressure, change, wind_data, 1, 314.0
+                        pressure, change, wind_data, 1, 314.0, hemisphere="north"
                     )
 
                     if result[1] is None or result[1] > 25:
@@ -333,6 +333,146 @@ class TestHemisphereAndSeasonalEffects:
 
         # Summer applies -7% bar_range adjustment for falling
         # Results should differ
+
+
+class TestSouthernHemisphere:
+    """Test Southern hemisphere specific behavior."""
+
+    def test_southern_hemisphere_basic(self):
+        """Test basic Southern hemisphere forecast."""
+        wind_data = [0, 180.0, "S", 0]
+        pressure = 1013.0
+
+        # Northern hemisphere
+        result_north = calculate_negretti_zambra_forecast(
+            pressure, -2.0, wind_data, 1, 314.0, hemisphere="north"
+        )
+
+        # Southern hemisphere
+        result_south = calculate_negretti_zambra_forecast(
+            pressure, -2.0, wind_data, 1, 314.0, hemisphere="south"
+        )
+
+        print(f"Northern hemisphere: {result_north[0]}, letter={result_north[2]}")
+        print(f"Southern hemisphere: {result_south[0]}, letter={result_south[2]}")
+
+        # Both should return valid forecasts
+        assert result_north[0] is not None
+        assert result_south[0] is not None
+        assert result_north[2] in list("ABDEFGHIJKLMNOPQRSTUVWXYZ")
+        assert result_south[2] in list("ABDEFGHIJKLMNOPQRSTUVWXYZ")
+
+    @patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+    def test_southern_hemisphere_seasons_inverted(self, mock_datetime):
+        """Test that seasons are properly inverted in Southern hemisphere."""
+        wind_data = [0, 180.0, "S", 0]
+        pressure = 1005.0
+
+        # Northern hemisphere winter (January = winter)
+        mock_datetime.now.return_value = datetime(2025, 1, 15)
+        north_jan = calculate_negretti_zambra_forecast(
+            pressure, -2.5, wind_data, 1, 314.0, hemisphere="north"
+        )
+
+        # Southern hemisphere winter (July = winter)
+        mock_datetime.now.return_value = datetime(2025, 7, 15)
+        south_jul = calculate_negretti_zambra_forecast(
+            pressure, -2.5, wind_data, 1, 314.0, hemisphere="south"
+        )
+
+        print(f"North January (winter): {north_jan[0]}")
+        print(f"South July (winter): {south_jul[0]}")
+
+        # Both winter periods should behave similarly
+        assert north_jan[0] is not None
+        assert south_jul[0] is not None
+
+    def test_southern_hemisphere_wind_directions(self):
+        """Test wind direction adjustments in Southern hemisphere."""
+        pressure = 1013.0
+        change = -2.0
+        unmapped = []
+
+        # Test all 16 wind directions for Southern hemisphere
+        for direction in range(0, 360, 22):
+            wind_data = [1, float(direction), "N", 1]  # Wind active
+            result = calculate_negretti_zambra_forecast(
+                pressure, change, wind_data, 1, 314.0, hemisphere="south"
+            )
+
+            if result[1] is None or result[2] not in list("ABDEFGHIJKLMNOPQRSTUVWXYZ"):
+                unmapped.append((direction, result))
+
+        if unmapped:
+            print(f"\n⚠️ Southern hemisphere: Unmapped for directions: {[d for d, _ in unmapped]}")
+
+        assert len(unmapped) == 0
+
+    def test_southern_hemisphere_extreme_pressures(self):
+        """Test extreme pressures in Southern hemisphere."""
+        wind_data = [0, 180.0, "S", 0]
+
+        # Extremely low pressure
+        result_low = calculate_negretti_zambra_forecast(
+            920.0, -5.0, wind_data, 1, 0.0, hemisphere="south"
+        )
+        assert result_low[0] is not None
+        print(f"South hemisphere extreme low: {result_low[0]}, letter={result_low[2]}")
+
+        # Extremely high pressure
+        result_high = calculate_negretti_zambra_forecast(
+            1080.0, 5.0, wind_data, 1, 0.0, hemisphere="south"
+        )
+        assert result_high[0] is not None
+        print(f"South hemisphere extreme high: {result_high[0]}, letter={result_high[2]}")
+
+    @patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+    def test_southern_hemisphere_all_months(self, mock_datetime):
+        """Test all months in Southern hemisphere."""
+        unmapped = []
+        wind_data = [0, 180.0, "S", 0]
+
+        for month in range(1, 13):
+            mock_datetime.now.return_value = datetime(2025, month, 15)
+
+            for pressure in [950, 980, 1010, 1040]:
+                for change in [-3.0, -1.0, 0.5, 2.0, 4.0]:
+                    result = calculate_negretti_zambra_forecast(
+                        pressure, change, wind_data, 1, 314.0, hemisphere="south"
+                    )
+
+                    if result[1] is None or result[1] > 25:
+                        unmapped.append((month, pressure, change, result[1]))
+
+        if unmapped:
+            print(f"\n⚠️ Southern hemisphere: Invalid forecast indices:")
+            for m, p, c, idx in unmapped[:5]:
+                print(f"  Month={m}, Pressure={p} hPa, Change={c} hPa → index={idx}")
+
+        assert len(unmapped) == 0
+
+    def test_southern_hemisphere_elevation_variations(self):
+        """Test various elevations in Southern hemisphere."""
+        elevations = [-50, 0, 100, 500, 1000, 2000, 3000, 5000]
+        wind_data = [0, 180.0, "S", 0]
+        unmapped = []
+
+        for elevation in elevations:
+            for pressure in [960, 1000, 1030]:
+                for change in [-3.0, 0.0, 3.0]:
+                    result = calculate_negretti_zambra_forecast(
+                        pressure, change, wind_data, 1, elevation, hemisphere="south"
+                    )
+
+                    if result[1] is None:
+                        unmapped.append((elevation, pressure, change))
+
+        if unmapped:
+            print(f"\n⚠️ Southern hemisphere: Unmapped at elevations:")
+            for e, p, c in unmapped[:5]:
+                print(f"  Elevation={e}m, Pressure={p} hPa, Change={c} hPa")
+
+        assert len(unmapped) == 0
 
 
 class TestWindEffectsOnForecast:

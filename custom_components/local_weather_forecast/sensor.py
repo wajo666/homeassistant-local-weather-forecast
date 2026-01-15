@@ -25,8 +25,8 @@ from homeassistant.components.recorder import get_instance, history
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
+    CONF_HEMISPHERE,
     CONF_HUMIDITY_SENSOR,
     CONF_PRESSURE_TYPE,
     CONF_PRESSURE_SENSOR,
@@ -36,6 +36,7 @@ from .const import (
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
     DEFAULT_ELEVATION,
+    DEFAULT_HEMISPHERE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
     GRAVITY_CONSTANT,
@@ -401,8 +402,9 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         )
 
         # Calculate Negretti & Zambra forecast
+        hemisphere = self.config_entry.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
         neg_zam_forecast = calculate_negretti_zambra_forecast(
-            p0, pressure_change, wind_data, lang_index, elevation
+            p0, pressure_change, wind_data, lang_index, elevation, hemisphere
         )
 
         # Calculate pressure trend
@@ -1690,7 +1692,6 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             (CONF_WIND_SPEED_SENSOR, False),    # Optional - for wind factor, Beaufort scale
             (CONF_WIND_DIRECTION_SENSOR, False),# Optional - for wind factor adjustment
             (CONF_WIND_GUST_SENSOR, False),     # Optional - for atmosphere stability
-            (CONF_DEWPOINT_SENSOR, False),      # Optional - alternative to temp+humidity
             (CONF_RAIN_RATE_SENSOR, False),     # Optional - for rain probability enhancement
         ]
 
@@ -1846,16 +1847,31 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         )
         _LOGGER.debug(f"Enhanced: Using forecast model: {forecast_model}")
 
-        # Get base forecasts
-        main_sensor = self.hass.states.get("sensor.local_forecast")
-        if not main_sensor or main_sensor.state in ("unknown", "unavailable"):
-            _LOGGER.debug("Enhanced: Main sensor unavailable, using defaults")
-            zambretti = ["Unknown", 0, "A"]
-            negretti = ["Unknown", 0, "A"]
+        # Get base forecasts from detail sensors (they update independently)
+        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+        negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+
+        if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
+            zambretti = [
+                zambretti_sensor.state,
+                zambretti_sensor.attributes.get("forecast_number", 0),
+                zambretti_sensor.attributes.get("letter_code", "A")
+            ]
+            _LOGGER.debug(f"Enhanced: Zambretti from detail sensor - {zambretti[0]} (#{zambretti[1]}, letter={zambretti[2]})")
         else:
-            attrs = main_sensor.attributes
-            zambretti = attrs.get("forecast_zambretti", ["Unknown", 0, "A"])
-            negretti = attrs.get("forecast_neg_zam", ["Unknown", 0, "A"])
+            _LOGGER.debug("Enhanced: Zambretti detail sensor unavailable, using defaults")
+            zambretti = ["Unknown", 0, "A"]
+
+        if negretti_sensor and negretti_sensor.state not in ("unknown", "unavailable"):
+            negretti = [
+                negretti_sensor.state,
+                negretti_sensor.attributes.get("forecast_number", 0),
+                negretti_sensor.attributes.get("letter_code", "A")
+            ]
+            _LOGGER.debug(f"Enhanced: Negretti from detail sensor - {negretti[0]} (#{negretti[1]}, letter={negretti[2]})")
+        else:
+            _LOGGER.debug("Enhanced: Negretti detail sensor unavailable, using defaults")
+            negretti = ["Unknown", 0, "A"]
 
         # Get sensor values from weather entity first for consistency
         # Weather entity handles dewpoint sensor priority: uses sensor if exists, else calculates
@@ -2194,49 +2210,27 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
     async def async_update(self) -> None:
         """Update the rain probability."""
         # Try to get forecast data from weather entity
-        weather_entity = self.hass.states.get("weather.local_weather_forecast_weather")
+        # Always use detail sensors for base probabilities
+        # (Weather entity may not be ready during initialization)
+        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+        negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
 
         zambretti_prob = 0
         negretti_prob = 0
 
-        if weather_entity:
-            # Get hourly forecast from weather entity
-            try:
-                # Get hourly forecasts (next 6-12 hours)
-                forecasts = weather_entity.attributes.get("forecast", [])
-                if forecasts:
-                    # Average precipitation probability from next 6 hours
-                    rain_probs = [
-                        f.get("precipitation_probability", 0)
-                        for f in forecasts[:6]
-                        if "precipitation_probability" in f
-                    ]
-                    if rain_probs:
-                        zambretti_prob = sum(rain_probs) / len(rain_probs)
-                        negretti_prob = zambretti_prob  # Use same for both since using advanced model
-                        _LOGGER.debug(f"RainProb: Using forecast data - avg={zambretti_prob}% from {len(rain_probs)} hours")
-                    else:
-                        _LOGGER.debug("RainProb: No precipitation probability in forecasts, using detail sensors")
-                        # Fallback to detail sensors
-                        zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-                        negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
-                        if zambretti_sensor and negretti_sensor:
-                            zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
-                            negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
-                            zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
-                            negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
-            except Exception as e:
-                _LOGGER.warning(f"RainProb: Error getting forecast data: {e}")
+        if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
+            zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
+            zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
+            _LOGGER.debug(f"RainProb: Zambretti rain_prob={zambretti_rain} → avg={zambretti_prob}%")
         else:
-            # Fallback to detail sensors if weather entity unavailable
-            _LOGGER.debug("RainProb: Weather entity unavailable, using detail sensors")
-            zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-            negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
-            if zambretti_sensor and negretti_sensor:
-                zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
-                negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
-                zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
-                negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
+            _LOGGER.debug("RainProb: Zambretti detail sensor unavailable")
+
+        if negretti_sensor and negretti_sensor.state not in ("unknown", "unavailable"):
+            negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
+            negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
+            _LOGGER.debug(f"RainProb: Negretti rain_prob={negretti_rain} → avg={negretti_prob}%")
+        else:
+            _LOGGER.debug("RainProb: Negretti detail sensor unavailable")
 
         _LOGGER.debug(f"RainProb: Base probabilities - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%")
 

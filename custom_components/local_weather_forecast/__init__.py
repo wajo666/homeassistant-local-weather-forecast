@@ -101,7 +101,6 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         "humidity_sensor",
         "wind_gust_sensor",
         "rain_rate_sensor",
-        "dewpoint_sensor",
     ]
 
     # Check if any sensor configuration changed

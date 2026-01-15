@@ -8,13 +8,110 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from .forecast_calculator import ZambrettiForecaster
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def map_forecast_to_condition(
+    forecast_text: str,
+    forecast_num: int | None = None,
+    is_night_func: Callable[[], bool] | None = None,
+    source: str = "Unknown"
+) -> str:
+    """Universal function to map any forecast to Home Assistant weather condition.
+
+    Works for Zambretti, Negretti-Zambra, and Combined forecasts.
+    Uses text analysis and optional forecast number for reliable mapping.
+
+    Args:
+        forecast_text: Forecast text (e.g., "Fair weather", "Rain at times")
+        forecast_num: Optional forecast number (0-25 for Zambretti, 0-10 for Negretti)
+        is_night_func: Optional callable that returns True if nighttime
+        source: Source of forecast ("Zambretti", "Negretti", "Combined") for logging
+
+    Returns:
+        HA condition: sunny, cloudy, rainy, partlycloudy, etc.
+    """
+    text_lower = forecast_text.lower()
+    is_night = is_night_func() if is_night_func else False
+
+    # Priority 1: Strong weather (storms, thunder)
+    if any(word in text_lower for word in ["storm", "thunder", "gale", "tempest"]):
+        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → lightning-rainy (storm keywords)")
+        return "lightning-rainy"
+
+    # Priority 2: Heavy rain
+    if any(word in text_lower for word in ["heavy rain", "pouring", "much rain", "torrential"]):
+        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → pouring (heavy rain)")
+        return "pouring"
+
+    # Priority 3: Rain (includes showers)
+    # For Zambretti: numbers >= 20 are rainy
+    # For Negretti: rely on text (numbers 6-10 can be rainy)
+    is_rainy = (
+        (forecast_num is not None and forecast_num >= 20) or  # Zambretti rain zone
+        any(word in text_lower for word in ["rain", "shower", "wet", "dážď", "prší", "zrážk"])
+    )
+    if is_rainy:
+        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → rainy")
+        return "rainy"
+
+    # Priority 4: Poor/unsettled weather (cloudy/changeable)
+    # For Zambretti: numbers 15-19 are unsettled
+    # For Negretti: numbers 6-8 can be unsettled
+    is_unsettled = (
+        (forecast_num is not None and 15 <= forecast_num < 20) or  # Zambretti unsettled zone
+        any(word in text_lower for word in ["unsettled", "changeable", "variable", "premenlivý", "nestále"])
+    )
+    if is_unsettled:
+        condition = "clear-night" if is_night else "partlycloudy"
+        _LOGGER.debug(
+            f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+            f"(unsettled, night={is_night})"
+        )
+        return condition
+
+    # Priority 5: Cloudy weather
+    # Negretti-specific: "Polooblačno" (partly cloudy) or "Oblačno" (cloudy)
+    if any(word in text_lower for word in ["cloudy", "overcast", "oblačn", "zamračen"]):
+        # Check if it's "partly cloudy" vs "fully cloudy"
+        if any(word in text_lower for word in ["partly", "polo", "miestami"]):
+            condition = "clear-night" if is_night else "partlycloudy"
+            _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → {condition} (partly cloudy, night={is_night})")
+            return condition
+        else:
+            _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → cloudy (fully cloudy)")
+            return "cloudy"
+
+    # Priority 6: Fair/fine weather
+    # For Zambretti: numbers 0-5 are settled fine
+    # For Negretti: numbers 0-2 are fine
+    is_fair = (
+        (forecast_num is not None and forecast_num <= 5) or  # Zambretti/Negretti fair zone
+        any(word in text_lower for word in [
+            "fine", "fair", "settled", "stable", "pekn", "jasn", "slnečn"
+        ])
+    )
+    if is_fair:
+        condition = "clear-night" if is_night else "sunny"
+        _LOGGER.debug(
+            f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+            f"(fair weather, night={is_night})"
+        )
+        return condition
+
+    # Default: partly cloudy (safe fallback)
+    condition = "clear-night" if is_night else "partlycloudy"
+    _LOGGER.debug(
+        f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+        f"(default fallback, night={is_night})"
+    )
+    return condition
 
 
 class PressureModel:
@@ -289,8 +386,8 @@ class HourlyForecastGenerator:
             forecast_text = zambretti_result[0] if zambretti_result else "Unknown"
             forecast_num = zambretti_result[1] if len(zambretti_result) > 1 else 0
 
-            # Map to Home Assistant condition
-            condition = self._map_to_condition(forecast_num, forecast_text)
+            # Map to Home Assistant condition with night detection
+            condition = self._map_to_condition(forecast_num, forecast_text, forecast_time)
 
             # Calculate rain probability
             rain_prob = self._calculate_rain_probability(
@@ -319,47 +416,60 @@ class HourlyForecastGenerator:
 
         return forecasts
 
-    def _map_to_condition(self, forecast_num: int, forecast_text: str) -> str:
+    def _map_to_condition(self, forecast_num: int, forecast_text: str, forecast_time: datetime | None = None) -> str:
         """Map Zambretti forecast to Home Assistant weather condition.
+
+        This is a Zambretti-specific wrapper around the universal map_forecast_to_condition().
 
         Args:
             forecast_num: Zambretti forecast number (0-25)
             forecast_text: Zambretti forecast text
+            forecast_time: Time to check for night (defaults to now)
 
         Returns:
             HA condition: sunny, cloudy, rainy, etc.
         """
-        # Zambretti mapping to HA conditions
-        # Based on forecast number and keywords in text
+        # Use universal mapping function
+        return map_forecast_to_condition(
+            forecast_text=forecast_text,
+            forecast_num=forecast_num,
+            is_night_func=lambda: self._is_night_time(forecast_time),
+            source="Zambretti"
+        )
 
-        text_lower = forecast_text.lower()
+    def _is_night_time(self, check_time: datetime | None = None) -> bool:
+        """Check if given time is during night (sun below horizon).
 
-        # Strong weather
-        if any(word in text_lower for word in ["storm", "thunder", "gale"]):
-            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → lightning-rainy (storm keywords)")
-            return "lightning-rainy"
+        Args:
+            check_time: Time to check (defaults to now)
 
-        # Rain
-        if forecast_num >= 20 or any(word in text_lower for word in ["rain", "shower", "wet"]):
-            if "heavy" in text_lower:
-                _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → pouring (heavy rain)")
-                return "pouring"
-            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → rainy")
-            return "rainy"
+        Returns:
+            True if nighttime, False if daytime
+        """
+        try:
+            import homeassistant.util.dt as dt_util
 
-        # Poor weather
-        if forecast_num >= 15 or any(word in text_lower for word in ["unsettled", "changeable"]):
-            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → partlycloudy (poor weather)")
-            return "partlycloudy"
+            # Get sun entity state
+            sun_entity = self.hass.states.get("sun.sun")
 
-        # Fair weather
-        if forecast_num <= 5 or any(word in text_lower for word in ["fine", "fair", "settled"]):
-            _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → sunny (fair weather)")
-            return "sunny"
-
-        # Default: partly cloudy
-        _LOGGER.debug(f"ConditionMap: Z{forecast_num} '{forecast_text}' → partlycloudy (default)")
-        return "partlycloudy"
+            if check_time is None:
+                # Check current time
+                if sun_entity:
+                    return sun_entity.state == "below_horizon"
+                else:
+                    # Fallback to simple time check
+                    current_hour = dt_util.now().hour
+                    return current_hour >= 19 or current_hour < 7
+            else:
+                # For future times, use astral calculation or simple hour check
+                # Simple approach: check hour of day
+                hour = check_time.hour
+                # Night is roughly 19:00 - 07:00 (adjust based on latitude if needed)
+                is_night = hour >= 19 or hour < 7
+                return is_night
+        except Exception as e:
+            _LOGGER.debug(f"Night check error: {e}")
+            return False
 
     def _calculate_rain_probability(
         self,

@@ -568,3 +568,208 @@ class TestIntegration:
 
         assert avg_rain_falling > avg_rain_rising
 
+
+class TestUniversalConditionMapping:
+    """Test universal map_forecast_to_condition() function for all forecast models."""
+
+    def test_zambretti_storm(self):
+        """Test storm detection for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Stormy, much rain",
+            forecast_num=25,
+            source="Zambretti"
+        )
+        assert condition == "lightning-rainy"
+
+    def test_negretti_storm(self):
+        """Test storm detection for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Thunder and gale",
+            forecast_num=None,
+            source="Negretti"
+        )
+        assert condition == "lightning-rainy"
+
+    def test_zambretti_heavy_rain(self):
+        """Test heavy rain (pouring) for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Heavy rain",
+            forecast_num=22,
+            source="Zambretti"
+        )
+        assert condition == "pouring"
+
+    def test_negretti_rain(self):
+        """Test rain detection for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Polooblačno, miestami dážď.",
+            forecast_num=10,
+            source="Negretti"
+        )
+        assert condition == "rainy"
+
+    def test_zambretti_fair_day(self):
+        """Test fair weather during day for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Settled fine",
+            forecast_num=0,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+        assert condition == "sunny"
+
+    def test_zambretti_fair_night(self):
+        """Test fair weather during night for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Settled fine",
+            forecast_num=0,
+            is_night_func=lambda: True,
+            source="Zambretti"
+        )
+        assert condition == "clear-night"
+
+    def test_negretti_fair_day(self):
+        """Test fair weather during day for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Pekné počasie!",
+            forecast_num=1,
+            is_night_func=lambda: False,
+            source="Negretti"
+        )
+        assert condition == "sunny"
+
+    def test_negretti_fair_night(self):
+        """Test fair weather during night for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Stabilne pekné počasie!",
+            forecast_num=0,
+            is_night_func=lambda: True,
+            source="Negretti"
+        )
+        assert condition == "clear-night"
+
+    def test_zambretti_unsettled_day(self):
+        """Test unsettled weather during day for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Test text WITHOUT rain keywords -> partlycloudy
+        condition = map_forecast_to_condition(
+            forecast_text="Unsettled weather",
+            forecast_num=17,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+        assert condition == "partlycloudy"
+
+    def test_zambretti_unsettled_night(self):
+        """Test unsettled weather during night for Zambretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Changeable",
+            forecast_num=16,
+            is_night_func=lambda: True,
+            source="Zambretti"
+        )
+        assert condition == "clear-night"
+
+    def test_negretti_partly_cloudy(self):
+        """Test partly cloudy for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Polooblačno",
+            forecast_num=5,
+            is_night_func=lambda: False,
+            source="Negretti"
+        )
+        assert condition == "partlycloudy"
+
+    def test_negretti_cloudy(self):
+        """Test fully cloudy for Negretti."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Oblačno, zamračené",
+            forecast_num=8,
+            source="Negretti"
+        )
+        assert condition == "cloudy"
+
+    def test_combined_forecast_rainy(self):
+        """Test Combined forecast rain detection."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Rain at times, later worse",
+            forecast_num=None,
+            source="Combined"
+        )
+        assert condition == "rainy"
+
+    def test_default_fallback_day(self):
+        """Test default fallback during day."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Unknown forecast",
+            forecast_num=None,
+            is_night_func=lambda: False,
+            source="Test"
+        )
+        assert condition == "partlycloudy"
+
+    def test_default_fallback_night(self):
+        """Test default fallback during night."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Unknown forecast",
+            forecast_num=None,
+            is_night_func=lambda: True,
+            source="Test"
+        )
+        assert condition == "clear-night"
+
+    def test_slovak_keywords(self):
+        """Test Slovak language keywords work correctly."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Test Slovak rain
+        condition_rain = map_forecast_to_condition(
+            forecast_text="Dážď a zrážky",
+            source="Slovak"
+        )
+        assert condition_rain == "rainy"
+
+        # Test Slovak cloudy
+        condition_cloudy = map_forecast_to_condition(
+            forecast_text="Zamračené",
+            source="Slovak"
+        )
+        assert condition_cloudy == "cloudy"
+
+        # Test Slovak fair
+        condition_fair = map_forecast_to_condition(
+            forecast_text="Pekné slnečné počasie",
+            is_night_func=lambda: False,
+            source="Slovak"
+        )
+        assert condition_fair == "sunny"
+

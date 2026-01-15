@@ -13,6 +13,7 @@ def calculate_negretti_zambra_forecast(
     wind_data: list,
     lang_index: int,
     elevation: float,
+    hemisphere: str = "north",
 ) -> list:
     """
     Calculate Negretti & Zambra 'slide rule' forecast.
@@ -23,17 +24,18 @@ def calculate_negretti_zambra_forecast(
         wind_data: [wind_fak, direction, dir_text, speed_fak]
         lang_index: Language index (0-3)
         elevation: Elevation in meters
+        hemisphere: "north" or "south" (default: "north")
 
     Returns:
         [forecast_text, forecast_number, letter_code]
     """
     _LOGGER.debug(
         f"Negretti: Input - p0={p0:.1f} hPa, pressure_change={pressure_change:.2f} hPa, "
-        f"wind_data={wind_data}, elevation={elevation}m"
+        f"wind_data={wind_data}, elevation={elevation}m, hemisphere={hemisphere}"
     )
 
-    # Configuration
-    hemisphere = 1  # Northern = 1, Southern = 0
+    # Configuration - convert hemisphere string to numeric (1=North, 0=South)
+    hemisphere_numeric = 1 if hemisphere == "north" else 0
     bar_top = 1050
     bar_bottom = 950
 
@@ -77,7 +79,7 @@ def calculate_negretti_zambra_forecast(
     _LOGGER.debug(f"Negretti: wind direction={direction}°, wind_speed_fak={wind_speed_fak}")
     _LOGGER.debug(f"Negretti: Initial z_hp={z_hp:.1f} hPa (before wind adjustments)")
 
-    if hemisphere == 1 and wind_speed_fak == 1:
+    if hemisphere_numeric == 1 and wind_speed_fak == 1:
         # Wind direction adjustments for Northern Hemisphere
         if 11.25 < direction <= 33.75:  # NNE
             z_hp = z_hp + 5 / 100 * bar_range
@@ -114,7 +116,7 @@ def calculate_negretti_zambra_forecast(
 
         _LOGGER.debug(f"Negretti: z_hp after wind direction adjustment={z_hp:.1f} hPa")
     else:
-        _LOGGER.debug(f"Negretti: No wind direction adjustment applied (hemisphere={hemisphere}, wind_speed_fak={wind_speed_fak})")
+        _LOGGER.debug(f"Negretti: No wind direction adjustment applied (hemisphere={'north' if hemisphere_numeric == 1 else 'south'}, wind_speed_fak={wind_speed_fak})")
 
     # Summer adjustment for rising/falling trends
     if is_summer:

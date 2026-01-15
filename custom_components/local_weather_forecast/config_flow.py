@@ -14,10 +14,10 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_CLOUD_COVERAGE_SENSOR,
-    CONF_DEWPOINT_SENSOR,
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
+    CONF_HEMISPHERE,
     CONF_HUMIDITY_SENSOR,
     CONF_PRESSURE_SENSOR,
     CONF_PRESSURE_TYPE,
@@ -31,11 +31,14 @@ from .const import (
     DEFAULT_ELEVATION,
     DEFAULT_ENABLE_WEATHER_ENTITY,
     DEFAULT_FORECAST_MODEL,
+    DEFAULT_HEMISPHERE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
     FORECAST_MODEL_ENHANCED,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ZAMBRETTI,
+    HEMISPHERE_NORTH,
+    HEMISPHERE_SOUTH,
     PRESSURE_TYPE_ABSOLUTE,
     PRESSURE_TYPE_RELATIVE,
 )
@@ -48,6 +51,36 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def _get_hemisphere_from_location(self) -> str:
+        """Detect hemisphere from Home Assistant location.
+
+        Returns:
+            "north" for northern hemisphere (latitude >= 0)
+            "south" for southern hemisphere (latitude < 0)
+            "north" as default if location detection fails
+        """
+        try:
+            latitude = self.hass.config.latitude
+            if latitude >= 0:
+                _LOGGER.info(
+                    "Hemisphere auto-detected: Northern (latitude=%.2f°)",
+                    latitude
+                )
+                return HEMISPHERE_NORTH
+            else:
+                _LOGGER.info(
+                    "Hemisphere auto-detected: Southern (latitude=%.2f°)",
+                    latitude
+                )
+                return HEMISPHERE_SOUTH
+        except Exception as e:
+            _LOGGER.warning(
+                "Could not determine hemisphere from location: %s. "
+                "Defaulting to northern hemisphere",
+                e
+            )
+            return DEFAULT_HEMISPHERE
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -56,6 +89,11 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             _LOGGER.debug("Config flow user input: %s", user_input)
+
+            # Auto-detect hemisphere if not provided or empty
+            if CONF_HEMISPHERE not in user_input or not user_input[CONF_HEMISPHERE]:
+                user_input[CONF_HEMISPHERE] = self._get_hemisphere_from_location()
+                _LOGGER.debug("Hemisphere set to: %s", user_input[CONF_HEMISPHERE])
 
             # Validate required sensors exist
             pressure_sensor = user_input[CONF_PRESSURE_SENSOR]
@@ -137,6 +175,16 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not (0 <= elevation <= 9000):
                 _LOGGER.error("Invalid elevation: %s (must be 0-9000m)", elevation)
                 errors[CONF_ELEVATION] = "invalid_elevation"
+
+            # Auto-detect hemisphere from Home Assistant location if not explicitly provided
+            if CONF_HEMISPHERE not in user_input or not user_input.get(CONF_HEMISPHERE):
+                latitude = self.hass.config.latitude
+                if latitude < 0:
+                    user_input[CONF_HEMISPHERE] = HEMISPHERE_SOUTH
+                    _LOGGER.info("Auto-detected Southern hemisphere from HA latitude: %s", latitude)
+                else:
+                    user_input[CONF_HEMISPHERE] = HEMISPHERE_NORTH
+                    _LOGGER.info("Auto-detected Northern hemisphere from HA latitude: %s", latitude)
 
             if not errors:
                 # Create unique ID based on pressure sensor
@@ -261,6 +309,24 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             selector.SelectOptionDict(
                                 value=PRESSURE_TYPE_RELATIVE,
                                 label="Relative (QNH - Sea Level Pressure)"
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_HEMISPHERE,
+                    default=user_input.get(CONF_HEMISPHERE) if user_input else self._get_hemisphere_from_location(),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=HEMISPHERE_NORTH,
+                                label="Northern Hemisphere (latitude ≥ 0°)"
+                            ),
+                            selector.SelectOptionDict(
+                                value=HEMISPHERE_SOUTH,
+                                label="Southern Hemisphere (latitude < 0°)"
                             ),
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,
@@ -428,26 +494,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     errors[CONF_RAIN_RATE_SENSOR] = "sensor_validation_error"
 
             # Validate future sensors (prepared for v3.2.0+) with safe access
-            if dewpoint_sensor := user_input.get(CONF_DEWPOINT_SENSOR):
-                try:
-                    _LOGGER.debug("Validating optional dewpoint sensor: %s", dewpoint_sensor)
-                    dewpoint_state = self.hass.states.get(dewpoint_sensor)
-                    if dewpoint_sensor and not dewpoint_state:
-                        _LOGGER.error("Dewpoint sensor not found: %s", dewpoint_sensor)
-                        errors[CONF_DEWPOINT_SENSOR] = "sensor_not_found"
-                    else:
-                        unit = dewpoint_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
-                            "Dewpoint sensor: %s | Value: %s %s | "
-                            "Will be converted to °C for calculations",
-                            dewpoint_sensor,
-                            dewpoint_state.state if dewpoint_state else None,
-                            unit
-                        )
-                except Exception as e:
-                    _LOGGER.error("Error validating dewpoint sensor %s: %s", dewpoint_sensor, e)
-                    errors[CONF_DEWPOINT_SENSOR] = "sensor_validation_error"
-
 
             if solar_radiation_sensor := user_input.get(CONF_SOLAR_RADIATION_SENSOR):
                 try:
@@ -513,7 +559,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     CONF_HUMIDITY_SENSOR,
                     CONF_WIND_GUST_SENSOR,
                     CONF_RAIN_RATE_SENSOR,
-                    CONF_DEWPOINT_SENSOR,
                     CONF_SOLAR_RADIATION_SENSOR,
                     CONF_UV_INDEX_SENSOR,
                     CONF_CLOUD_COVERAGE_SENSOR,
@@ -628,18 +673,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    CONF_DEWPOINT_SENSOR,
-                    description={"suggested_value": current_config.get(CONF_DEWPOINT_SENSOR)}
-                    if current_config.get(CONF_DEWPOINT_SENSOR)
-                    else None,
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor",
-                        device_class="temperature",
-                        multiple=False,
-                    )
-                ),
-                vol.Optional(
                     CONF_SOLAR_RADIATION_SENSOR,
                     description={"suggested_value": current_config.get(CONF_SOLAR_RADIATION_SENSOR)}
                     if current_config.get(CONF_SOLAR_RADIATION_SENSOR)
@@ -721,6 +754,24 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                             selector.SelectOptionDict(
                                 value=PRESSURE_TYPE_RELATIVE,
                                 label="Relative (QNH - Sea Level Pressure)"
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_HEMISPHERE,
+                    default=current_config.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(
+                                value=HEMISPHERE_NORTH,
+                                label="Northern Hemisphere (latitude ≥ 0°)"
+                            ),
+                            selector.SelectOptionDict(
+                                value=HEMISPHERE_SOUTH,
+                                label="Southern Hemisphere (latitude < 0°)"
                             ),
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,

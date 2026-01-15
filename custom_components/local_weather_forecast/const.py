@@ -14,7 +14,6 @@ CONF_PRESSURE_TYPE: Final = "pressure_type"
 
 # Configuration keys - Optional extended sensors (v3.1.0+)
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"
-CONF_DEWPOINT_SENSOR: Final = "dewpoint_sensor"
 CONF_CLOUD_COVERAGE_SENSOR: Final = "cloud_coverage_sensor"
 CONF_SOLAR_RADIATION_SENSOR: Final = "solar_radiation_sensor"
 CONF_UV_INDEX_SENSOR: Final = "uv_index_sensor"
@@ -23,12 +22,17 @@ CONF_WIND_GUST_SENSOR: Final = "wind_gust_sensor"
 CONF_RAIN_RATE_SENSOR: Final = "rain_rate_sensor"
 # Note: CONF_PRECIPITATION_SENSOR removed - use CONF_RAIN_RATE_SENSOR instead (supports both mm/h and mm accumulation)
 CONF_LATITUDE: Final = "latitude"
+CONF_HEMISPHERE: Final = "hemisphere"  # v3.1.4+ - Hemisphere for seasonal adjustments
 
 # Configuration keys - Feature flags
 CONF_ENABLE_WEATHER_ENTITY: Final = "enable_weather_entity"
 CONF_ENABLE_EXTENDED_SENSORS: Final = "enable_extended_sensors"
 CONF_FORECAST_INTERVAL: Final = "forecast_interval"
 CONF_FORECAST_MODEL: Final = "forecast_model"  # v3.1.4+ - Which forecast model to use
+
+# Hemisphere options (v3.1.4+)
+HEMISPHERE_NORTH: Final = "north"  # Northern hemisphere (latitude >= 0)
+HEMISPHERE_SOUTH: Final = "south"  # Southern hemisphere (latitude < 0)
 
 # Pressure types
 PRESSURE_TYPE_ABSOLUTE: Final = "absolute"  # QFE - Station pressure
@@ -48,6 +52,7 @@ DEFAULT_ENABLE_WEATHER_ENTITY: Final = False
 DEFAULT_ENABLE_EXTENDED_SENSORS: Final = False
 DEFAULT_FORECAST_INTERVAL: Final = 3  # hours
 DEFAULT_FORECAST_MODEL: Final = FORECAST_MODEL_ENHANCED  # v3.1.4+ - Default to enhanced (best accuracy)
+DEFAULT_HEMISPHERE: Final = HEMISPHERE_NORTH  # v3.1.4+ - Default to northern hemisphere
 
 # Languages (available in UI configuration)
 LANGUAGES: Final = {

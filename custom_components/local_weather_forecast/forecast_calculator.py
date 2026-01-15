@@ -878,15 +878,22 @@ class HourlyForecastGenerator:
                 try:
                     from .negretti_zambra import calculate_negretti_zambra_forecast
                     from .language import get_language_index
+                    from .const import CONF_HEMISPHERE, DEFAULT_HEMISPHERE
 
                     lang_index = get_language_index(self.hass)
+
+                    # Get hemisphere from config
+                    hemisphere = DEFAULT_HEMISPHERE
+                    if hasattr(self, 'config_entry') and self.config_entry:
+                        hemisphere = self.config_entry.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
 
                     negretti_result = calculate_negretti_zambra_forecast(
                         future_pressure,
                         pressure_change,
                         [self.wind_speed, self.wind_direction, "N", 0],  # wind_data
                         lang_index,
-                        self.elevation
+                        self.elevation,
+                        hemisphere
                     )
                     negretti_text, negretti_num, negretti_letter = negretti_result
                 except Exception as e:

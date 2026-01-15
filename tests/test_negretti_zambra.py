@@ -75,7 +75,7 @@ def test_calculate_forecast_steady_winter(mock_datetime):
     lang_index = 1  # English
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3
@@ -96,7 +96,7 @@ def test_calculate_forecast_rising_summer(mock_datetime):
     lang_index = 1  # English
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3
@@ -117,7 +117,7 @@ def test_calculate_forecast_falling_winter(mock_datetime):
     lang_index = 1  # English
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3
@@ -138,7 +138,7 @@ def test_calculate_forecast_exceptional_high_pressure(mock_datetime):
     lang_index = 1  # English
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3
@@ -158,7 +158,7 @@ def test_calculate_forecast_exceptional_low_pressure(mock_datetime):
     lang_index = 1  # English
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3
@@ -177,22 +177,22 @@ def test_calculate_forecast_wind_directions(mock_datetime):
 
     # Test North wind
     wind_data_n = [1, 0.0, "N", 1]
-    result_n = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_n, lang_index, elevation)
+    result_n = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_n, lang_index, elevation, hemisphere="north")
     assert isinstance(result_n, list)
 
     # Test East wind
     wind_data_e = [1, 90.0, "E", 1]
-    result_e = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_e, lang_index, elevation)
+    result_e = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_e, lang_index, elevation, hemisphere="north")
     assert isinstance(result_e, list)
 
     # Test South wind
     wind_data_s = [1, 180.0, "S", 1]
-    result_s = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_s, lang_index, elevation)
+    result_s = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_s, lang_index, elevation, hemisphere="north")
     assert isinstance(result_s, list)
 
     # Test West wind
     wind_data_w = [1, 270.0, "W", 1]
-    result_w = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_w, lang_index, elevation)
+    result_w = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_w, lang_index, elevation, hemisphere="north")
     assert isinstance(result_w, list)
 
 
@@ -208,22 +208,22 @@ def test_calculate_forecast_all_languages(mock_datetime):
     elevation = 100.0
 
     # Test German (0)
-    result_de = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 0, elevation)
+    result_de = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 0, elevation, hemisphere="north")
     assert isinstance(result_de[0], str)
     assert len(result_de[0]) > 0
 
     # Test English (1)
-    result_en = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 1, elevation)
+    result_en = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 1, elevation, hemisphere="north")
     assert isinstance(result_en[0], str)
     assert len(result_en[0]) > 0
 
     # Test Greek (2)
-    result_el = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 2, elevation)
+    result_el = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 2, elevation, hemisphere="north")
     assert isinstance(result_el[0], str)
     assert len(result_el[0]) > 0
 
     # Test Italian (3)
-    result_it = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 3, elevation)
+    result_it = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 3, elevation, hemisphere="north")
     assert isinstance(result_it[0], str)
     assert len(result_it[0]) > 0
 
@@ -240,11 +240,11 @@ def test_calculate_forecast_summer_adjustment(mock_datetime):
     lang_index = 1
     elevation = 100.0
 
-    result_summer = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result_summer = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     # Mock winter month (January)
     mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
-    result_winter = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result_winter = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     # Results might differ due to summer adjustment
     assert isinstance(result_summer, list)
@@ -262,17 +262,17 @@ def test_calculate_forecast_pressure_boundaries(mock_datetime):
     elevation = 100.0
 
     # Test at bar_bottom
-    result_low = calculate_negretti_zambra_forecast(950.0, 0.0, wind_data, lang_index, elevation)
+    result_low = calculate_negretti_zambra_forecast(950.0, 0.0, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_low, list)
     assert len(result_low) == 3
 
     # Test at bar_top - 1
-    result_high = calculate_negretti_zambra_forecast(1049.0, 0.0, wind_data, lang_index, elevation)
+    result_high = calculate_negretti_zambra_forecast(1049.0, 0.0, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_high, list)
     assert len(result_high) == 3
 
     # Test above bar_top (should be clamped)
-    result_exceed = calculate_negretti_zambra_forecast(1060.0, 0.0, wind_data, lang_index, elevation)
+    result_exceed = calculate_negretti_zambra_forecast(1060.0, 0.0, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_exceed, list)
     assert len(result_exceed) == 3
 
@@ -289,19 +289,19 @@ def test_calculate_forecast_trend_thresholds(mock_datetime):
     elevation = 100.0
 
     # Test rising threshold
-    result_rising = calculate_negretti_zambra_forecast(p0, 1.6, wind_data, lang_index, elevation)
+    result_rising = calculate_negretti_zambra_forecast(p0, 1.6, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_rising, list)
 
     # Test falling threshold
-    result_falling = calculate_negretti_zambra_forecast(p0, -1.6, wind_data, lang_index, elevation)
+    result_falling = calculate_negretti_zambra_forecast(p0, -1.6, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_falling, list)
 
     # Test steady (just below rising threshold)
-    result_steady_1 = calculate_negretti_zambra_forecast(p0, 1.5, wind_data, lang_index, elevation)
+    result_steady_1 = calculate_negretti_zambra_forecast(p0, 1.5, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_steady_1, list)
 
     # Test steady (just above falling threshold)
-    result_steady_2 = calculate_negretti_zambra_forecast(p0, -1.5, wind_data, lang_index, elevation)
+    result_steady_2 = calculate_negretti_zambra_forecast(p0, -1.5, wind_data, lang_index, elevation, hemisphere="north")
     assert isinstance(result_steady_2, list)
 
 
@@ -318,11 +318,11 @@ def test_calculate_forecast_wind_speed_factor(mock_datetime):
 
     # With wind speed factor
     wind_data_with = [1, 45.0, "NE", 1]
-    result_with = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_with, lang_index, elevation)
+    result_with = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_with, lang_index, elevation, hemisphere="north")
 
     # Without wind speed factor
     wind_data_without = [1, 45.0, "NE", 0]
-    result_without = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_without, lang_index, elevation)
+    result_without = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data_without, lang_index, elevation, hemisphere="north")
 
     # Both should return valid results
     assert isinstance(result_with, list)
@@ -350,7 +350,7 @@ def test_calculate_forecast_all_wind_sectors(mock_datetime):
 
     for direction, dir_text in wind_directions:
         wind_data = [1, direction, dir_text, 1]
-        result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+        result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
         assert isinstance(result, list)
         assert len(result) == 3
         assert isinstance(result[0], str)
@@ -370,7 +370,7 @@ def test_calculate_forecast_letter_code_valid(mock_datetime):
     lang_index = 1
     elevation = 100.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     letter_code = result[2]
     assert isinstance(letter_code, str)
@@ -392,8 +392,8 @@ def test_forecast_consistency(mock_datetime):
     lang_index = 1
     elevation = 100.0
 
-    result1 = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
-    result2 = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result1 = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    result2 = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert result1 == result2
 
@@ -411,7 +411,7 @@ def test_forecast_realistic_values(mock_datetime):
     lang_index = 1
     elevation = 314.0
 
-    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation)
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
     assert len(result) == 3

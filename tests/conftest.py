@@ -126,7 +126,6 @@ class MockFlowHandler:
                 "wind_speed_sensor",
                 "wind_direction_sensor",
                 "wind_gust_sensor",
-                "dewpoint_sensor",
                 "rain_rate_sensor",
             ]
 
@@ -184,7 +183,6 @@ class MockFlowHandler:
             "wind_speed_sensor",
             "wind_direction_sensor",
             "humidity_sensor",
-            "dewpoint_sensor",
             "wind_gust_sensor",
             "rain_rate_sensor",
         ]

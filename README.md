@@ -23,8 +23,8 @@ This integration was inspired by the original work of **[@HAuser1234](https://gi
 - 🎯 **High Accuracy** - 94-98% forecast accuracy with optional sensors
 - 🔌 **Fully Offline** - No external API dependencies or cloud services
 - 📅 **Multi-timeframe Forecasts** - Hourly (24h) + Daily (3 days)
-- 🧠 **3 Forecast Models** - Combined Dynamic (98%), Zambretti (94%), Negretti-Zambra (92%)
-- 🔄 **Adaptive Forecasting** 🆕 - Combined model automatically adjusts to atmospheric conditions
+- 🧠 **3 Forecast Models** - Enhanced Dynamic (98%), Zambretti (94%), Negretti-Zambra (92%)
+- 🔄 **Adaptive Weighting** 🆕 - Enhanced model combines both algorithms with dynamic pressure-based weighting
 - 🌍 **Multi-language** - Automatic language detection from Home Assistant UI (SK, EN, DE, IT, EL)
 - 🔄 **Auto Unit Conversion** - Use any standard units (°F, inHg, mph, km/h, etc.)
 - 🎨 **Easy Setup** - Modern UI configuration, no YAML needed
@@ -155,25 +155,23 @@ The integration uses two independent forecast algorithms that can be combined in
 
 | Your Climate | Recommended Model | Why? |
 |--------------|-------------------|------|
-| **Any climate** | **Enhanced** 🏆 | Best accuracy, automatically adapts to all conditions |
+| **Any climate** | **Enhanced Dynamic** 🏆 | Best accuracy, automatically adapts to all conditions |
 | **Stable temperate** | Zambretti | Consistent behavior, proven accuracy |
 | **Highly variable** | Negretti-Zambra | Better extreme weather handling |
 | **Coastal/windy** | Negretti-Zambra | Superior wind corrections |
-| **Migration from v3.1.3** | Zambretti | Preserves original behavior |
+| **v3.1.3 → v3.1.4** | **Enhanced Dynamic** | Automatic migration preserves combined algorithm behavior |
 
 ### 🔄 Model Selection
 
-- **Initial Setup:** Choose during integration configuration
+- **Initial Setup:** Choose during integration configuration (default: Enhanced Dynamic)
 - **Change Anytime:** Settings → Integrations → Local Weather Forecast → Configure → Forecast Model
-- **Migration Note:** Existing installations (upgrading from v3.1.3 or earlier) automatically use "Zambretti" to preserve original behavior
 
-### 🎯 Recommended: Use Combined Forecast!
-
-**`sensor.local_forecast_enhanced`** with Combined model uses BOTH algorithms with adaptive weighting + modern sensors:
+### 🎯 Accuracy Comparison
 
 ```
-📊 Accuracy by Configuration:
-├─ Zambretti only:        ~88-94%
+📊 Forecast Accuracy by Model:
+├─ Enhanced Dynamic (recommended):  ~94-98%  (adaptive weighting + all sensors)
+├─ Zambretti only:                  ~88-94%
 ├─ Negretti only:         ~88-94%
 ├─ Combined (basic):      ~94%
 └─ Combined (all sensors): ~98% ⭐ BEST!
@@ -268,9 +266,9 @@ The weather entity intelligently combines multiple data sources with **priority-
 
 | Feature | Data Source | Required? |
 |---------|-------------|-----------|
-| **Condition** | Zambretti forecast (letter A-Z) | ✅ Required |
+| **Base Condition** | Selected forecast model (letter A-Z) | ✅ Required |
 | **Rain Override** | Rain rate sensor | ❌ Optional |
-| **Snow Detection** | Temperature + Humidity + Rain probability | ❌ Optional |
+| **Snow Detection** | Temperature + Humidity + Precipitation probability | ❌ Optional |
 | **Fog Detection** | Temperature + Humidity + Dewpoint | ❌ Optional |
 | **Humidity Correction** | Humidity sensor | ❌ Optional |
 | **Night Detection** | Sunrise/Sunset (automatic) | ✅ Built-in |
@@ -280,22 +278,20 @@ The weather entity intelligently combines multiple data sources with **priority-
 | **Feels Like** | Temperature + Humidity + Wind + Solar | ❌ Optional |
 | **Dew Point** | Temperature + Humidity (calculated) | ❌ Optional |
 
-### 🎯 Which Forecast Algorithm?
+### 🎯 Which Forecast Algorithm Does Weather Entity Use?
 
-**Weather entity uses ONLY Zambretti forecast** for the base condition:
-- ✅ **Zambretti letter code** (A-Z) → HA weather condition
-- ❌ **Negretti-Zambra** is NOT used by weather entity
-- ✅ **Enhanced sensor** (`sensor.local_forecast_enhanced`) uses BOTH
+**Weather entity uses your CONFIGURED FORECAST MODEL** (selectable in Settings → Configure):
+- ✅ **Enhanced (Dynamic)**: Adaptive weighted combination of both algorithms (default for new installs)
+- ✅ **Zambretti**: Classic algorithm (default for upgrades from v3.1.3)
+- ✅ **Negretti-Zambra**: Slide rule method
+- Letter code (A-Z) → HA weather condition mapping
 
-**Why Zambretti?**
-- Simpler letter code mapping (A-Z)
-- Standard HA weather conditions match well
-- Proven accuracy for European climates
+**Applies to:**
+- Current condition in weather entity
+- Hourly forecast (24h)
+- Daily forecast (3 days)
 
-**Want to use both algorithms?**
-- Use `sensor.local_forecast_enhanced` instead
-- It combines Zambretti + Negretti-Zambra + all sensors
-- Higher accuracy (~98% vs ~94%)
+**Change anytime:** Settings → Integrations → Local Weather Forecast → Configure → Forecast Model
 
 ### 📝 Example: How Condition is Determined
 
@@ -378,26 +374,43 @@ Scenario 5: High humidity correction
 - **Pressure Type**: Select QFE (absolute) or QNH (relative)
   - **QFE (Absolute)**: Station pressure without altitude correction - most sensors (BME280, BMP280, etc.)
   - **QNH (Relative)**: Sea level corrected pressure - some weather stations (Ecowitt, Netatmo)
-- **Forecast Model**: Choose which algorithm to use for weather prediction *(v3.1.4+)*
-  - **Combined (Dynamic)** 🆕: Smart adaptive weighting based on atmospheric conditions (~98%)
-    - **High pressure change (>5 hPa/3h)**: Zambretti 80% + Negretti 20%
-    - **Medium change (3-5 hPa/3h)**: Zambretti 60% + Negretti 40%
-    - **Small change (1-3 hPa/3h)**: Balanced 50% + 50%
-    - **Stable (<1 hPa/3h)**: Zambretti 20% + Negretti 80%
-    - ✅ Best accuracy for all weather patterns
-    - ✅ Adapts to your climate automatically
-    - ⚡ Responds fast to sudden changes (like Zambretti)
-    - 🛡️ Stable during extreme events (like Negretti)
-  - **Zambretti (Classic)**: Optimized for rising/falling pressure scenarios (~94%)
+  
+- **Hemisphere** 🌍 *(v3.1.4+)*: Seasonal adjustment for accurate forecasts worldwide
+  - **Auto-detection** from Home Assistant location:
+    - Latitude >= 0° = **North** (Standard seasons: April-September = summer)
+    - Latitude < 0° = **South** (Inverted seasons: October-March = summer)
+  - **Manual override** available if auto-detection incorrect
+  - **Impact**: 
+    - Affects Negretti-Zambra seasonal logic
+    - Affects temperature model diurnal cycle
+    - Ensures accurate forecasts in Southern hemisphere locations
+  - 📍 Defaults to Northern hemisphere if location unavailable
+  - 🔍 Debug logs show: `"Hemisphere: North (auto-detected from latitude 48.5)"` or `"Hemisphere: South (manual override)"`
+  
+- **Forecast Model** 🧠 *(v3.1.4+)*: Choose which algorithm to use for weather prediction
+  - **Enhanced (Dynamic)** 🆕 **(RECOMMENDED)**: Smart adaptive weighting (~98% accuracy)
+    - Automatically adjusts algorithm ratio based on pressure change rate:
+      - **Large change (>5 hPa/3h)**: Zambretti 80% + Negretti 20% → Fast response
+      - **Medium change (3-5 hPa/3h)**: Zambretti 60% + Negretti 40% → Balanced
+      - **Small change (1-3 hPa/3h)**: Zambretti 50% + Negretti 50% → Equal weight
+      - **Stable (<1 hPa/3h)**: Zambretti 20% + Negretti 80% → Conservative
+    - ✅ Best for: ALL climates - adapts automatically
+    - ⚡ Fast response to sudden changes + 🛡️ Stable during extremes
+    
+  - **Zambretti (Classic)**: Optimized for rising/falling pressure (~94% accuracy)
     - Faster response to pressure changes
-    - Best for maritime climates with rapid changes
-    - Established algorithm from 1915
-    - **🔄 Automatic Migration**: Existing installations upgrading from v3.1.3 or earlier use this to preserve original behavior
-  - **Negretti-Zambra**: Slide rule method, more conservative with extreme conditions (~92%)
+    - Best for maritime climates with rapid weather shifts
+    - Classic algorithm from 1915
+    
+  - **Negretti-Zambra**: Slide rule method, conservative (~92% accuracy)
     - More stable predictions during extreme pressure events
     - Best for continental climates
     - Historical slide-rule based method
-  - **Impact**: Selected model affects **current condition**, **hourly forecast (24h)**, and **daily forecast (3 days)**
+    - Superior wind direction corrections
+    
+  - **Applies to**: Current condition, hourly forecast (24h), and daily forecast (3 days)
+  - **Can change anytime**: Settings → Integrations → Local Weather Forecast → Configure
+  
 - **Language**: Automatically uses your Home Assistant UI language
   - Supported: Slovak, English, German, Italian, Greek (defaults to English if not supported)
   - Change in: `Settings → System → General → Language` → Restart HA
@@ -1145,12 +1158,12 @@ Weather: Using Zambretti forecast - Settled Fine (sunny)
 - **Small change (1-3 hPa/3h)**: Balanced 50/50 split
 - **Stable (<1 hPa/3h)**: Uses 80% Negretti (conservative)
 
-**Migration note:** If upgrading from v3.1.3 or earlier, your installation will use **Zambretti** by default to preserve original behavior. You can change to Combined anytime via Settings → Integrations → Local Weather Forecast → Configure.
+**🔄 Migration note:** Upgrading from v3.1.3 → v3.1.4? Your installation automatically uses **Enhanced Dynamic** to preserve the original combined algorithm behavior. You can change models anytime via Settings → Integrations → Local Weather Forecast → Configure.
 
 **Decision guide:**
 - **Live near coast/ocean?** → Try Zambretti (faster response to sea weather changes)
 - **Continental climate?** → Try Negretti-Zambra (more stable, less volatile)
-- **Not sure?** → Keep Combined (best overall accuracy with adaptive weighting)
+- **Not sure?** → Keep Enhanced Dynamic (best overall accuracy with adaptive weighting)
 - **Can change anytime** → Settings → Integrations → Local Weather Forecast → Configure
 
 ### How does the forecast model affect my weather?

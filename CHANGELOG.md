@@ -41,12 +41,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Configurable in**: Initial setup AND Options Flow (can be changed anytime)
   - **Applies to**: Current condition, hourly forecast (24h), and daily forecast (3 days)
   - **User benefit**: Choose the most accurate model for your local weather patterns
-  - **🔄 Migration**: Existing installations (upgrading from v3.1.3 or earlier) will automatically use "Enhanced" to preserve original behavior
+  - **🔄 Migration**: Existing installations (v3.1.3 → v3.1.4) use **Enhanced Dynamic** automatically to preserve behavior
 
 - **Pressure Type Change in Options**: You can now change pressure type (Absolute/Relative) after initial setup
   - Previously locked after first configuration
   - Now editable via Settings → Integrations → Local Weather Forecast → Configure
   - Useful when switching weather stations or realizing incorrect initial setting
+
+- **Hemisphere Configuration** 🆕: Automatic seasonal adjustment for accurate Negretti-Zambra forecasts
+  - **Auto-detection** from Home Assistant location (latitude >= 0 = North, < 0 = South)
+  - **Manual override** available in configuration if needed
+  - **North**: Standard seasonal patterns (April-September = summer)
+  - **South**: Inverted seasonal patterns (October-March = summer)
+  - **Impact**: More accurate forecasts in Southern hemisphere locations
+  - **Debug logging**: Shows hemisphere detection and seasonal adjustments
+  - 📍 Defaults to Northern hemisphere if not configured
 
 - **Pressure Sensor Change in Options**: You can now change pressure sensor after initial setup 🆕
   - Previously locked after first configuration - you could only add it during initial setup
