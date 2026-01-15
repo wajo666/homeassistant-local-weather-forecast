@@ -298,46 +298,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧪 Added - Comprehensive Test Suite
 
-- **209 Unit Tests** (100% pass rate) (2025-12-10)
-  - **test_calculations.py** - 86 tests for `calculations.py`
-    - Complete test coverage for all 16 calculation functions
-    - **Snow detection tests** (6 tests): All risk levels, edge cases, with/without precipitation probability
-    - **Frost detection tests** (6 tests): All risk levels including critical black ice, wind effects
-  - **test_config_flow.py** - 17 tests for `config_flow.py`
-    - User flow (initial setup): 10 tests
-    - Options flow (reconfiguration): 7 tests
-    - Validates sensor detection, elevation ranges, pressure types, duplicate prevention
-  - **test_forecast_calculator.py** - 35 tests for `forecast_calculator.py`
-    - PressureModel: 9 tests (rising/falling trends, damping, clamping)
-    - TemperatureModel: 9 tests (diurnal cycle, solar warming, cloud effects)
-    - RainProbabilityCalculator: 6 tests (Zambretti letters, pressure influence)
-    - Forecast generators: 8 tests (hourly/daily, rain override, intervals)
-    - Complete facade: 3 tests (integration testing)
-  - **test_const.py** - 36 tests for `const.py`
-    - Language mapping validation: 5 tests (prevents index errors)
-    - Zambretti constants: 3 tests (all 26 letters A-Z mapped correctly)
-    - Pressure/meteorology constants: 4 tests (intervals, thresholds, barometric formulas)
-    - Risk levels: 4 tests (fog/snow/frost consistency)
-    - Comfort/trend/confidence: 9 tests (all levels defined correctly)
-    - Defaults validation: 5 tests (elevation, latitude, pressure type, etc.)
-    - Constant consistency: 6 tests (validates relationships between constants)
-  - **test_forecast_data.py** - 35 tests for `forecast_data.py` ⭐ NEW!
-    - Multilingual structure: 2 tests (all data has 5 languages)
-    - Zambretti data: 4 tests (26 letters A-Z, completeness)
-    - Wind/conditions/pressure: 7 tests (Beaufort scale, weather conditions)
-    - Comfort/fog/stability levels: 9 tests (all UI display levels)
-    - Visibility/templates: 6 tests (distance indicators, placeholders)
-    - Language consistency: 3 tests (no mixing, completeness, order)
-    - Data integrity: 3 tests (coverage, typos, formatting)
+- **476 Unit Tests** across 13 test files (100% pass rate)
+  - **test_calculations.py** - 86 tests: Meteorological calculations (dewpoint, heat index, fog, snow, frost, UV)
+  - **test_config_flow.py** - 16 tests: Configuration flow and options flow
+  - **test_const.py** - 36 tests: Constants validation and consistency
+  - **test_extreme_conditions.py** - 18 tests: Extreme atmospheric conditions (900-1100 hPa, all elevations)
+  - **test_forecast_calculator.py** - 35 tests: Forecast calculation models
+  - **test_forecast_data.py** - 35 tests: Multilingual forecast data integrity
+  - **test_forecast_models.py** - 43 tests: Advanced forecast models (pressure, temperature)
+  - **test_language.py** - 45 tests: Multilingual support and translations
+  - **test_negretti_zambra.py** - 22 tests: Negretti-Zambra algorithm
+  - **test_sensor_change.py** - 13 tests: Pressure/Temperature change sensors
+  - **test_unit_conversion.py** - 57 tests: Unit conversion (pressure, temp, wind, precipitation)
+  - **test_weather.py** - 39 tests: Weather entity helper functions and logic
+  - **test_zambretti.py** - 31 tests: Zambretti algorithm (formulas, consistency, all z-numbers)
   - Test framework: pytest 9.0.2 + pytest-homeassistant-custom-component
-  - Test files:
-    - `tests/test_calculations.py` - 86 comprehensive tests
-    - `tests/test_config_flow.py` - 17 UI flow tests
-    - `tests/test_forecast_calculator.py` - 35 model tests
-    - `tests/test_const.py` - 36 validation tests
-    - `tests/test_forecast_data.py` - 35 multilingual data tests
-    - `tests/README_TESTS.md` - Complete test documentation
+  - Coverage: ~98% for critical functions
   - All tests validate meteorological accuracy, edge cases, user workflows, configuration integrity, and multilingual data completeness
+  - See `tests/README_TESTS.md` for complete test documentation
 
 ### 🛠️ Fixed
 

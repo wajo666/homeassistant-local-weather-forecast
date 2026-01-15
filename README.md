@@ -170,15 +170,14 @@ The integration uses two independent forecast algorithms that can be combined in
 
 ```
 📊 Forecast Accuracy by Model:
-├─ Enhanced Dynamic (recommended):  ~94-98%  (adaptive weighting + all sensors)
-├─ Zambretti only:                  ~88-94%
-├─ Negretti only:         ~88-94%
-├─ Combined (basic):      ~94%
-└─ Combined (all sensors): ~98% ⭐ BEST!
+├─ Enhanced Dynamic (recommended): ~98% ⭐ (adaptive weighting + all sensors)
+├─ Zambretti (Classic):            ~94% (optimized for rising/falling pressure)
+└─ Negretti-Zambra (Regional):     ~94% (optimized for stable conditions)
 ```
 
-**Enhanced features:**
-- ✅ Consensus from both algorithms
+**Enhanced Dynamic features:**
+- ✅ Adaptive weighting based on pressure trend
+- ✅ Consensus from both Zambretti & Negretti-Zambra algorithms
 - ✅ Fog risk detection (humidity + dewpoint)
 - ✅ Atmospheric stability (wind gusts)
 - ✅ Snow/frost warnings
@@ -242,7 +241,7 @@ The weather entity intelligently combines multiple data sources with **priority-
   - **Result:** Condition = `"fog"`
 
 #### **PRIORITY 3: Forecast Model** (Configurable Algorithm)
-- **Source:** Selected forecast model (Combined/Zambretti/Negretti-Zambra)
+- **Source:** Selected forecast model (Enhanced Dynamic/Zambretti/Negretti-Zambra)
 - **Uses:** Letter code (A-Z) → HA condition mapping
 - **Enhancements:**
   - **Fog Risk Correction:**
@@ -668,8 +667,8 @@ Combines classical Zambretti/Negretti-Zambra algorithms with modern sensor data:
 - ✅ Fog risk detection (CRITICAL/HIGH/MEDIUM/LOW)
 - ✅ Humidity effects on forecast
 - ✅ Atmospheric stability from wind gust ratio
-- ✅ Consensus confidence scoring
-- ✅ Accuracy: ~94-98%
+- ✅ Consensus confidence scoring (Enhanced Dynamic mode only)
+- ✅ Accuracy: ~98% (Enhanced Dynamic), ~94% (single model)
 
 **Example Output:**
 ```yaml
@@ -707,14 +706,14 @@ attributes:
 Enhanced rain probability calculation using multiple factors:
 
 **Base Calculation:**
-- Uses **selected forecast model** (Combined/Zambretti/Negretti-Zambra) from configuration
+- Uses **selected forecast model** (Enhanced Dynamic/Zambretti/Negretti-Zambra) from configuration
 - Averages precipitation probability from next 6 hours of forecast
 - Falls back to detail sensors if forecast unavailable
 
 **Enhancement Factors:**
 
 **1. Base Probability Calculation:**
-- Uses **selected forecast model** (Combined/Zambretti/Negretti-Zambra) from configuration
+- Uses **selected forecast model** (Enhanced Dynamic/Zambretti/Negretti-Zambra) from configuration
 - Averages precipitation probability from both algorithms
 - Scale factor based on base probability:
   - Low (0-20%): scale 0.3 (conservative)
@@ -741,7 +740,7 @@ Enhanced rain probability calculation using multiple factors:
 - Allows snow detection even with low barometric forecast
 
 **Model Impact:**
-- **Combined mode**: Uses dynamic weighted average (20-80% each model based on conditions)
+- **Enhanced Dynamic mode**: Uses adaptive weighted average (20-80% each model based on pressure trend)
 - **Zambretti mode**: Uses only Zambretti forecast data
 - **Negretti-Zambra mode**: Uses only Negretti-Zambra forecast data
 
@@ -942,7 +941,7 @@ accuracy_estimate: "~98%"
 Multi-factor rain prediction based on **your selected forecast model**:
 
 **Base Forecast Source:**
-- 📊 Uses **selected forecast model** from configuration (Combined/Zambretti/Negretti-Zambra)
+- 📊 Uses **selected forecast model** from configuration (Enhanced Dynamic/Zambretti/Negretti-Zambra)
 - Averages precipitation probability from next 6 hours
 - Automatically adapts when you change forecast model
 
@@ -1002,7 +1001,7 @@ Configure these sensors for improved accuracy:
 | Sensor | Entity ID | Description |
 |--------|-----------|-------------|
 | **Core Sensors** | | |
-| Main Forecast | `sensor.local_forecast` | Combined forecast with all data |
+| Main Forecast | `sensor.local_forecast` | Base forecast with selected model data |
 | Pressure | `sensor.local_forecast_pressure` | Sea level pressure (hPa) |
 | Temperature | `sensor.local_forecast_temperature` | Current temperature (°C) |
 | Pressure Change | `sensor.local_forecast_pressurechange` | 3-hour pressure trend (hPa) |
@@ -1142,23 +1141,23 @@ Weather: Using Zambretti forecast - Settled Fine (sunny)
 
 ### Which forecast model should I choose?
 
-**TL;DR:** Use **Combined (Dynamic)** - it's the most accurate and adapts automatically to your local weather patterns.
+**TL;DR:** Use **Enhanced Dynamic** - it's the most accurate and adapts automatically to your local weather patterns.
 
 **Detailed comparison:**
 
 | Model | Best For | Accuracy | Speed | Characteristics |
 |-------|----------|----------|-------|-----------------|
-| **Combined (Dynamic)** 🆕 | All locations | ~98% | Adaptive | Smart weighting based on pressure changes - best of both worlds |
-| **Zambretti** | Coastal/maritime | ~94% | Fast | Reacts quickly to pressure changes |
-| **Negretti-Zambra** | Continental | ~92% | Conservative | Better for extreme pressures |
+| **Enhanced Dynamic** 🆕 | All locations | ~98% | Adaptive | Smart weighting based on pressure changes - best of both worlds |
+| **Zambretti (Classic)** | Coastal/maritime | ~94% | Fast | Reacts quickly to pressure changes |
+| **Negretti-Zambra (Regional)** | Continental/stable | ~94% | Conservative | Better for extreme pressures |
 
-**How Combined model works:**
+**How Enhanced Dynamic model works:**
 - **Rapid change (>5 hPa/3h)**: Uses 80% Zambretti (fast response)
 - **Medium change (3-5 hPa/3h)**: Uses 60% Zambretti + 40% Negretti
 - **Small change (1-3 hPa/3h)**: Balanced 50/50 split
 - **Stable (<1 hPa/3h)**: Uses 80% Negretti (conservative)
 
-**🔄 Migration note:** Upgrading from v3.1.3 → v3.1.4? Your installation automatically uses **Enhanced Dynamic** to preserve the original combined algorithm behavior. You can change models anytime via Settings → Integrations → Local Weather Forecast → Configure.
+**🔄 Migration note:** Upgrading from v3.1.3 → v3.1.4? Your installation automatically uses **Enhanced Dynamic** to preserve the original behavior. You can change models anytime via Settings → Integrations → Local Weather Forecast → Configure.
 
 **Decision guide:**
 - **Live near coast/ocean?** → Try Zambretti (faster response to sea weather changes)
@@ -1209,7 +1208,7 @@ Both use barometric pressure trends but with different approaches:
 - More **conservative** during extreme conditions
 - Best for **continental climates** with stable patterns
 
-**Combined (Dynamic) - v3.1.4+ 🆕:**
+**Enhanced Dynamic - v3.1.4+ 🆕:**
 - **Smart weighting** based on pressure change rate
 - Automatically **adapts** to local weather patterns
 - Uses **Zambretti** more when pressure changes rapidly
@@ -1219,28 +1218,28 @@ Both use barometric pressure trends but with different approaches:
 
 ### What if both models disagree?
 
-When Zambretti and Negretti-Zambra predict different conditions:
+When Zambretti and Negretti-Zambra predict different conditions (only in Enhanced Dynamic mode):
 
-**Combined mode (recommended):**
+**Enhanced Dynamic mode (recommended):**
 - Shows **weighted average** of both predictions
-- Adjusts weighting dynamically based on atmospheric conditions (more intelligent)
+- Adjusts weighting dynamically based on atmospheric conditions
 - Adds **"no consensus"** flag to attributes
 - Lowers **confidence level** (high → medium)
 - Example: One says "sunny", other says "cloudy" → Shows "partly cloudy"
 
-**Single model mode:**
-- Only uses selected algorithm (Zambretti OR Negretti-Zambra)
+**Single model mode (Zambretti or Negretti-Zambra):**
+- Only uses selected algorithm - no disagreement possible
 - No consensus checking needed
 - No consensus validation
 - Faster but potentially less accurate
 
 Check `sensor.local_forecast_enhanced` attributes:
 ```yaml
-consensus: false  # ← Models disagree
+consensus: false  # ← Models disagree (only in Enhanced Dynamic mode)
 confidence: medium  # ← Lower confidence
 zambretti_number: 0  # ← Sunny
 negretti_number: 10  # ← Cloudy
-accuracy_estimate: ~94%  # ← Reduced accuracy (Enhanced) or ~98% (Combined with dynamic weighting)
+accuracy_estimate: ~94%  # ← When no consensus (Enhanced Dynamic uses single model as fallback)
 ```
 
 ---

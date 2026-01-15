@@ -1983,16 +1983,17 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 adjustment_details.append(get_adjustment_text(self.hass, "low_humidity", f"{humidity:.1f}"))
 
         # Dewpoint spread adjustment (fog/precipitation risk)
+        # Use fog risk levels consistently with get_fog_risk() thresholds
         if dewpoint_spread is not None:
-            if dewpoint_spread < 1.5:
-                adjustments.append("critical_fog_risk")
-                adjustment_details.append(get_adjustment_text(self.hass, "critical_fog_risk", f"{dewpoint_spread:.1f}"))
-            elif 1.5 <= dewpoint_spread < 2.5:
+            if dewpoint_spread < 1.5:  # HIGH fog risk
                 adjustments.append("high_fog_risk")
                 adjustment_details.append(get_adjustment_text(self.hass, "high_fog_risk", f"{dewpoint_spread:.1f}"))
-            elif 2.5 <= dewpoint_spread < 4:
+            elif 1.5 <= dewpoint_spread < 2.5:  # MEDIUM fog risk
                 adjustments.append("medium_fog_risk")
                 adjustment_details.append(get_adjustment_text(self.hass, "medium_fog_risk", f"{dewpoint_spread:.1f}"))
+            elif 2.5 <= dewpoint_spread < 4:  # LOW fog risk
+                adjustments.append("low_fog_risk")
+                adjustment_details.append(get_adjustment_text(self.hass, "low_fog_risk", f"{dewpoint_spread:.1f}"))
 
         # Atmospheric stability (gust ratio)
         # Only evaluate for significant wind speeds (>3 m/s)

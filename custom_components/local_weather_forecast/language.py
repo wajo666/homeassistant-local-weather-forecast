@@ -205,7 +205,7 @@ def get_adjustment_text(hass: HomeAssistant, adjustment_key: str, value: str) ->
 
     # Convert temperature SPREAD values (dewpoint spread)
     # Note: For temperature DIFFERENCES, we only scale (× 1.8), NOT add offset (+32)
-    if adjustment_key in ["critical_fog_risk", "high_fog_risk", "medium_fog_risk"]:
+    if adjustment_key in ["high_fog_risk", "medium_fog_risk", "low_fog_risk"]:
         # Value is dewpoint spread in °C
         template = ADJUSTMENT_TEMPLATES[adjustment_key][lang_index]
 
