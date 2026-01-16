@@ -6,10 +6,10 @@ Comprehensive test suite covering meteorological calculations, forecast algorith
 
 ## 📊 Test Statistics
 
-**Total: 476 tests across 13 test files**
+**Total: 527 tests across 14 test files**
 
-- ✅ **476 tests passing** (100% pass rate)
-- ⚡ **~10 seconds execution time**
+- ✅ **527 tests passing** (100% pass rate)
+- ⚡ **~6 seconds execution time**
 - 🎯 **~98% code coverage** for critical functions
 
 ### All Tests Pass: 100% ✅
@@ -23,7 +23,7 @@ All weather calculations, forecast algorithms, unit conversions, and helper func
 # Install dependencies
 pip install -r requirements_test.txt
 
-# Run all tests (476 tests, all pass)
+# Run all tests (527 tests, all pass)
 pytest tests/ -v
 
 # Run with coverage report

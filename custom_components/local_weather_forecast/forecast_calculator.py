@@ -587,11 +587,36 @@ class ZambrettiForecaster:
             # Use solar radiation if UV index not available
             sun_factor = self._get_sun_angle_factor_for_condition(hour)
 
-            # Expected clear-sky solar radiation
+            # Expected clear-sky solar radiation with location-aware maximum
             month = forecast_time.month
-            seasonal_factor = 0.5 + 0.5 * math.cos((month - 6) * math.pi / 6)
-            max_solar = 1000.0 * seasonal_factor
-            expected_clear_sky_solar = max_solar * sun_factor
+            original_month = month
+
+            # Import the new function for calculating max radiation
+            from .calculations import calculate_max_solar_radiation_for_location
+
+            # Calculate location-specific maximum radiation
+            # This replaces the fixed 1000 W/m² with a value based on latitude and season
+            max_solar_location = calculate_max_solar_radiation_for_location(
+                latitude=self.latitude,
+                month=month
+            )
+
+            # Hemisphere correction is now handled in calculate_max_solar_radiation_for_location
+            # No need to manually shift months here
+
+            # Seasonal factor: peaks in June (northern) or December (southern after shift)
+            # Range: 0.5 (winter minimum) to 1.0 (summer maximum)
+            # Note: This is now redundant as calculate_max_solar_radiation_for_location
+            # already includes seasonal adjustment, but we keep it for time-of-day variation
+            seasonal_factor = 1.0  # Use full location-specific maximum
+
+            expected_clear_sky_solar = max_solar_location * sun_factor
+
+            _LOGGER.debug(
+                f"Location-aware solar calculation: lat={self.latitude:.2f}°, "
+                f"month={month}, max_for_location={max_solar_location:.0f} W/m², "
+                f"sun_factor={sun_factor:.3f}, expected={expected_clear_sky_solar:.0f} W/m²"
+            )
 
             if expected_clear_sky_solar > 100:
                 solar_ratio = self.solar_radiation / expected_clear_sky_solar

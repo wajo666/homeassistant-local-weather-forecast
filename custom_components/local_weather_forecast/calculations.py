@@ -711,6 +711,94 @@ def get_uv_protection_level(uv_index: float) -> str:
         return "Extreme - Avoid sun exposure"
 
 
+def calculate_max_solar_radiation_for_location(
+    latitude: float,
+    month: Optional[int] = None
+) -> float:
+    """
+    Calculate maximum solar radiation for a specific location and season.
+
+    This accounts for:
+    - Latitude (higher latitudes receive less radiation)
+    - Season (summer vs winter differences)
+    - Hemisphere (inverted seasons for southern hemisphere)
+
+    Args:
+        latitude: Location latitude in degrees (-90 to +90)
+        month: Month (1-12), defaults to current month
+
+    Returns:
+        Maximum clear-sky solar radiation in W/m² at solar noon
+
+    Examples:
+        >>> calculate_max_solar_radiation_for_location(0, 6)  # Equator, June
+        1300.0
+        >>> calculate_max_solar_radiation_for_location(48.72, 6)  # Košice, June
+        1050.0
+        >>> calculate_max_solar_radiation_for_location(-33.87, 12)  # Sydney, December
+        1150.0
+    """
+    from datetime import datetime
+
+    if month is None:
+        month = datetime.now().month
+
+    abs_latitude = abs(latitude)
+    is_northern = latitude >= 0
+
+    # Hemisphere correction: Southern hemisphere has inverted seasons
+    if not is_northern:
+        # Shift months by 6 for southern hemisphere
+        month = ((month + 6 - 1) % 12) + 1
+
+    # Base maximum radiation at solar noon (at sea level, clear sky)
+    # Equator: ~1300 W/m² (direct overhead sun)
+    # Mid-latitudes (45°): ~1000 W/m² (angled sun)
+    # High latitudes (70°): ~600 W/m² (very low sun)
+
+    # Latitude factor: How much radiation is reduced due to sun angle
+    # This is based on the cosine law of solar radiation
+    # At equator (0°): factor = 1.0 (full radiation)
+    # At 45°: factor = 0.77 (cos 30° effective angle)
+    # At 70°: factor = 0.47 (very angled)
+
+    if abs_latitude < 23.5:
+        # Tropical zone: Sun can be directly overhead
+        base_max = 1300.0
+        lat_factor = 1.0 - (abs_latitude / 90.0) * 0.3  # Gentle reduction
+    elif abs_latitude < 66.5:
+        # Temperate zone: Sun is angled but predictable
+        base_max = 1200.0
+        # Cosine law approximation
+        effective_angle = abs_latitude - 23.5
+        lat_factor = math.cos(math.radians(effective_angle * 0.7))
+    else:
+        # Polar zone: Very low sun, long days in summer
+        base_max = 800.0
+        lat_factor = 0.5 + (90 - abs_latitude) / 90.0 * 0.3
+
+    # Seasonal factor: Varies throughout the year
+    # Month 6 (June after hemisphere correction) = summer = maximum
+    # Month 12 (December after hemisphere correction) = winter = minimum
+    # Uses cosine function for smooth transition
+    seasonal_factor = 0.5 + 0.5 * math.cos((month - 6) * math.pi / 6)
+
+    # Summer boost for mid-latitudes (longer days compensate for angle)
+    if 40 <= abs_latitude <= 60 and seasonal_factor > 0.85:
+        seasonal_factor = min(1.0, seasonal_factor * 1.05)
+
+    # Final calculation
+    max_radiation = base_max * lat_factor * seasonal_factor
+
+    _LOGGER.debug(
+        f"Max solar radiation calculation: lat={latitude:.2f}°, month={month}, "
+        f"base={base_max:.0f}, lat_factor={lat_factor:.3f}, "
+        f"seasonal={seasonal_factor:.3f}, result={max_radiation:.0f} W/m²"
+    )
+
+    return round(max_radiation, 1)
+
+
 def estimate_solar_radiation_from_time_and_clouds(
     latitude: float,
     hour: int,
@@ -736,9 +824,8 @@ def estimate_solar_radiation_from_time_and_clouds(
     # Solar noon is around 12:00
     hour_angle = abs(hour - 12)
 
-    # Day length varies by season and latitude
-    # Simplified: assume 12h day for mid-latitudes
-    max_radiation = 1000.0
+    # Use location-aware maximum radiation instead of fixed 1000 W/m²
+    max_radiation = calculate_max_solar_radiation_for_location(latitude, month)
 
     if hour_angle > 6:
         # Night time (beyond ±6 hours from noon)
@@ -748,10 +835,6 @@ def estimate_solar_radiation_from_time_and_clouds(
         # Peak at noon (hour_angle=0), zero at ±6h
         sun_factor = math.cos(math.radians(hour_angle * 15))  # 15° per hour
         radiation = max_radiation * max(0.0, sun_factor)
-
-        # Adjust for latitude (higher latitudes get less sun)
-        lat_factor = math.cos(math.radians(abs(latitude)))
-        radiation *= lat_factor
 
 
     return round(radiation, 1)

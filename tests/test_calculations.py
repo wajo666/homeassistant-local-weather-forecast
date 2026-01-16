@@ -548,8 +548,9 @@ class TestEstimateSolarRadiationFromTimeAndClouds:
 
     def test_solar_noon_clear_sky(self):
         """Test solar radiation at noon with clear sky."""
+        # Use June (summer month) for consistent results with location-aware calculation
         result = estimate_solar_radiation_from_time_and_clouds(
-            latitude=50.0, hour=12
+            latitude=50.0, hour=12, month=6
         )
         assert result > 500.0
 
