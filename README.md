@@ -4,7 +4,7 @@
 [![GitHub release](https://img.shields.io/github/release/wajo666/homeassistant-local-weather-forecast.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-3.1.4-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-476%20passed-brightgreen.svg)](tests/README_TESTS.md)
+[![Tests](https://img.shields.io/badge/tests-527%20passed-brightgreen.svg)](tests/README_TESTS.md)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/README_TESTS.md)
 [![Developer](https://img.shields.io/badge/Developer-wajo666-green.svg)](https://github.com/wajo666)
 
@@ -1360,7 +1360,7 @@ Traditional slide rule approach for weather prediction:
 ### Implementation Tools
 - **Home Assistant Core:** [developers.home-assistant.io](https://developers.home-assistant.io/)
 - **Python Libraries:** Magnus formula, statistical analysis, time series processing
-- **Testing Framework:** pytest with 464 comprehensive tests
+- **Testing Framework:** pytest with 527 comprehensive tests
 
 ### Contributors
 Thank you to everyone who contributes to improving this integration through bug reports, feature requests, and pull requests!
@@ -1374,7 +1374,7 @@ Special thanks to the meteorological community for maintaining detailed document
 ### Available Guides
 - 📝 **[Changelog](CHANGELOG.md)** - Version history and changes
 - 🌦️ **[Weather Cards Guide](WEATHER_CARDS.md)** - Lovelace card examples
-- 🧪 **[Testing Guide](tests/README_TESTS.md)** - Test suite documentation (456 tests, 100% pass rate)
+- 🧪 **[Testing Guide](tests/README_TESTS.md)** - Test suite documentation (527 tests, 100% pass rate)
 - 🔧 **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to this project
 
 ### In This README
@@ -1388,7 +1388,7 @@ Special thanks to the meteorological community for maintaining detailed document
 
 ### Development
 - 🔧 **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
-- 🧪 **[Testing Guide](tests/README_TESTS.md)** - 456 tests with 100% pass rate
+- 🧪 **[Testing Guide](tests/README_TESTS.md)** - 527 tests with 100% pass rate
 
 ---
 
