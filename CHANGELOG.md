@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.5] - 2026-01-16 (In Progress)
+
+### ✨ Added
+
+- **Solar Radiation Priority in Weather Condition Logic** ☀️
+  - 🎯 **Priority**: Added solar radiation sensor as PRIORITY 2.5 (between fog detection and forecast model)
+  - 📊 **Detection Logic**: If solar radiation sensor is configured, it influences current weather condition during daytime
+    - Measures actual solar radiation vs. theoretical maximum for current time/season
+    - Cloud cover calculation: `(1 - measured/theoretical) × 100%`
+    - Thresholds: <25% → sunny ☀️, 25-65% → partly cloudy ⛅, 65-85% → cloudy ☁️
+  - ⚡ **Real-time**: Updates immediately when clouds pass over solar sensor
+  - 🔧 **Configuration**: Automatically enabled if `CONF_SOLAR_RADIATION_SENSOR` is configured
+  - ✅ **Optional**: If sensor not configured, weather entity works normally (falls through to forecast model)
+  - 📍 **Works**: Only during daytime (sun above horizon) with significant daylight (>50 W/m²)
+  - 🛡️ **Backwards Compatible**: No breaking changes - existing configs continue to work
+
+---
+
 ## [3.1.4] - 2026-01-16
 
 ### 🎯 Major Release - Forecast Model Selection & Enhanced Accuracy
