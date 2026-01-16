@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **Fog & Humidity Corrections**: Fixed overly aggressive downgrades overriding strong "fine weather" forecasts
+  - ❌ **Problem**: "Pekné počasie!" (Fine weather, Zambretti #1) + medium fog + 87% humidity → **cloudy** (incorrect)
+  - ✅ **Root Cause**: Corrections ignored forecast confidence - humidity/fog always overrode the model
+  - 🔧 **Solution**: Now respects forecast strength (forecast_num) when applying corrections:
+    - **Medium fog risk**: Downgrades sunny → **partlycloudy** (haze, not overcast)
+    - **Low fog risk**: Only downgrades if forecast_num > 3 (respects "settled fine" forecasts 0-3)
+    - **Humidity > 90%**: Always cloudy (extreme override)
+    - **Humidity > 85%**: Cloudy only if forecast_num > 2 (respects strong forecasts)
+    - **Humidity > 75%**: Partlycloudy only if forecast_num > 3 (respects settled weather)
+  - 📊 **Impact**: "Fine weather" forecasts no longer incorrectly downgraded to overcast
+  - 🎯 **Balance**: System now weighs forecast model confidence vs. atmospheric observations
+
 - **Snow Risk Calculation**: Fixed false HIGH risk when high humidity at freezing but no precipitation
   - ❄️ **Problem**: System reported HIGH snow risk at 0°C with 87% humidity but only 25% precipitation probability
   - ✅ **Root Cause**: High humidity + freezing = FOG/FROST, not snow without precipitation!

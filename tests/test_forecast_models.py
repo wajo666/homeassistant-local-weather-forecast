@@ -233,6 +233,8 @@ class TestHourlyForecastGenerator:
             assert "temperature" in forecast
             assert "pressure" in forecast
             assert "precipitation_probability" in forecast
+            assert "is_daytime" in forecast
+            assert isinstance(forecast["is_daytime"], bool)
 
     def test_generate_with_interval(self):
         """Test hourly forecast with 3-hour intervals."""
@@ -390,6 +392,44 @@ class TestHourlyForecastGenerator:
         prob_min = generator._calculate_rain_probability(0, 1040.0, "rising")
         assert 0 <= prob_min <= 100
 
+    def test_night_detection_daytime(self):
+        """Test that daytime forecasts are marked as daytime."""
+        # Create generator with daytime (12:00)
+        now_day = datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc)
+        temp_model_day = TemperatureModel(5.0, 0.0, now_day)
+        generator = HourlyForecastGenerator(
+            self.mock_hass,
+            self.pressure_model,
+            temp_model_day,
+            self.mock_zambretti,
+            latitude=48.0
+        )
+
+        forecasts = generator.generate(hours_count=2, interval_hours=1)
+
+        # Check that forecasts within daytime have is_daytime=True
+        assert forecasts[0]["is_daytime"] is True  # 12:00
+        assert forecasts[1]["is_daytime"] is True  # 13:00
+
+    def test_night_detection_nighttime(self):
+        """Test that nighttime forecasts are marked as nighttime."""
+        # Create generator with nighttime (22:00)
+        now_night = datetime(2025, 1, 15, 22, 0, tzinfo=timezone.utc)
+        temp_model_night = TemperatureModel(5.0, 0.0, now_night)
+        generator = HourlyForecastGenerator(
+            self.mock_hass,
+            self.pressure_model,
+            temp_model_night,
+            self.mock_zambretti,
+            latitude=48.0
+        )
+
+        forecasts = generator.generate(hours_count=2, interval_hours=1)
+
+        # Check that forecasts during night have is_daytime=False
+        assert forecasts[0]["is_daytime"] is False  # 22:00
+        assert forecasts[1]["is_daytime"] is False  # 23:00
+
 
 class TestDailyForecastGenerator:
     """Test DailyForecastGenerator class."""
@@ -432,6 +472,8 @@ class TestDailyForecastGenerator:
             assert "temperature" in forecast  # High
             assert "templow" in forecast  # Low
             assert "precipitation_probability" in forecast
+            assert "is_daytime" in forecast
+            assert forecast["is_daytime"] is True  # Daily forecasts are always daytime
 
     def test_generate_temperature_range(self):
         """Test that daily forecast includes temperature range."""
@@ -687,7 +729,8 @@ class TestUniversalConditionMapping:
             is_night_func=lambda: True,
             source="Zambretti"
         )
-        assert condition == "clear-night"
+        # Unsettled/changeable = partly cloudy, even at night (HA shows moon + clouds)
+        assert condition == "partlycloudy"
 
     def test_negretti_partly_cloudy(self):
         """Test partly cloudy for Negretti."""
@@ -745,7 +788,9 @@ class TestUniversalConditionMapping:
             is_night_func=lambda: True,
             source="Test"
         )
-        assert condition == "clear-night"
+        # Default fallback is partlycloudy (safe for both day and night)
+        # HA automatically shows correct icon (moon + clouds at night)
+        assert condition == "partlycloudy"
 
     def test_slovak_keywords(self):
         """Test Slovak language keywords work correctly."""
@@ -765,11 +810,86 @@ class TestUniversalConditionMapping:
         )
         assert condition_cloudy == "cloudy"
 
-        # Test Slovak fair
+        # Test Slovak fair - should be sunny during day
         condition_fair = map_forecast_to_condition(
             forecast_text="Pekné slnečné počasie",
             is_night_func=lambda: False,
             source="Slovak"
         )
+        # "slnečné" keyword should trigger sunny
         assert condition_fair == "sunny"
+
+    def test_zambretti_fair_weather_numbers(self):
+        """Test Zambretti fair weather detection for numbers 0-5."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Zambretti 0-5 should be sunny (if no unsettled keywords)
+        for num in range(6):  # 0, 1, 2, 3, 4, 5
+            condition = map_forecast_to_condition(
+                forecast_text="Fine weather",
+                forecast_num=num,
+                is_night_func=lambda: False,
+                source="Zambretti"
+            )
+            assert condition == "sunny", f"Zambretti #{num} should be sunny"
+
+        # Zambretti 6+ should not automatically be sunny
+        condition_6 = map_forecast_to_condition(
+            forecast_text="Some text",
+            forecast_num=6,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+        assert condition_6 == "partlycloudy", "Zambretti #6 should default to partlycloudy"
+
+    def test_negretti_fair_weather_numbers(self):
+        """Test Negretti fair weather detection for numbers 0-2."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Negretti 0-2 should be sunny (if no unsettled keywords)
+        for num in range(3):  # 0, 1, 2
+            condition = map_forecast_to_condition(
+                forecast_text="Pekné počasie",
+                forecast_num=num,
+                is_night_func=lambda: False,
+                source="Negretti"
+            )
+            assert condition == "sunny", f"Negretti #{num} should be sunny"
+
+        # Negretti 3+ should not automatically be sunny
+        condition_3 = map_forecast_to_condition(
+            forecast_text="Some text",
+            forecast_num=3,
+            is_night_func=lambda: False,
+            source="Negretti"
+        )
+        assert condition_3 == "partlycloudy", "Negretti #3 should default to partlycloudy"
+
+    def test_zambretti_fair_with_unsettled_mention(self):
+        """Test that unsettled keywords override fair number."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Zambretti #4 normally fair, but "later worse" should prevent sunny
+        condition = map_forecast_to_condition(
+            forecast_text="Fine, but later rain",
+            forecast_num=4,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+        # Should NOT be sunny because of "rain" keyword
+        assert condition != "sunny", "Should not be sunny with 'rain' in text"
+        # Should be rainy because of "rain" keyword
+        assert condition == "rainy"
+
+    def test_negretti_clear_night(self):
+        """Test Negretti fair weather at night becomes clear-night."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        condition = map_forecast_to_condition(
+            forecast_text="Stabilne pekné počasie!",
+            forecast_num=0,
+            is_night_func=lambda: True,
+            source="Negretti"
+        )
+        assert condition == "clear-night", "Negretti #0 at night should be clear-night"
 

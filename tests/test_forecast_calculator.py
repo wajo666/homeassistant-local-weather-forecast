@@ -379,7 +379,19 @@ class TestHourlyForecastGenerator:
 
     def test_generate_basic(self):
         """Test basic hourly forecast generation."""
+        from datetime import datetime, timezone, timedelta
+
         mock_hass = Mock()
+
+        # Mock sun entity for day/night detection
+        mock_sun = Mock()
+        mock_sun.state = "above_horizon"
+        now = datetime.now(timezone.utc)
+        mock_sun.attributes = {
+            "next_rising": (now + timedelta(hours=12)).isoformat(),
+            "next_setting": (now + timedelta(hours=6)).isoformat(),
+        }
+        mock_hass.states.get.return_value = mock_sun
 
         pressure_model = PressureModel(1013.25, 0.0)
         temp_model = TemperatureModel(20.0, 0.0, diurnal_amplitude=0.0)
@@ -406,7 +418,19 @@ class TestHourlyForecastGenerator:
 
     def test_generate_with_current_rain(self):
         """Test forecast generation with current rain."""
+        from datetime import datetime, timezone, timedelta
+
         mock_hass = Mock()
+
+        # Mock sun entity for day/night detection
+        mock_sun = Mock()
+        mock_sun.state = "above_horizon"
+        now = datetime.now(timezone.utc)
+        mock_sun.attributes = {
+            "next_rising": (now + timedelta(hours=12)).isoformat(),
+            "next_setting": (now + timedelta(hours=6)).isoformat(),
+        }
+        mock_hass.states.get.return_value = mock_sun
 
         pressure_model = PressureModel(1005.0, -3.0)  # Falling pressure
         temp_model = TemperatureModel(18.0, 0.0, diurnal_amplitude=0.0)
@@ -430,7 +454,19 @@ class TestHourlyForecastGenerator:
 
     def test_generate_interval_hours(self):
         """Test forecast generation with different intervals."""
+        from datetime import datetime, timezone, timedelta
+
         mock_hass = Mock()
+
+        # Mock sun entity for day/night detection
+        mock_sun = Mock()
+        mock_sun.state = "above_horizon"
+        now = datetime.now(timezone.utc)
+        mock_sun.attributes = {
+            "next_rising": (now + timedelta(hours=12)).isoformat(),
+            "next_setting": (now + timedelta(hours=6)).isoformat(),
+        }
+        mock_hass.states.get.return_value = mock_sun
 
         pressure_model = PressureModel(1013.25, 0.0)
         temp_model = TemperatureModel(20.0, 0.0, diurnal_amplitude=0.0)
@@ -447,6 +483,123 @@ class TestHourlyForecastGenerator:
         forecasts = generator.generate(hours_count=12, interval_hours=3)
 
         assert len(forecasts) == 5  # 0, 3, 6, 9, 12
+
+    def test_night_detection_with_sun_entity(self):
+        """Test that night detection uses sun entity correctly."""
+        from datetime import datetime, timezone, timedelta
+
+        mock_hass = Mock()
+
+        # Mock sun entity for nighttime
+        mock_sun = Mock()
+        mock_sun.state = "below_horizon"  # Currently night
+        now = datetime.now(timezone.utc)
+        # Next sunrise in 8 hours, next sunset in 20 hours (typical night scenario)
+        mock_sun.attributes = {
+            "next_rising": (now + timedelta(hours=8)).isoformat(),
+            "next_setting": (now + timedelta(hours=20)).isoformat(),
+        }
+        mock_hass.states.get.return_value = mock_sun
+
+        pressure_model = PressureModel(1013.25, 0.0)
+        temp_model = TemperatureModel(15.0, 0.0, diurnal_amplitude=0.0)
+        zambretti = ZambrettiForecaster()
+
+        generator = HourlyForecastGenerator(
+            mock_hass,
+            pressure_model,
+            temp_model,
+            zambretti,
+            wind_direction=180,
+            wind_speed=2.0
+        )
+
+        # Generate forecasts for next 10 hours
+        forecasts = generator.generate(hours_count=10, interval_hours=1)
+
+        # Check that is_daytime is properly set
+        for i, forecast in enumerate(forecasts):
+            assert "is_daytime" in forecast
+            # First few hours should be night (before sunrise at +8h)
+            if i < 8:
+                assert forecast["is_daytime"] is False, f"Hour {i} should be night"
+            # After sunrise should be day
+            else:
+                assert forecast["is_daytime"] is True, f"Hour {i} should be day"
+
+    def test_night_detection_fallback_without_sun_entity(self):
+        """Test that night detection falls back to hour-based check without sun entity."""
+        mock_hass = Mock()
+        # No sun entity available
+        mock_hass.states.get.return_value = None
+
+        pressure_model = PressureModel(1013.25, 0.0)
+        temp_model = TemperatureModel(15.0, 0.0, diurnal_amplitude=0.0)
+        zambretti = ZambrettiForecaster()
+
+        generator = HourlyForecastGenerator(
+            mock_hass,
+            pressure_model,
+            temp_model,
+            zambretti,
+            wind_direction=180,
+            wind_speed=2.0
+        )
+
+        # Generate just a few forecasts
+        forecasts = generator.generate(hours_count=3, interval_hours=1)
+
+        # Should have generated forecasts even without sun entity
+        assert len(forecasts) == 4  # 0, 1, 2, 3
+
+        # All forecasts should have is_daytime field
+        for forecast in forecasts:
+            assert "is_daytime" in forecast
+            # Value depends on current hour (19-07 is night)
+
+    def test_night_condition_conversion(self):
+        """Test that sunny is converted to clear-night, but partlycloudy stays partlycloudy at night."""
+        from datetime import datetime, timezone
+
+        mock_hass = Mock()
+
+        # Mock sun entity that indicates it's night
+        mock_sun = Mock()
+        mock_sun.state = "below_horizon"
+        mock_sun.attributes = {
+            "next_rising": "2024-01-15T08:00:00+00:00",
+            "next_setting": "2024-01-15T20:00:00+00:00"
+        }
+        mock_hass.states.get.return_value = mock_sun
+
+        # High pressure conditions that would normally result in sunny/partlycloudy
+        pressure_model = PressureModel(1025.0, 0.0)  # High pressure = clear conditions
+        temp_model = TemperatureModel(5.0, 0.0, diurnal_amplitude=0.0)
+        zambretti = ZambrettiForecaster()
+
+        generator = HourlyForecastGenerator(
+            mock_hass,
+            pressure_model,
+            temp_model,
+            zambretti,
+            wind_direction=180,
+            wind_speed=2.0
+        )
+
+        # Generate forecasts for nighttime hours
+        forecasts = generator.generate(hours_count=6, interval_hours=1)
+
+        # Check that night forecasts handle conditions correctly
+        for i, forecast in enumerate(forecasts):
+            if forecast["is_daytime"] is False:
+                # During night, should NOT have sunny (should be clear-night)
+                assert forecast["condition"] != "sunny", \
+                    f"Hour {i}: Night forecast should not use 'sunny' condition"
+
+                # partlycloudy is valid at night - HA shows correct icon automatically
+                # clear-night is used only for truly clear sky conditions
+                # No assertion needed - both partlycloudy and clear-night are valid at night
+
 
 
 class TestDailyForecastGenerator:

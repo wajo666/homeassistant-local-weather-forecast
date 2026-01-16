@@ -69,49 +69,77 @@ def map_forecast_to_condition(
         any(word in text_lower for word in ["unsettled", "changeable", "variable", "premenlivý", "nestále"])
     )
     if is_unsettled:
-        condition = "clear-night" if is_night else "partlycloudy"
+        # partlycloudy works for both day and night (HA shows correct icon automatically)
         _LOGGER.debug(
-            f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+            f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → partlycloudy "
             f"(unsettled, night={is_night})"
         )
-        return condition
+        return "partlycloudy"
 
     # Priority 5: Cloudy weather
     # Negretti-specific: "Polooblačno" (partly cloudy) or "Oblačno" (cloudy)
     if any(word in text_lower for word in ["cloudy", "overcast", "oblačn", "zamračen"]):
         # Check if it's "partly cloudy" vs "fully cloudy"
         if any(word in text_lower for word in ["partly", "polo", "miestami"]):
-            condition = "clear-night" if is_night else "partlycloudy"
-            _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → {condition} (partly cloudy, night={is_night})")
-            return condition
+            # partlycloudy works for both day and night (HA shows correct icon automatically)
+            _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → partlycloudy (partly cloudy, night={is_night})")
+            return "partlycloudy"
         else:
             _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → cloudy (fully cloudy)")
             return "cloudy"
 
-    # Priority 6: Fair/fine weather
-    # For Zambretti: numbers 0-5 are settled fine
-    # For Negretti: numbers 0-2 are fine
-    is_fair = (
-        (forecast_num is not None and forecast_num <= 5) or  # Zambretti/Negretti fair zone
-        any(word in text_lower for word in [
-            "fine", "fair", "settled", "stable", "pekn", "jasn", "slnečn"
-        ])
+    # Priority 6: Fair/fine weather (truly clear/sunny conditions)
+    # Only consider it "fair" if:
+    # 1. Forecast number is in the "settled fine" range (model-specific)
+    # 2. Text indicates settled/stable weather without rain/shower/changeable mentions
+    # For Zambretti: numbers 0-5 are "Settled fine" / "Fine weather"
+    # For Negretti: numbers 0-2 are "Stabilne pekné počasie!" / "Pekné počasie!" / "Polooblačno..."
+
+    # Check if text mentions any unsettled conditions
+    has_unsettled_mention = any(word in text_lower for word in [
+        "shower", "rain", "changeable", "unsettled", "later", "becoming",
+        "prehán", "dážď", "premenl", "nestál", "neskôr"
+    ])
+
+    # Model-specific fair weather thresholds
+    is_fair_by_number = False
+    if forecast_num is not None:
+        if source == "Zambretti":
+            # Zambretti 0-5: "Settled fine" to "Fine weather"
+            is_fair_by_number = forecast_num <= 5
+        elif source == "Negretti":
+            # Negretti 0-2: "Stabilne pekné počasie!" to "Polooblačno..."
+            is_fair_by_number = forecast_num <= 2
+        else:
+            # Combined/other: use conservative threshold
+            is_fair_by_number = forecast_num <= 2
+
+    # Only treat as truly fair/sunny if:
+    # - Number indicates settled weather (model-specific) AND text doesn't mention unsettled conditions
+    # - OR text strongly indicates settled/sunny weather without any unsettled mentions
+    is_truly_fair = (
+        (is_fair_by_number and not has_unsettled_mention) or
+        (not has_unsettled_mention and any(word in text_lower for word in [
+            "settled", "stable", "stabilne", "settled fine",
+            "slnečn", "jasn"  # SK: "slnečné" (sunny), "jasno" (clear)
+        ]))
     )
-    if is_fair:
+
+    if is_truly_fair:
         condition = "clear-night" if is_night else "sunny"
         _LOGGER.debug(
             f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
-            f"(fair weather, night={is_night})"
+            f"(truly fair weather, night={is_night})"
         )
         return condition
 
     # Default: partly cloudy (safe fallback)
-    condition = "clear-night" if is_night else "partlycloudy"
+    # partlycloudy works for both day and night (HA shows correct icon automatically)
     _LOGGER.debug(
-        f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+        f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → partlycloudy "
         f"(default fallback, night={is_night})"
     )
-    return condition
+    return "partlycloudy"
 
 
 class PressureModel:
@@ -396,6 +424,9 @@ class HourlyForecastGenerator:
                 pressure_trend
             )
 
+            # Determine if this forecast time is daytime
+            is_daytime = not self._is_night_time(forecast_time)
+
             forecast_point = {
                 "datetime": forecast_time.isoformat(),
                 "condition": condition,
@@ -403,6 +434,7 @@ class HourlyForecastGenerator:
                 "native_temperature": predicted_temp,
                 "pressure": predicted_pressure,
                 "precipitation_probability": rain_prob,
+                "is_daytime": is_daytime,
                 "forecast_text": forecast_text,
             }
 
@@ -411,7 +443,7 @@ class HourlyForecastGenerator:
             _LOGGER.debug(
                 f"Hour {hour}: {forecast_time.strftime('%H:%M')} - "
                 f"{condition}, {predicted_temp}°C, {predicted_pressure}hPa, "
-                f"rain {rain_prob}%"
+                f"rain {rain_prob}%, {'day' if is_daytime else 'night'}"
             )
 
         return forecasts
@@ -440,6 +472,9 @@ class HourlyForecastGenerator:
     def _is_night_time(self, check_time: datetime | None = None) -> bool:
         """Check if given time is during night (sun below horizon).
 
+        Uses Home Assistant's sun entity for current time, and calculates
+        sunrise/sunset for future times using latitude.
+
         Args:
             check_time: Time to check (defaults to now)
 
@@ -448,12 +483,13 @@ class HourlyForecastGenerator:
         """
         try:
             import homeassistant.util.dt as dt_util
+            from datetime import date
 
             # Get sun entity state
             sun_entity = self.hass.states.get("sun.sun")
 
             if check_time is None:
-                # Check current time
+                # Check current time using sun entity
                 if sun_entity:
                     return sun_entity.state == "below_horizon"
                 else:
@@ -461,12 +497,52 @@ class HourlyForecastGenerator:
                     current_hour = dt_util.now().hour
                     return current_hour >= 19 or current_hour < 7
             else:
-                # For future times, use astral calculation or simple hour check
-                # Simple approach: check hour of day
-                hour = check_time.hour
-                # Night is roughly 19:00 - 07:00 (adjust based on latitude if needed)
-                is_night = hour >= 19 or hour < 7
-                return is_night
+                # For future times, calculate sunrise/sunset using astral
+                try:
+                    from astral import LocationInfo
+                    from astral.sun import sun
+
+                    # Create location with latitude (longitude not critical for sunrise/sunset)
+                    location = LocationInfo(
+                        name="Station",
+                        region="",
+                        timezone="UTC",
+                        latitude=self.latitude,
+                        longitude=0  # Approximate, not critical
+                    )
+
+                    # Get sunrise/sunset for the forecast day
+                    forecast_date = check_time.date()
+                    s = sun(location.observer, date=forecast_date)
+
+                    sunrise = s["sunrise"]
+                    sunset = s["sunset"]
+
+                    # Make check_time timezone-aware if it isn't already
+                    if check_time.tzinfo is None:
+                        check_time = check_time.replace(tzinfo=timezone.utc)
+
+                    # Check if time is before sunrise or after sunset
+                    is_night = check_time < sunrise or check_time > sunset
+
+                    _LOGGER.debug(
+                        f"Night check for {check_time.strftime('%Y-%m-%d %H:%M')}: "
+                        f"sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')}, "
+                        f"is_night={is_night}"
+                    )
+
+                    return is_night
+
+                except ImportError:
+                    # Fallback if astral not available
+                    _LOGGER.debug("Astral not available, using simple hour check for future time")
+                    hour = check_time.hour
+                    return hour >= 19 or hour < 7
+                except Exception as e:
+                    _LOGGER.debug(f"Error calculating sunrise/sunset: {e}, falling back to hour check")
+                    hour = check_time.hour
+                    return hour >= 19 or hour < 7
+
         except Exception as e:
             _LOGGER.debug(f"Night check error: {e}")
             return False
@@ -590,6 +666,7 @@ class DailyForecastGenerator:
                 "templow": temp_low,
                 "native_templow": temp_low,
                 "precipitation_probability": round(avg_rain_prob),
+                "is_daytime": True,  # Daily forecasts represent daytime
             }
 
             daily_forecasts.append(daily_forecast)

@@ -37,6 +37,7 @@ class Forecast(TypedDict, total=False):
     precipitation: float | None
     native_precipitation: float | None
     precipitation_probability: int | None
+    is_daytime: bool | None  # Whether forecast is for daytime or nighttime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -683,18 +684,26 @@ class ZambrettiForecaster:
 
             if next_rising_str and next_setting_str:
                 from homeassistant.util import dt as dt_util
-                next_rising = dt_util.parse_datetime(next_rising_str)
-                next_setting = dt_util.parse_datetime(next_setting_str)
 
-                if next_rising and next_setting:
+                # Ensure they are strings before parsing
+                if not isinstance(next_rising_str, str):
+                    next_rising_str = str(next_rising_str) if next_rising_str else None
+                if not isinstance(next_setting_str, str):
+                    next_setting_str = str(next_setting_str) if next_setting_str else None
 
-                    # If check time is between sunset and next sunrise, it's night
-                    if next_setting < next_rising:
-                        # Currently day - night is after next_setting
-                        return check_time >= next_setting
-                    else:
-                        # Currently night - day is after next_rising
-                        return check_time < next_rising
+                if next_rising_str and next_setting_str:
+                    next_rising = dt_util.parse_datetime(next_rising_str)
+                    next_setting = dt_util.parse_datetime(next_setting_str)
+
+                    if next_rising and next_setting:
+
+                        # If check time is between sunset and next sunrise, it's night
+                        if next_setting < next_rising:
+                            # Currently day - night is after next_setting
+                            return check_time >= next_setting
+                        else:
+                            # Currently night - day is after next_rising
+                            return check_time < next_rising
         except (ValueError, AttributeError) as err:
             _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
 
@@ -954,17 +963,34 @@ class HourlyForecastGenerator:
                     forecast_num = zambretti_num
                     _LOGGER.debug(f"Combined forecast (Zambretti fallback): {zambretti_letter}")
 
+            # Determine if it's daytime using sun entity (if available)
+            is_night = self._is_night(future_time)
+            is_daytime = not is_night
+
+            _LOGGER.debug(
+                f"Forecast for {future_time.strftime('%Y-%m-%d %H:%M')}: "
+                f"hour={future_time.hour:02d}, is_daytime={is_daytime}, is_night={is_night}"
+            )
+
             # Determine weather condition
             condition = self.zambretti.get_condition(
                 forecast_letter,
                 future_time
             )
 
+            # NIGHT CONVERSION for forecasts
+            # Convert ONLY sunny to clear-night during nighttime
+            # Keep partlycloudy as-is - HA shows correct moon+clouds icon automatically
+            if is_night and condition == "sunny":
+                _LOGGER.debug(
+                    f"Hourly forecast night conversion: sunny → clear-night "
+                    f"(time={future_time.strftime('%H:%M')})"
+                )
+                condition = "clear-night"
+
             # REAL-TIME PRECIPITATION OVERRIDE
             # If it's currently raining (hour_offset <= 1), override Zambretti prediction
             if hour_offset <= 1 and self.current_rain_rate > 0:
-                is_night = self.zambretti._is_night(future_time)
-
                 if self.current_rain_rate >= 7.6:  # Heavy rain (>7.6 mm/h)
                     condition = "pouring"
                     rain_prob = 100
@@ -997,6 +1023,7 @@ class HourlyForecastGenerator:
                 "precipitation_probability": rain_prob,
                 "precipitation": None,  # Not predicted by Zambretti
                 "native_precipitation": None,
+                "is_daytime": is_daytime,
             }
 
             forecasts.append(forecast)
@@ -1007,6 +1034,91 @@ class HourlyForecastGenerator:
         )
 
         return forecasts
+
+    def _is_night(self, check_time: datetime) -> bool:
+        """Check if it's night time based on sun position.
+
+        Args:
+            check_time: Time to check
+
+        Returns:
+            True if sun is below horizon
+        """
+        if self.hass is None:
+            # Fallback to simple time check if hass not available
+            return check_time.hour >= 19 or check_time.hour < 7
+
+        # Get sun entity
+        sun_entity = self.hass.states.get("sun.sun")
+
+        if not sun_entity:
+            # Fallback to simple time check if sun entity not available
+            _LOGGER.debug(f"Sun entity not available, using fallback time check for hour={check_time.hour}")
+            return check_time.hour >= 19 or check_time.hour < 7
+
+        # For current time (within 1 minute), just check state
+        now = datetime.now(timezone.utc)
+
+        # Make check_time timezone aware first if needed
+        if check_time.tzinfo is None:
+            check_time = check_time.replace(tzinfo=timezone.utc)
+
+        time_diff = abs((check_time - now).total_seconds())
+
+        if time_diff < 60:
+            is_night = sun_entity.state == "below_horizon"
+            _LOGGER.debug(f"Current time check: is_night={is_night} (sun.sun state={sun_entity.state})")
+            return is_night
+
+        # For future times, use sunrise/sunset times from sun entity
+        try:
+            # Get next sunrise and sunset
+            next_rising_str = sun_entity.attributes.get("next_rising")
+            next_setting_str = sun_entity.attributes.get("next_setting")
+
+            if next_rising_str and next_setting_str:
+                from homeassistant.util import dt as dt_util
+
+                # Ensure they are strings before parsing
+                if not isinstance(next_rising_str, str):
+                    next_rising_str = str(next_rising_str) if next_rising_str else None
+                if not isinstance(next_setting_str, str):
+                    next_setting_str = str(next_setting_str) if next_setting_str else None
+
+                if next_rising_str and next_setting_str:
+                    next_rising = dt_util.parse_datetime(next_rising_str)
+                    next_setting = dt_util.parse_datetime(next_setting_str)
+
+                if next_rising and next_setting:
+                    # If check time is between sunset and next sunrise, it's night
+                    if next_setting < next_rising:
+                        # Currently day - night is after next_setting
+                        is_night = check_time >= next_setting
+                        _LOGGER.debug(
+                            f"Future time check (day→night): "
+                            f"check={check_time.strftime('%H:%M')}, "
+                            f"sunset={next_setting.strftime('%H:%M')}, "
+                            f"sunrise={next_rising.strftime('%H:%M')} → is_night={is_night}"
+                        )
+                        return is_night
+                    else:
+                        # Currently night - day is after next_rising
+                        is_night = check_time < next_rising
+                        _LOGGER.debug(
+                            f"Future time check (night→day): "
+                            f"check={check_time.strftime('%H:%M')}, "
+                            f"sunrise={next_rising.strftime('%H:%M')}, "
+                            f"sunset={next_setting.strftime('%H:%M')} → is_night={is_night}"
+                        )
+                        return is_night
+        except (ValueError, AttributeError) as err:
+            _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
+
+        # Fallback: Night is between 19:00 and 07:00
+        hour = check_time.hour
+        is_night = hour >= 19 or hour < 7
+        _LOGGER.debug(f"Fallback time check: hour={hour} → is_night={is_night}")
+        return is_night
 
 
 class DailyForecastGenerator:
@@ -1092,6 +1204,7 @@ class DailyForecastGenerator:
                 "precipitation_probability": daily_rain_prob,
                 "precipitation": None,  # Not predicted by Zambretti
                 "native_precipitation": None,
+                "is_daytime": True,  # Daily forecasts always represent daytime
             }
 
             daily_forecasts.append(forecast)
