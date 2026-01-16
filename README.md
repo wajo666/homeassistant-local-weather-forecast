@@ -3,7 +3,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/wajo666/homeassistant-local-weather-forecast.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-3.1.4-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.1.5-blue.svg)](https://github.com/wajo666/homeassistant-local-weather-forecast/blob/main/CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-527%20passed-brightgreen.svg)](tests/README_TESTS.md)
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)](tests/README_TESTS.md)
 [![Developer](https://img.shields.io/badge/Developer-wajo666-green.svg)](https://github.com/wajo666)

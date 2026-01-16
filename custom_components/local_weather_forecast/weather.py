@@ -110,7 +110,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.4",
+            sw_version="3.1.5",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -509,6 +509,97 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
                     return ATTR_CONDITION_FOG
 
+            # PRIORITY 2.5: SOLAR RADIATION BASED CLOUD DETECTION
+            # Solar radiation reveals actual cloud cover better than forecast
+            # This provides real-time cloudiness detection from measured sunlight
+            solar_radiation = None
+            solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+            if solar_sensor_id:
+                solar_state = self.hass.states.get(solar_sensor_id)
+                if solar_state and solar_state.state not in ("unknown", "unavailable", None):
+                    try:
+                        solar_radiation = float(solar_state.state)
+                    except (ValueError, TypeError):
+                        pass
+
+            # Only use solar radiation during daytime (sun above horizon)
+            if solar_radiation is not None and self.hass.states.is_state('sun.sun', 'above_horizon'):
+                # Get seasonal maximum solar radiation for comparison
+                # These are typical clear-sky values at noon for mid-latitudes
+                from homeassistant.util import dt as dt_util
+                now = dt_util.now()
+                month = now.month
+
+                # Seasonal maximum solar radiation at noon (W/m²)
+                # Based on typical clear-sky conditions for latitude ~48°N
+                if month in (1, 12):
+                    max_solar = 300  # Winter
+                elif month in (2, 11):
+                    max_solar = 400  # Late winter / early winter
+                elif month in (3, 10):
+                    max_solar = 550  # Spring / Autumn
+                elif month in (4, 9):
+                    max_solar = 750  # Late spring / early autumn
+                elif month in (5, 8):
+                    max_solar = 950  # Early summer / late summer
+                else:  # June, July
+                    max_solar = 1100  # Peak summer
+
+                # Adjust for time of day (solar angle)
+                hour = now.hour + (now.minute / 60.0)
+                # Simple cosine approximation: peak at 12:00, zero at sunrise/sunset
+                # Assume ~6:00 sunrise, ~18:00 sunset (adjust by season if needed)
+                hour_angle = abs(hour - 12.0)
+                if hour_angle < 6:  # Between 6am-6pm roughly
+                    time_factor = max(0.0, (1.0 - (hour_angle / 7.0)))  # Gradual decrease from noon
+                    theoretical_max = max_solar * time_factor
+                else:
+                    theoretical_max = 0
+
+                if theoretical_max > 50:  # Only during significant daylight
+                    # Calculate cloud cover percentage from solar radiation
+                    cloud_ratio = solar_radiation / theoretical_max if theoretical_max > 0 else 0
+                    cloud_percent = max(0, min(100, (1 - cloud_ratio) * 100))
+
+                    _LOGGER.debug(
+                        f"Weather: Solar radiation cloud detection - "
+                        f"measured={solar_radiation:.0f} W/m², theoretical={theoretical_max:.0f} W/m², "
+                        f"cloud_cover={cloud_percent:.0f}%"
+                    )
+
+                    # Override condition based on measured cloudiness
+                    # These thresholds are meteorologically justified:
+                    # - 0-25% clouds = sunny (clear skies, >75% of max radiation)
+                    # - 25-65% clouds = partly cloudy (scattered clouds)
+                    # - 65-85% clouds = cloudy (mostly overcast)
+                    # - >85% clouds = very cloudy/rainy conditions
+
+                    if cloud_percent < 25:
+                        _LOGGER.debug(
+                            f"Weather: Solar radiation override → sunny "
+                            f"(cloud_cover={cloud_percent:.0f}%, clear skies detected)"
+                        )
+                        return ATTR_CONDITION_SUNNY
+                    elif cloud_percent < 65:
+                        _LOGGER.debug(
+                            f"Weather: Solar radiation override → partly cloudy "
+                            f"(cloud_cover={cloud_percent:.0f}%, scattered clouds)"
+                        )
+                        return ATTR_CONDITION_PARTLYCLOUDY
+                    elif cloud_percent < 85:
+                        _LOGGER.debug(
+                            f"Weather: Solar radiation override → cloudy "
+                            f"(cloud_cover={cloud_percent:.0f}%, mostly overcast)"
+                        )
+                        return ATTR_CONDITION_CLOUDY
+                    # If cloud_percent >= 85%, fall through to forecast
+                    # (might be rainy, let forecast model decide)
+                    else:
+                        _LOGGER.debug(
+                            f"Weather: Solar radiation shows heavy clouds ({cloud_percent:.0f}%), "
+                            f"falling through to forecast model for rain/cloudy determination"
+                        )
+
             # PRIORITY 3: Get forecast condition based on selected model
             # User can choose: Enhanced (default), Zambretti, Negretti-Zambra, or Combined
             forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
@@ -612,6 +703,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     if humidity is not None:
                         _LOGGER.debug(f"Weather: Current humidity={humidity}%, forecast_num={forecast_num}")
 
+                        # Check if it's night - humidity has bigger impact at night
+                        # (condensation, dew, night clouds are more visible with high humidity)
+                        is_night = self._is_night()
+
                         # EXTREME humidity (>90%) = definitely overcast
                         # Only override Fine weather (forecast_num ≤ 3) if humidity is truly extreme (>92%)
                         if humidity > 92 and condition in (
@@ -637,14 +732,22 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             )
                             condition = ATTR_CONDITION_CLOUDY
 
-                        # High humidity (75-85%) = haze/partial cloud
+                        # High humidity (80-85% at night, 75-85% during day) = haze/partial cloud
+                        # At night, lower threshold because condensation and night clouds are more visible
+                        # NIGHT SPECIAL CASE: At night with 80%+ humidity, ALWAYS downgrade to partlycloudy
+                        # (night clouds are visible with street lights, moon reflection, etc.)
                         # Only downgrade sunny/clear-night (not if already partlycloudy)
-                        # AND respect "Fine weather" forecasts (forecast_num ≤ 3)
+                        if is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
+                            _LOGGER.debug(
+                                f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
+                                f"(RH={humidity:.1f}% > 80% at night, visible clouds likely)"
+                            )
+                            condition = ATTR_CONDITION_PARTLYCLOUDY
                         elif humidity > 75 and condition in (
                             ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
                         ) and (forecast_num is None or forecast_num > 5):
                             _LOGGER.debug(
-                                f"Weather: Humidity correction (high): {condition} → partlycloudy "
+                                f"Weather: Humidity correction (day haze): {condition} → partlycloudy "
                                 f"(RH={humidity:.1f}% > 75%, forecast_num={forecast_num})"
                             )
                             condition = ATTR_CONDITION_PARTLYCLOUDY
@@ -679,8 +782,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
                     return ATTR_CONDITION_SUNNY
 
-            # Final fallback - partlycloudy is safe for both day and night
-            _LOGGER.debug(f"Weather: Final fallback to partlycloudy")
+            # Final fallback - partlycloudy is safer than assuming clear-night
+            # (better to show partial clouds than miss actual clouds)
+            _LOGGER.debug(f"Weather: Final fallback to partlycloudy (no forecast/pressure data)")
             return ATTR_CONDITION_PARTLYCLOUDY
         except Exception as e:
             _LOGGER.error(f"Error determining weather condition: {e}", exc_info=True)

@@ -141,6 +141,9 @@ def calculate_negretti_zambra_forecast(
         z_hp = float(bar_bottom)
 
     # Calculate option index (this will be float, needs clamping)
+    # The Negretti & Zambra algorithm uses a historical scale from 950-1050 hPa
+    # divided into 22 index positions (0-21). Values outside this range indicate
+    # exceptional weather conditions (very high/low pressure systems).
     z_option_raw = (z_hp - bar_bottom) / constant
 
     _LOGGER.debug(f"Negretti: z_hp after adjustments={z_hp:.1f} hPa, z_option_raw={z_option_raw:.2f}")
@@ -148,16 +151,16 @@ def calculate_negretti_zambra_forecast(
     # Check for exceptional weather and clamp BEFORE converting to int
     is_exceptional = False
     if z_option_raw < 0.0:
-        _LOGGER.warning(
+        _LOGGER.info(
             f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} < 0, "
-            f"clamping to 0 (pressure={z_hp:.1f} hPa)"
+            f"clamping to 0 (pressure={z_hp:.1f} hPa, very low pressure)"
         )
         z_option_raw = 0.0
         is_exceptional = True
     elif z_option_raw > 21.0:
-        _LOGGER.warning(
+        _LOGGER.info(
             f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} > 21, "
-            f"clamping to 21 (pressure={z_hp:.1f} hPa)"
+            f"clamping to 21 (pressure={z_hp:.1f} hPa, very high pressure)"
         )
         z_option_raw = 21.0
         is_exceptional = True
