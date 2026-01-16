@@ -696,14 +696,34 @@ class ZambrettiForecaster:
                     next_setting = dt_util.parse_datetime(next_setting_str)
 
                     if next_rising and next_setting:
+                        # Make all times timezone-aware for comparison
+                        if check_time.tzinfo is None:
+                            check_time = check_time.replace(tzinfo=timezone.utc)
+                        if next_rising.tzinfo is None:
+                            next_rising = next_rising.replace(tzinfo=timezone.utc)
+                        if next_setting.tzinfo is None:
+                            next_setting = next_setting.replace(tzinfo=timezone.utc)
+
+                        _LOGGER.debug(
+                            f"Future time check (day→night): "
+                            f"check={check_time.strftime('%H:%M')}, "
+                            f"sunset={next_setting.strftime('%H:%M')}, "
+                            f"sunrise={next_rising.strftime('%H:%M')} → "
+                            f"is_night={check_time < next_rising or check_time >= next_setting}"
+                        )
 
                         # If check time is between sunset and next sunrise, it's night
+                        # Night period spans from sunset to next sunrise (may cross midnight)
                         if next_setting < next_rising:
-                            # Currently day - night is after next_setting
-                            return check_time >= next_setting
+                            # Same day: sunset before sunrise (e.g., 20:00 to 06:00 next day)
+                            # Night if: time >= sunset OR time < sunrise
+                            is_night = check_time >= next_setting or check_time < next_rising
                         else:
-                            # Currently night - day is after next_rising
-                            return check_time < next_rising
+                            # Next day: sunrise before sunset (e.g., 06:00 today, 20:00 today)
+                            # Night if: time < sunrise OR time >= sunset
+                            is_night = check_time < next_rising or check_time >= next_setting
+
+                        return is_night
         except (ValueError, AttributeError) as err:
             _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
 
@@ -1076,6 +1096,9 @@ class HourlyForecastGenerator:
             next_rising_str = sun_entity.attributes.get("next_rising")
             next_setting_str = sun_entity.attributes.get("next_setting")
 
+            next_rising = None
+            next_setting = None
+
             if next_rising_str and next_setting_str:
                 from homeassistant.util import dt as dt_util
 
@@ -1090,10 +1113,20 @@ class HourlyForecastGenerator:
                     next_setting = dt_util.parse_datetime(next_setting_str)
 
                 if next_rising and next_setting:
+                    # Make all times timezone-aware for comparison
+                    if check_time.tzinfo is None:
+                        check_time = check_time.replace(tzinfo=timezone.utc)
+                    if next_rising.tzinfo is None:
+                        next_rising = next_rising.replace(tzinfo=timezone.utc)
+                    if next_setting.tzinfo is None:
+                        next_setting = next_setting.replace(tzinfo=timezone.utc)
+
                     # If check time is between sunset and next sunrise, it's night
+                    # Night period spans from sunset to next sunrise (may cross midnight)
                     if next_setting < next_rising:
-                        # Currently day - night is after next_setting
-                        is_night = check_time >= next_setting
+                        # Same day: sunset before sunrise (e.g., 20:00 to 06:00 next day)
+                        # Night if: time >= sunset OR time < sunrise
+                        is_night = check_time >= next_setting or check_time < next_rising
                         _LOGGER.debug(
                             f"Future time check (day→night): "
                             f"check={check_time.strftime('%H:%M')}, "
@@ -1102,8 +1135,9 @@ class HourlyForecastGenerator:
                         )
                         return is_night
                     else:
-                        # Currently night - day is after next_rising
-                        is_night = check_time < next_rising
+                        # Next day: sunrise before sunset (e.g., 06:00 today, 20:00 today)
+                        # Night if: time < sunrise OR time >= sunset
+                        is_night = check_time < next_rising or check_time >= next_setting
                         _LOGGER.debug(
                             f"Future time check (night→day): "
                             f"check={check_time.strftime('%H:%M')}, "
