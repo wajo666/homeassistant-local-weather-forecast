@@ -2016,6 +2016,9 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Select base forecast based on model configuration
         from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
 
+        # Initialize zambretti_weight (will be set in Enhanced mode)
+        zambretti_weight = 0.5  # Default to balanced if not in Enhanced mode
+
         if forecast_model == FORECAST_MODEL_ZAMBRETTI:
             # Use Zambretti exclusively
             base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
@@ -2139,11 +2142,32 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
         self._state = enhanced_text
         _LOGGER.debug(f"Enhanced: Setting state to: {enhanced_text}")
+
+        # Determine which forecast number and letter to export for weather entity
+        # Weather entity expects "forecast_number" and "letter_code" attributes
+        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+            export_forecast_num = zambretti_num
+            export_letter_code = zambretti[2] if len(zambretti) > 2 else "A"
+        elif forecast_model == FORECAST_MODEL_NEGRETTI:
+            export_forecast_num = negretti_num
+            export_letter_code = negretti[2] if len(negretti) > 2 else "A"
+        else:  # FORECAST_MODEL_ENHANCED
+            # Enhanced mode: use the model that was actually selected (consensus logic)
+            # zambretti_weight was calculated in the Enhanced block above
+            if consensus or zambretti_weight >= 0.6:
+                export_forecast_num = zambretti_num
+                export_letter_code = zambretti[2] if len(zambretti) > 2 else "A"
+            else:
+                export_forecast_num = negretti_num
+                export_letter_code = negretti[2] if len(negretti) > 2 else "A"
+        
         self._attributes = {
             "forecast_model": forecast_model,  # NEW: Show which model is being used
             "base_forecast": base_text,
-            "zambretti_number": zambretti_num,
-            "negretti_number": negretti_num,
+            "forecast_number": export_forecast_num,  # For weather entity compatibility
+            "letter_code": export_letter_code,       # For weather entity compatibility
+            "zambretti_number": zambretti_num,       # Keep originals for reference
+            "negretti_number": negretti_num,         # Keep originals for reference
             "adjustments": adjustments,
             "adjustment_details": adjustment_details,
             "confidence": confidence,

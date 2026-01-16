@@ -97,7 +97,15 @@ class PressureModel:
             # Dampen the rate for next hour
             current_rate *= self.damping_factor
 
+        # Apply realistic limits to prevent unrealistic forecasts
+        # Maximum change: ±20 hPa over 24 hours (scales proportionally)
+        max_change = 20.0 * (hours_ahead / 24.0)  # Scale linearly with time
+        total_change = max(-max_change, min(max_change, total_change))
+
         predicted = self.current_pressure + total_change
+
+        # Constrain to realistic absolute pressure range (950-1050 hPa)
+        predicted = max(950.0, min(1050.0, predicted))
 
         # Clamp to realistic atmospheric pressure range (950-1050 hPa)
         result = max(950.0, min(1050.0, predicted))
@@ -676,56 +684,53 @@ class ZambrettiForecaster:
         if time_diff < 60:
             return sun_entity.state == "below_horizon"
 
-        # For future times, use sunrise/sunset times from sun entity
+        # For future times, calculate sunrise/sunset for the specific forecast date
         try:
-            # Get next sunrise and sunset
-            next_rising_str = sun_entity.attributes.get("next_rising")
-            next_setting_str = sun_entity.attributes.get("next_setting")
+            # Try using astral to calculate sunrise/sunset for the specific forecast date
+            try:
+                from astral import LocationInfo
+                from astral.sun import sun as astral_sun
 
-            if next_rising_str and next_setting_str:
-                from homeassistant.util import dt as dt_util
+                # Get latitude from hass
+                latitude = self.hass.config.latitude if self.hass.config else 48.0
 
-                # Ensure they are strings before parsing
-                if not isinstance(next_rising_str, str):
-                    next_rising_str = str(next_rising_str) if next_rising_str else None
-                if not isinstance(next_setting_str, str):
-                    next_setting_str = str(next_setting_str) if next_setting_str else None
+                # Create location
+                location = LocationInfo(
+                    name="Station",
+                    region="",
+                    timezone="UTC",
+                    latitude=latitude,
+                    longitude=0  # Not critical for sunrise/sunset
+                )
 
-                if next_rising_str and next_setting_str:
-                    next_rising = dt_util.parse_datetime(next_rising_str)
-                    next_setting = dt_util.parse_datetime(next_setting_str)
+                # Get sunrise/sunset for the specific forecast date
+                forecast_date = check_time.date()
+                s = astral_sun(location.observer, date=forecast_date)
 
-                    if next_rising and next_setting:
-                        # Make all times timezone-aware for comparison
-                        if check_time.tzinfo is None:
-                            check_time = check_time.replace(tzinfo=timezone.utc)
-                        if next_rising.tzinfo is None:
-                            next_rising = next_rising.replace(tzinfo=timezone.utc)
-                        if next_setting.tzinfo is None:
-                            next_setting = next_setting.replace(tzinfo=timezone.utc)
+                sunrise = s["sunrise"]
+                sunset = s["sunset"]
 
-                        _LOGGER.debug(
-                            f"Future time check (day→night): "
-                            f"check={check_time.strftime('%H:%M')}, "
-                            f"sunset={next_setting.strftime('%H:%M')}, "
-                            f"sunrise={next_rising.strftime('%H:%M')} → "
-                            f"is_night={check_time < next_rising or check_time >= next_setting}"
-                        )
+                # Make check_time timezone-aware if it isn't already
+                if check_time.tzinfo is None:
+                    check_time = check_time.replace(tzinfo=timezone.utc)
 
-                        # If check time is between sunset and next sunrise, it's night
-                        # Night period spans from sunset to next sunrise (may cross midnight)
-                        if next_setting < next_rising:
-                            # Same day: sunset before sunrise (e.g., 20:00 to 06:00 next day)
-                            # Night if: time >= sunset OR time < sunrise
-                            is_night = check_time >= next_setting or check_time < next_rising
-                        else:
-                            # Next day: sunrise before sunset (e.g., 06:00 today, 20:00 today)
-                            # Night if: time < sunrise OR time >= sunset
-                            is_night = check_time < next_rising or check_time >= next_setting
+                # Check if time is before sunrise or after sunset
+                is_night = check_time < sunrise or check_time > sunset
 
-                        return is_night
+                _LOGGER.debug(
+                    f"Future time check: "
+                    f"check={check_time.strftime('%Y-%m-%d %H:%M')}, "
+                    f"sunset={sunset.strftime('%Y-%m-%d %H:%M')}, "
+                    f"sunrise={sunrise.strftime('%Y-%m-%d %H:%M')} → "
+                    f"is_night={is_night}"
+                )
+
+                return is_night
+
+            except ImportError:
+                _LOGGER.debug("Astral library not available, using fallback time check")
         except (ValueError, AttributeError) as err:
-            _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
+            _LOGGER.debug(f"Could not calculate sun times, using fallback: {err}")
 
         # Fallback: Night is between 19:00 and 07:00
         hour = check_time.hour
@@ -989,13 +994,31 @@ class HourlyForecastGenerator:
 
             _LOGGER.debug(
                 f"Forecast for {future_time.strftime('%Y-%m-%d %H:%M')}: "
-                f"hour={future_time.hour:02d}, is_daytime={is_daytime}, is_night={is_night}"
+                f"hour={future_time.hour:02d}, is_daytime={is_daytime}, is_night={is_night}, "
+                f"forecast_letter={forecast_letter}, forecast_num={forecast_num}, model={self.forecast_model}"
             )
 
-            # Determine weather condition
-            condition = self.zambretti.get_condition(
-                forecast_letter,
-                future_time
+            # Determine weather condition using the CORRECT mapping for selected model
+            if self.forecast_model == FORECAST_MODEL_NEGRETTI and negretti_letter:
+                # Use Negretti-Zambra mapping
+                try:
+                    from .negretti_zambra import _map_zambretti_to_letter
+                    # Map Negretti number to condition via Zambretti mapping
+                    # (Negretti uses same letter system as Zambretti)
+                    condition = self.zambretti.get_condition(negretti_letter, future_time)
+                    _LOGGER.debug(
+                        f"Using Negretti-Zambra mapping: letter={negretti_letter} → condition={condition}"
+                    )
+                except Exception as e:
+                    _LOGGER.debug(f"Negretti mapping failed: {e}, falling back to Zambretti")
+                    condition = self.zambretti.get_condition(forecast_letter, future_time)
+            else:
+                # Use Zambretti mapping (default for ZAMBRETTI and ENHANCED models)
+                condition = self.zambretti.get_condition(forecast_letter, future_time)
+
+            _LOGGER.debug(
+                f"Condition for {future_time.strftime('%H:%M')}: "
+                f"model={self.forecast_model}, letter={forecast_letter} → condition={condition}"
             )
 
             # NIGHT CONVERSION for forecasts
@@ -1008,31 +1031,20 @@ class HourlyForecastGenerator:
                 )
                 condition = "clear-night"
 
-            # REAL-TIME PRECIPITATION OVERRIDE
-            # If it's currently raining (hour_offset <= 1), override Zambretti prediction
-            if hour_offset <= 1 and self.current_rain_rate > 0:
-                if self.current_rain_rate >= 7.6:  # Heavy rain (>7.6 mm/h)
-                    condition = "pouring"
-                    rain_prob = 100
-                elif self.current_rain_rate >= 2.5:  # Moderate rain (2.5-7.6 mm/h)
-                    condition = "rainy"
-                    rain_prob = 100
-                else:  # Light rain (<2.5 mm/h)
-                    condition = "rainy"
-                    rain_prob = 100
+            # Calculate rain probability from selected model (Zambretti/Negretti/Enhanced)
+            # NOTE: Rain override is NOT applied to forecasts - only to current weather display
+            # Forecasts always use model predictions, regardless of current rain
+            rain_prob = rain_calc.calculate(
+                current_pressure=self.pressure_model.current_pressure,
+                future_pressure=future_pressure,
+                pressure_trend=pressure_trend,
+                zambretti_code=forecast_num,
+                zambretti_letter=forecast_letter
+            )
 
-                _LOGGER.debug(
-                    f"Rain override: {self.current_rain_rate}mm/h → {condition} (100%)"
-                )
-            else:
-                # Calculate rain probability from models using selected forecast
-                rain_prob = rain_calc.calculate(
-                    current_pressure=self.pressure_model.current_pressure,
-                    future_pressure=future_pressure,
-                    pressure_trend=pressure_trend,
-                    zambretti_code=forecast_num,
-                    zambretti_letter=forecast_letter
-                )
+            # Barometric models don't predict exact precipitation amounts
+            # Only probability and conditions are predicted
+            precipitation_amount = None
 
             # Create forecast entry
             forecast: Forecast = {
@@ -1041,8 +1053,8 @@ class HourlyForecastGenerator:
                 "temperature": round(future_temp, 1),
                 "native_temperature": round(future_temp, 1),
                 "precipitation_probability": rain_prob,
-                "precipitation": None,  # Not predicted by Zambretti
-                "native_precipitation": None,
+                "precipitation": precipitation_amount,  # Model doesn't predict exact mm
+                "native_precipitation": precipitation_amount,
                 "is_daytime": is_daytime,
             }
 
@@ -1090,63 +1102,53 @@ class HourlyForecastGenerator:
             _LOGGER.debug(f"Current time check: is_night={is_night} (sun.sun state={sun_entity.state})")
             return is_night
 
-        # For future times, use sunrise/sunset times from sun entity
+        # For future times, calculate sunrise/sunset for the specific forecast date
         try:
-            # Get next sunrise and sunset
-            next_rising_str = sun_entity.attributes.get("next_rising")
-            next_setting_str = sun_entity.attributes.get("next_setting")
+            # Try using astral to calculate sunrise/sunset for the specific forecast date
+            try:
+                from astral import LocationInfo
+                from astral.sun import sun as astral_sun
 
-            next_rising = None
-            next_setting = None
+                # Get latitude from hass
+                latitude = self.hass.config.latitude if self.hass.config else 48.0
 
-            if next_rising_str and next_setting_str:
-                from homeassistant.util import dt as dt_util
+                # Create location
+                location = LocationInfo(
+                    name="Station",
+                    region="",
+                    timezone="UTC",
+                    latitude=latitude,
+                    longitude=0  # Not critical for sunrise/sunset
+                )
 
-                # Ensure they are strings before parsing
-                if not isinstance(next_rising_str, str):
-                    next_rising_str = str(next_rising_str) if next_rising_str else None
-                if not isinstance(next_setting_str, str):
-                    next_setting_str = str(next_setting_str) if next_setting_str else None
+                # Get sunrise/sunset for the specific forecast date
+                forecast_date = check_time.date()
+                s = astral_sun(location.observer, date=forecast_date)
 
-                if next_rising_str and next_setting_str:
-                    next_rising = dt_util.parse_datetime(next_rising_str)
-                    next_setting = dt_util.parse_datetime(next_setting_str)
+                sunrise = s["sunrise"]
+                sunset = s["sunset"]
 
-                if next_rising and next_setting:
-                    # Make all times timezone-aware for comparison
-                    if check_time.tzinfo is None:
-                        check_time = check_time.replace(tzinfo=timezone.utc)
-                    if next_rising.tzinfo is None:
-                        next_rising = next_rising.replace(tzinfo=timezone.utc)
-                    if next_setting.tzinfo is None:
-                        next_setting = next_setting.replace(tzinfo=timezone.utc)
+                # Make check_time timezone-aware if it isn't already
+                if check_time.tzinfo is None:
+                    check_time = check_time.replace(tzinfo=timezone.utc)
 
-                    # If check time is between sunset and next sunrise, it's night
-                    # Night period spans from sunset to next sunrise (may cross midnight)
-                    if next_setting < next_rising:
-                        # Same day: sunset before sunrise (e.g., 20:00 to 06:00 next day)
-                        # Night if: time >= sunset OR time < sunrise
-                        is_night = check_time >= next_setting or check_time < next_rising
-                        _LOGGER.debug(
-                            f"Future time check (day→night): "
-                            f"check={check_time.strftime('%H:%M')}, "
-                            f"sunset={next_setting.strftime('%H:%M')}, "
-                            f"sunrise={next_rising.strftime('%H:%M')} → is_night={is_night}"
-                        )
-                        return is_night
-                    else:
-                        # Next day: sunrise before sunset (e.g., 06:00 today, 20:00 today)
-                        # Night if: time < sunrise OR time >= sunset
-                        is_night = check_time < next_rising or check_time >= next_setting
-                        _LOGGER.debug(
-                            f"Future time check (night→day): "
-                            f"check={check_time.strftime('%H:%M')}, "
-                            f"sunrise={next_rising.strftime('%H:%M')}, "
-                            f"sunset={next_setting.strftime('%H:%M')} → is_night={is_night}"
-                        )
-                        return is_night
+                # Check if time is before sunrise or after sunset
+                is_night = check_time < sunrise or check_time > sunset
+
+                _LOGGER.debug(
+                    f"Future time check: "
+                    f"check={check_time.strftime('%Y-%m-%d %H:%M')}, "
+                    f"sunset={sunset.strftime('%Y-%m-%d %H:%M')}, "
+                    f"sunrise={sunrise.strftime('%Y-%m-%d %H:%M')} → "
+                    f"is_night={is_night}"
+                )
+
+                return is_night
+
+            except ImportError:
+                _LOGGER.debug("Astral library not available, using fallback time check")
         except (ValueError, AttributeError) as err:
-            _LOGGER.debug(f"Could not parse sun times, using fallback: {err}")
+            _LOGGER.debug(f"Could not calculate sun times, using fallback: {err}")
 
         # Fallback: Night is between 19:00 and 07:00
         hour = check_time.hour

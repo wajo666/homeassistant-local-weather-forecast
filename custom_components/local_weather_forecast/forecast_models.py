@@ -414,8 +414,20 @@ class HourlyForecastGenerator:
             forecast_text = zambretti_result[0] if zambretti_result else "Unknown"
             forecast_num = zambretti_result[1] if len(zambretti_result) > 1 else 0
 
+            # For hour=0 (current time), use None to trigger sun entity check
+            # For future hours, pass the forecast_time for astral calculation
+            check_time = None if hour == 0 else forecast_time
+
             # Map to Home Assistant condition with night detection
-            condition = self._map_to_condition(forecast_num, forecast_text, forecast_time)
+            # IMPORTANT: Pass check_time (not forecast_time) to ensure hour=0 uses sun entity
+            condition = self._map_to_condition(forecast_num, forecast_text, check_time)
+
+            _LOGGER.debug(
+                f"🎯 Hour {hour} ({forecast_time.strftime('%H:%M')}): "
+                f"forecast_text='{forecast_text}', num={forecast_num}, "
+                f"check_time={'None (current)' if check_time is None else check_time.strftime('%H:%M')}, "
+                f"→ condition={condition}"
+            )
 
             # Calculate rain probability
             rain_prob = self._calculate_rain_probability(
@@ -425,7 +437,7 @@ class HourlyForecastGenerator:
             )
 
             # Determine if this forecast time is daytime
-            is_daytime = not self._is_night_time(forecast_time)
+            is_daytime = not self._is_night_time(check_time)
 
             forecast_point = {
                 "datetime": forecast_time.isoformat(),
@@ -488,16 +500,54 @@ class HourlyForecastGenerator:
             # Get sun entity state
             sun_entity = self.hass.states.get("sun.sun")
 
+            # Check if check_time is current time (within 30 minute tolerance)
+            now = dt_util.now()
+            is_current_time = False
+
+            _LOGGER.debug(
+                f"🌙 Night check START: check_time={check_time.strftime('%Y-%m-%d %H:%M:%S') if check_time else 'None'}, "
+                f"now={now.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
             if check_time is None:
+                is_current_time = True
+                _LOGGER.debug("🌙 Night check: check_time is None → treating as CURRENT time")
+            elif check_time.tzinfo is None:
+                check_time = check_time.replace(tzinfo=timezone.utc)
+                time_diff = abs((check_time - now).total_seconds())
+                is_current_time = time_diff < 1800  # Within 30 minutes = current time
+                _LOGGER.debug(
+                    f"🌙 Night check: check_time had no timezone, added UTC. "
+                    f"Time diff={time_diff:.0f}s, is_current={is_current_time}"
+                )
+            else:
+                time_diff = abs((check_time - now).total_seconds())
+                is_current_time = time_diff < 1800  # Within 30 minutes = current time
+                _LOGGER.debug(
+                    f"🌙 Night check: check_time has timezone. "
+                    f"Time diff={time_diff:.0f}s, is_current={is_current_time}"
+                )
+
+            if is_current_time:
                 # Check current time using sun entity
                 if sun_entity:
-                    return sun_entity.state == "below_horizon"
+                    is_night = sun_entity.state == "below_horizon"
+                    _LOGGER.debug(
+                        f"🌙 Night check CURRENT time from sun.sun: {is_night} "
+                        f"(state={sun_entity.state}, check_time={check_time.strftime('%H:%M') if check_time else 'now'})"
+                    )
+                    return is_night
                 else:
                     # Fallback to simple time check
-                    current_hour = dt_util.now().hour
-                    return current_hour >= 19 or current_hour < 7
+                    current_hour = now.hour
+                    is_night = current_hour >= 19 or current_hour < 7
+                    _LOGGER.debug(
+                        f"🌙 Night check CURRENT time (no sun entity): hour={current_hour}, is_night={is_night}"
+                    )
+                    return is_night
             else:
                 # For future times, calculate sunrise/sunset using astral
+                _LOGGER.debug(f"🌙 Night check: Using ASTRAL for FUTURE time")
                 try:
                     from astral import LocationInfo
                     from astral.sun import sun
@@ -518,12 +568,24 @@ class HourlyForecastGenerator:
                     sunrise = s["sunrise"]
                     sunset = s["sunset"]
 
+                    _LOGGER.debug(
+                        f"🌙 Night check FUTURE: date={forecast_date}, "
+                        f"sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')}"
+                    )
+
                     # Make check_time timezone-aware if it isn't already
                     if check_time.tzinfo is None:
                         check_time = check_time.replace(tzinfo=timezone.utc)
 
                     # Check if time is before sunrise or after sunset
                     is_night = check_time < sunrise or check_time > sunset
+
+                    _LOGGER.debug(
+                        f"🌙 Night check FUTURE result: check_time={check_time.strftime('%H:%M')}, "
+                        f"is_night={is_night} (sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')})"
+                    )
+
+                    return is_night
 
                     _LOGGER.debug(
                         f"Night check for {check_time.strftime('%Y-%m-%d %H:%M')}: "
