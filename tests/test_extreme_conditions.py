@@ -83,11 +83,11 @@ class TestZambrettiExtremeConditions:
                     print(f"Error at pressure={pressure}, change={change}: {e}")
 
         if unmapped:
-            print(f"\n⚠️ Found {len(unmapped)} unmapped z-numbers in WINTER:")
+            print(f"\nWARNING: Found {len(unmapped)} unmapped z-numbers in WINTER:")
             for p, c, z in unmapped[:10]:  # Show first 10
                 print(f"  Pressure={p} hPa, Change={c} hPa → z={z}")
         else:
-            print("✅ All z-numbers mapped in WINTER")
+            print("OK: All z-numbers mapped in WINTER")
 
         assert len(unmapped) == 0, f"Found {len(unmapped)} unmapped z-numbers"
 

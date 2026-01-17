@@ -56,6 +56,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 📍 **Works**: Only during daytime (sun above horizon) with significant daylight (>50 W/m²)
   - 🛡️ **Backwards Compatible**: No breaking changes - existing configs continue to work
 
+### 🐛 Fixed
+
+- **Zambretti High Pressure Mapping (z=19)**: Fixed incorrect "Stormy" forecast at high pressure with rising trend
+  - ❌ **Problem**: At 1040 hPa with +6.5 hPa/3h rising trend, hourly forecast showed `lightning-rainy` ⛈️ (60% rain) despite actual "clear-night" ✨ conditions
+  - 🔍 **Root Cause**: Zambretti formula `z = 185 - 0.16 * 1040 = 19` was incorrectly mapped to forecast_index=25 ("Stormy, Much Rain") and letter='Z'
+  - 🔧 **Solution**: Corrected mapping for z=19:
+    - **Before**: z=19 → forecast_index=25 (Stormy, Much Rain), letter='Z'
+    - **After**: z=19 → forecast_index=1 (Fine), letter='B'
+  - ✅ **Logic**: High pressure (>1030 hPa) + rising trend = stable anticyclone → Fine weather
+  - 📊 **Impact**: Hourly forecasts now correctly show sunny/clear conditions at high pressure, not storms
+  - 🎯 **Examples**: 
+    - 1040 hPa + rising: Now "Fine" ✅ (was "Stormy" ❌)
+    - 1035 hPa + rising: Now "Fine" ✅ (was "Stormy" ❌)
+  - 🔐 **Preserved**: z=32-33 still correctly map to "Stormy" (extreme rising pressure = storm recovery)
+  - 📋 **Note**: Other extreme-pressure mappings remain unchanged due to Zambretti algorithm limitations
+    - Zambretti was designed for 960-1050 hPa range (1915)
+    - Extended range (910-1085 hPa) causes z-number cycling at extremes
+    - **Solution**: Use Enhanced Dynamic model (default) for best accuracy at all pressures
+    - See `ZAMBRETTI_LIMITATIONS.md` for detailed analysis
+
 ---
 
 ## [3.1.4] - 2026-01-16

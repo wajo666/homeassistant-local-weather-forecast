@@ -40,36 +40,34 @@ def map_forecast_to_condition(
     text_lower = forecast_text.lower()
     is_night = is_night_func() if is_night_func else False
 
-    # Priority 1: Strong weather (storms, thunder)
+    # Priority 1: Strong weather (storms, thunder) - 25
     if any(word in text_lower for word in ["storm", "thunder", "gale", "tempest"]):
         _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → lightning-rainy (storm keywords)")
         return "lightning-rainy"
 
-    # Priority 2: Heavy rain
-    if any(word in text_lower for word in ["heavy rain", "pouring", "much rain", "torrential"]):
-        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → pouring (heavy rain)")
+    # Priority 2: Heavy rain / Pouring - 20-24
+    # These are "Rain at times" / "Frequent rain" conditions
+    if forecast_num is not None and forecast_num >= 20:
+        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → pouring (heavy rain zone)")
         return "pouring"
 
-    # Priority 3: Rain (includes showers)
-    # For Zambretti: numbers >= 20 are rainy
-    # For Negretti: rely on text (numbers 6-10 can be rainy)
-    is_rainy = (
-        (forecast_num is not None and forecast_num >= 20) or  # Zambretti rain zone
-        any(word in text_lower for word in ["rain", "shower", "wet", "dážď", "prší", "zrážk"])
-    )
-    if is_rainy:
+    if any(word in text_lower for word in ["heavy rain", "pouring", "frequent", "much rain", "torrential"]):
+        _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → pouring (heavy rain keywords)")
+        return "pouring"
+
+    # Priority 3: Rain (includes showers) - 7-19
+    # Look for explicit rain/shower mentions, but NOT "possibly showers" (that's partlycloudy)
+    has_possible_showers = any(word in text_lower for word in ["possibly", "possible", "may", "might", "možné"])
+    has_rain_keywords = any(word in text_lower for word in ["rain", "shower", "wet", "dážď", "prší", "zrážk"])
+
+    if has_rain_keywords and not has_possible_showers:
         _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → rainy")
         return "rainy"
 
-    # Priority 4: Poor/unsettled weather (cloudy/changeable)
-    # For Zambretti: numbers 15-19 are unsettled
-    # For Negretti: numbers 6-8 can be unsettled
-    is_unsettled = (
-        (forecast_num is not None and 15 <= forecast_num < 20) or  # Zambretti unsettled zone
-        any(word in text_lower for word in ["unsettled", "changeable", "variable", "premenlivý", "nestále"])
-    )
+    # Priority 4: Poor/unsettled weather (cloudy/changeable) - 15-19 but without explicit rain
+    # "Unsettled" without rain mention = partlycloudy
+    is_unsettled = any(word in text_lower for word in ["unsettled", "changeable", "variable", "premenlivý", "nestále"])
     if is_unsettled:
-        # partlycloudy works for both day and night (HA shows correct icon automatically)
         _LOGGER.debug(
             f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → partlycloudy "
             f"(unsettled, night={is_night})"
@@ -77,64 +75,58 @@ def map_forecast_to_condition(
         return "partlycloudy"
 
     # Priority 5: Cloudy weather
-    # Negretti-specific: "Polooblačno" (partly cloudy) or "Oblačno" (cloudy)
     if any(word in text_lower for word in ["cloudy", "overcast", "oblačn", "zamračen"]):
         # Check if it's "partly cloudy" vs "fully cloudy"
-        if any(word in text_lower for word in ["partly", "polo", "miestami"]):
-            # partlycloudy works for both day and night (HA shows correct icon automatically)
+        if any(word in text_lower for word in ["partly", "polo", "miestami", "fairly"]):
             _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → partlycloudy (partly cloudy, night={is_night})")
             return "partlycloudy"
         else:
             _LOGGER.debug(f"ConditionMap[{source}]: '{forecast_text}' → cloudy (fully cloudy)")
             return "cloudy"
 
-    # Priority 6: Fair/fine weather (truly clear/sunny conditions)
-    # Only consider it "fair" if:
-    # 1. Forecast number is in the "settled fine" range (model-specific)
-    # 2. Text indicates settled/stable weather without rain/shower/changeable mentions
-    # For Zambretti: numbers 0-5 are "Settled fine" / "Fine weather"
-    # For Negretti: numbers 0-2 are "Stabilne pekné počasie!" / "Pekné počasie!" / "Polooblačno..."
-
-    # Check if text mentions any unsettled conditions
-    has_unsettled_mention = any(word in text_lower for word in [
-        "shower", "rain", "changeable", "unsettled", "later", "becoming",
-        "prehán", "dážď", "premenl", "nestál", "neskôr"
-    ])
-
+    # Priority 6: Fair/fine weather (truly clear/sunny conditions) - 0-5
     # Model-specific fair weather thresholds
     is_fair_by_number = False
     if forecast_num is not None:
-        if source == "Zambretti":
-            # Zambretti 0-5: "Settled fine" to "Fine weather"
+        if source == "Zambretti" or source == "Enhanced (Dynamic)":
+            # Zambretti 0-5: "Settled fine" to "Fairly fine, improving"
             is_fair_by_number = forecast_num <= 5
         elif source == "Negretti":
             # Negretti 0-2: "Stabilne pekné počasie!" to "Polooblačno..."
             is_fair_by_number = forecast_num <= 2
         else:
             # Combined/other: use conservative threshold
-            is_fair_by_number = forecast_num <= 2
+            is_fair_by_number = forecast_num <= 5
 
-    # Only treat as truly fair/sunny if:
-    # - Number indicates settled weather (model-specific) AND text doesn't mention unsettled conditions
-    # - OR text strongly indicates settled/sunny weather without any unsettled mentions
-    is_truly_fair = (
-        (is_fair_by_number and not has_unsettled_mention) or
-        (not has_unsettled_mention and any(word in text_lower for word in [
-            "settled", "stable", "stabilne", "settled fine",
-            "slnečn", "jasn"  # SK: "slnečné" (sunny), "jasno" (clear)
-        ]))
-    )
+    # Check for "fine" / "fair" keywords
+    is_fine_text = any(word in text_lower for word in [
+        "settled", "stable", "fine", "fair", "stabilne", "pekné", "jasn", "slnečn"
+    ])
 
-    if is_truly_fair:
-        condition = "clear-night" if is_night else "sunny"
-        _LOGGER.debug(
-            f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
-            f"(truly fair weather, night={is_night})"
-        )
-        return condition
+    if is_fair_by_number or is_fine_text:
+        # But check if text mentions problems (later rain, showers, becoming unsettled)
+        has_problems = any(word in text_lower for word in [
+            "later", "becoming", "shower", "rain", "unsettled", "changeable",
+            "neskôr", "prehán", "dážď", "nestál"
+        ])
+
+        if not has_problems or forecast_num == 0:
+            # Truly fair: no problems mentioned OR forecast=0 (settled fine)
+            condition = "clear-night" if is_night else "sunny"
+            _LOGGER.debug(
+                f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → {condition} "
+                f"(truly fair weather, night={is_night})"
+            )
+            return condition
+        else:
+            # Fine but with caveats → partlycloudy
+            _LOGGER.debug(
+                f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → partlycloudy "
+                f"(fair with caveats, night={is_night})"
+            )
+            return "partlycloudy"
 
     # Default: partly cloudy (safe fallback)
-    # partlycloudy works for both day and night (HA shows correct icon automatically)
     _LOGGER.debug(
         f"ConditionMap[{source}]: '{forecast_text}' (num={forecast_num}) → partlycloudy "
         f"(default fallback, night={is_night})"

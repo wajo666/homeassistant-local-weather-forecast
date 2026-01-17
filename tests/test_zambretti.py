@@ -39,10 +39,17 @@ class TestMapZambrettiToLetter:
         assert _map_zambretti_to_letter(18) == "X"
 
     def test_map_letter_z(self):
-        """Test mapping for letter Z (extreme conditions)."""
-        assert _map_zambretti_to_letter(19) == "Z"
+        """Test mapping for letter Z (extreme conditions - low pressure recovery)."""
+        # z=19 is now 'B' (Fine) - high pressure with rising trend
+        # Only z=32-33 map to 'Z' (extreme rising pressure - storm recovery)
         assert _map_zambretti_to_letter(32) == "Z"
         assert _map_zambretti_to_letter(33) == "Z"
+
+    def test_map_letter_b_high_pressure_rising(self):
+        """Test mapping for z=19 - high pressure (~1040 hPa) with rising trend."""
+        # z=19 occurs at ~1040 hPa with rising trend
+        # This is stable anticyclone → should be Fine weather (B), not Stormy (Z)
+        assert _map_zambretti_to_letter(19) == "B"
 
     def test_map_letter_f(self):
         """Test mapping for letter F."""
@@ -93,10 +100,18 @@ class TestMapZambrettiToForecast:
         assert _map_zambretti_to_forecast(6) == 17
 
     def test_map_extreme_conditions(self):
-        """Test mapping for extreme weather conditions."""
-        assert _map_zambretti_to_forecast(19) == 25
+        """Test mapping for extreme weather conditions (low pressure recovery)."""
+        # Only z=32-33 map to 25 (Stormy) - extreme rising pressure (storm recovery)
+        # z=19 is now mapped to 1 (Fine) - high pressure with rising trend
         assert _map_zambretti_to_forecast(32) == 25
         assert _map_zambretti_to_forecast(33) == 25
+
+    def test_map_z19_high_pressure_rising(self):
+        """Test z=19 mapping - high pressure (~1040 hPa) with rising trend."""
+        # z=19 occurs at ~1040 hPa with rising trend
+        # Rising formula: z = round(185 - 0.16 * 1040) = 19
+        # This is stable anticyclone → should map to 1 (Fine), not 25 (Stormy)
+        assert _map_zambretti_to_forecast(19) == 1
 
     def test_map_fixed_z22(self):
         """Test that z=22 has correct mapping (was missing)."""
@@ -450,3 +465,219 @@ class TestConsistency:
             assert isinstance(result[1], int)
             assert isinstance(result[2], str)
 
+
+class TestSeasonalIconMapping:
+    """Test seasonal adjustments and their impact on weather icons."""
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_rising_pressure_summer_vs_winter(self, mock_datetime):
+        """Test that rising pressure gives more optimistic forecast in summer."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        p0 = 1015.0  # Moderate pressure (gives different forecast numbers)
+        pressure_change = 2.5  # Rising
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1  # English
+
+        # WINTER (January) - no adjustment for rising
+        mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
+        result_winter = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_winter, num_winter, letter_winter = result_winter
+
+        # SUMMER (July) - z+1 adjustment for rising
+        mock_datetime.now.return_value = datetime(2025, 7, 15, 12, 0)
+        result_summer = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_summer, num_summer, letter_summer = result_summer
+
+        # Letter codes should be different (summer more optimistic)
+        # Note: Different z-numbers may map to same forecast_num, so check letters
+        assert letter_winter != letter_summer, \
+            f"Summer should have different letter: winter={letter_winter}, summer={letter_summer}"
+
+        # Map to conditions
+        condition_winter = map_forecast_to_condition(
+            text_winter, num_winter,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+
+        condition_summer = map_forecast_to_condition(
+            text_summer, num_summer,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+
+        # Both should be valid HA conditions
+        valid_conditions = ["sunny", "partlycloudy", "cloudy", "rainy", "pouring", "lightning-rainy"]
+        assert condition_winter in valid_conditions
+        assert condition_summer in valid_conditions
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_steady_pressure_winter_vs_summer(self, mock_datetime):
+        """Test that steady pressure gives more pessimistic forecast in winter."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        p0 = 1010.0  # Moderate pressure
+        pressure_change = 0.5  # Steady
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1  # English
+
+        # WINTER (December) - z-1 adjustment for steady
+        mock_datetime.now.return_value = datetime(2025, 12, 15, 12, 0)
+        result_winter = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_winter, num_winter, letter_winter = result_winter
+
+        # SUMMER (June) - no adjustment for steady
+        mock_datetime.now.return_value = datetime(2025, 6, 15, 12, 0)
+        result_summer = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_summer, num_summer, letter_summer = result_summer
+
+        # Letter codes should be different (winter more pessimistic)
+        assert letter_winter != letter_summer, \
+            f"Winter should have different letter: summer={letter_summer}, winter={letter_winter}"
+
+        # Map to conditions
+        condition_winter = map_forecast_to_condition(
+            text_winter, num_winter,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+
+        condition_summer = map_forecast_to_condition(
+            text_summer, num_summer,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+
+        # Both should be valid HA conditions
+        valid_conditions = ["sunny", "partlycloudy", "cloudy", "rainy", "pouring", "lightning-rainy"]
+        assert condition_winter in valid_conditions
+        assert condition_summer in valid_conditions
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_falling_pressure_no_seasonal_adjustment(self, mock_datetime):
+        """Test that falling pressure has NO seasonal adjustment."""
+        p0 = 995.0
+        pressure_change = -2.5  # Falling
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1  # English
+
+        # WINTER (January)
+        mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
+        result_winter = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        num_winter = result_winter[1]
+
+        # SUMMER (July)
+        mock_datetime.now.return_value = datetime(2025, 7, 15, 12, 0)
+        result_summer = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        num_summer = result_summer[1]
+
+        # Falling has NO seasonal adjustment - should be the same
+        assert num_winter == num_summer, \
+            f"Falling pressure should be same in all seasons: winter={num_winter}, summer={num_summer}"
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_all_months_icon_consistency(self, mock_datetime):
+        """Test that icons are reasonable across all months."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        p0 = 1020.0  # High pressure
+        pressure_change = 2.0  # Rising
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1
+
+        valid_conditions = ["sunny", "partlycloudy", "cloudy", "rainy", "pouring", "lightning-rainy", "clear-night"]
+
+        for month in range(1, 13):
+            mock_datetime.now.return_value = datetime(2025, month, 15, 12, 0)
+
+            result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+            text, num, letter = result
+
+            # Map to condition (daytime)
+            condition = map_forecast_to_condition(
+                text, num,
+                is_night_func=lambda: False,
+                source="Zambretti"
+            )
+
+            # Should be valid condition
+            assert condition in valid_conditions, \
+                f"Month {month}: Invalid condition '{condition}' for z={num}"
+
+            # High pressure + rising should generally be good weather
+            assert condition in ["sunny", "partlycloudy"], \
+                f"Month {month}: High pressure rising should be good weather, got '{condition}'"
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_day_night_icon_conversion(self, mock_datetime):
+        """Test that sunny/clear-night conversion works in all seasons."""
+        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+
+        # Mock winter
+        mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
+
+        p0 = 1030.0  # High pressure
+        pressure_change = 1.5  # Rising
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1
+
+        result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text, num, letter = result
+
+        # Should be fair weather
+        assert num <= 5, f"High pressure rising should be fair weather, got z={num}"
+
+        # Day = sunny
+        condition_day = map_forecast_to_condition(
+            text, num,
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+
+        # Night = clear-night
+        condition_night = map_forecast_to_condition(
+            text, num,
+            is_night_func=lambda: True,
+            source="Zambretti"
+        )
+
+        # If one is sunny, the other should be clear-night
+        if condition_day == "sunny":
+            assert condition_night == "clear-night", \
+                f"Day=sunny should give Night=clear-night, got {condition_night}"
+
+        if condition_night == "clear-night":
+            assert condition_day == "sunny", \
+                f"Night=clear-night should give Day=sunny, got {condition_day}"
+
+    @patch('custom_components.local_weather_forecast.zambretti.datetime')
+    def test_season_boundary_march_november(self, mock_datetime):
+        """Test season boundaries at March (2 < month < 11)."""
+        p0 = 1010.0
+        pressure_change = 0.5  # Steady
+        wind_data = [0, 0.0, "N", 0]
+        lang_index = 1
+
+        # February - WINTER (steady -1)
+        mock_datetime.now.return_value = datetime(2025, 2, 15, 12, 0)
+        result_feb = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_feb, num_feb, letter_feb = result_feb
+
+        # March - SUMMER (no steady adjustment)
+        mock_datetime.now.return_value = datetime(2025, 3, 15, 12, 0)
+        result_mar = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_mar, num_mar, letter_mar = result_mar
+
+        # November - WINTER (steady -1)
+        mock_datetime.now.return_value = datetime(2025, 11, 15, 12, 0)
+        result_nov = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+        text_nov, num_nov, letter_nov = result_nov
+
+        # February and November should be same (both winter)
+        assert letter_feb == letter_nov, \
+            f"Feb and Nov should both be winter: Feb={letter_feb}, Nov={letter_nov}"
+
+        # March should be different from Feb (summer starts)
+        assert letter_mar != letter_feb, \
+            f"March should differ from Feb: Feb={letter_feb}, Mar={letter_mar}"

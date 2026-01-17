@@ -270,8 +270,9 @@ class TestHourlyForecastGenerator:
             self.mock_zambretti
         )
 
+        # Forecast num 20 = "Rain at times" should be pouring (heavy rain zone)
         condition = generator._map_to_condition(20, "Rain at times")
-        assert condition == "rainy"
+        assert condition == "pouring"
 
     def test_map_to_condition_pouring(self):
         """Test condition mapping for heavy rain."""
