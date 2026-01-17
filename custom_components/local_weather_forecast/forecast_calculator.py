@@ -104,11 +104,12 @@ class PressureModel:
 
         predicted = self.current_pressure + total_change
 
-        # Constrain to realistic absolute pressure range (950-1050 hPa)
-        predicted = max(950.0, min(1050.0, predicted))
+        # Constrain to realistic absolute pressure range (910-1085 hPa)
+        # Matches Negretti-Zambra global range for consistency
+        predicted = max(910.0, min(1085.0, predicted))
 
-        # Clamp to realistic atmospheric pressure range (950-1050 hPa)
-        result = max(950.0, min(1050.0, predicted))
+        # Clamp to realistic atmospheric pressure range (910-1085 hPa)
+        result = max(910.0, min(1085.0, predicted))
 
         _LOGGER.debug(
             f"PressureModel: {hours_ahead}h → {result:.1f} hPa "

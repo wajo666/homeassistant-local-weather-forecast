@@ -227,6 +227,11 @@ def test_calculate_forecast_all_languages(mock_datetime):
     assert isinstance(result_it[0], str)
     assert len(result_it[0]) > 0
 
+    # Test Slovak (4)
+    result_sk = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, 4, elevation, hemisphere="north")
+    assert isinstance(result_sk[0], str)
+    assert len(result_sk[0]) > 0
+
 
 @patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
 def test_calculate_forecast_summer_adjustment(mock_datetime):
@@ -419,4 +424,31 @@ def test_forecast_realistic_values(mock_datetime):
     assert 0 <= result[1] <= 25  # Valid forecast index range
     assert isinstance(result[2], str)
     assert len(result[2]) == 1
+
+
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_exceptional_weather_slovak(mock_datetime):
+    """Test exceptional weather with Slovak language (lang_index=4)."""
+    # Mock winter month
+    mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
+
+    # High pressure scenario that triggers exceptional weather
+    p0 = 1030.0  # High pressure
+    pressure_change = 2.90  # Rising
+    wind_data = [1, 270.0, 'W', 0]  # West wind
+    lang_index = 4  # Slovak
+    elevation = 314.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+
+    assert isinstance(result, list)
+    assert len(result) == 3
+    assert isinstance(result[0], str)
+    # Should not throw "list index out of range" error
+    assert len(result[0]) > 0
+    # If exceptional, should contain Slovak exceptional weather text
+    if "Výnimočné" in result[0]:
+        assert "Výnimočné počasie" in result[0]
+
+
 

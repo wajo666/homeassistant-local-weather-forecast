@@ -58,16 +58,16 @@ class TestPressureModel:
         assert result <= 1030.0
 
     def test_predict_absolute_limits(self):
-        """Test absolute pressure limits (950-1050 hPa)."""
+        """Test absolute pressure limits (910-1085 hPa)."""
         # Test lower limit
         model_low = PressureModel(current_pressure=960.0, pressure_change_3h=-30.0)
         result_low = model_low.predict(24)
-        assert result_low >= 950.0
+        assert result_low >= 910.0
 
         # Test upper limit
         model_high = PressureModel(current_pressure=1040.0, pressure_change_3h=30.0)
         result_high = model_high.predict(24)
-        assert result_high <= 1050.0
+        assert result_high <= 1085.0
 
     def test_get_trend_rising(self):
         """Test trend detection for rising pressure."""

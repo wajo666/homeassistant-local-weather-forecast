@@ -11,7 +11,7 @@ Use these entity IDs in your Lovelace cards:
 **Main Sensors:**
 - `sensor.local_forecast` - Forecast text
 - `sensor.local_forecast_enhanced` - Enhanced forecast with fog/stability
-- `sensor.local_forecast_rain_probability` - Rain probability
+- `sensor.local_forecast_rain_probability` - Precipitation probability (rain/snow)
 - `weather.local_weather_forecast_weather` - Weather entity
 
 **Supporting Sensors:**
@@ -19,6 +19,11 @@ Use these entity IDs in your Lovelace cards:
 - `sensor.local_forecast_temperature` - Temperature
 - `sensor.local_forecast_pressurechange` - Pressure trend
 - `sensor.local_forecast_temperaturechange` - Temperature trend
+
+**ℹ️ Note:** `sensor.local_forecast_rain_probability` automatically shows:
+- 🌧️ Rain icon when temperature > 4°C
+- ❄️ Snow icon when temperature ≤ 2°C and probability ≥ 30%
+- 🌨️ Mixed icon when temperature 2-4°C and probability ≥ 50%
 
 ---
 
@@ -49,7 +54,7 @@ entities:
   - entity: sensor.local_forecast_temperature
     name: Temperature
   - entity: sensor.local_forecast_rain_probability
-    name: Rain Probability
+    name: Precipitation
 ```
 
 ---

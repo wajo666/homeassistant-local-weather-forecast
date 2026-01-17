@@ -57,17 +57,17 @@ class TestPressureModel:
         """Test pressure clamping at lower bound."""
         model = PressureModel(current_pressure=955.0, change_rate_3h=-30.0)  # Extreme drop
 
-        # Should not go below 950 hPa
+        # Should not go below 910 hPa
         result = model.predict(24)
-        assert result >= 950.0
+        assert result >= 910.0
 
     def test_predict_clamping_high(self):
         """Test pressure clamping at upper bound."""
         model = PressureModel(current_pressure=1045.0, change_rate_3h=30.0)  # Extreme rise
 
-        # Should not go above 1050 hPa
+        # Should not go above 1085 hPa
         result = model.predict(24)
-        assert result <= 1050.0
+        assert result <= 1085.0
 
     def test_get_trend_rising(self):
         """Test trend detection for rising pressure."""

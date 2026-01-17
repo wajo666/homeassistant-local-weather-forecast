@@ -2195,14 +2195,18 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
 
 class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
-    """Enhanced rain probability sensor using multiple factors."""
+    """Enhanced precipitation probability sensor using multiple factors.
+
+    Displays rain or snow icon based on temperature and conditions.
+    """
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-        """Initialize the rain probability sensor."""
+        """Initialize the precipitation probability sensor."""
         super().__init__(hass, config_entry)
         self._attr_unique_id = "local_forecast_rain_probability"
-        self._attr_name = "Local forecast Rain Probability"
-        self._attr_icon = "mdi:weather-rainy"
+        self._attr_name = "Local Forecast Precipitation Probability"
+        # Icon will be dynamic based on temperature (snow vs rain)
+        self._attr_icon = "mdi:weather-rainy"  # Default, updated in async_update
         self._attr_native_unit_of_measurement = "%"
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._state = None  # Initialize state
@@ -2334,6 +2338,47 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             probability = 95
             confidence = "very_high"
 
+        # Dynamic icon based on temperature and snow conditions
+        # Get temperature to determine if precipitation would be rain or snow
+        temp_sensor_id = self.config_entry.options.get(CONF_TEMPERATURE_SENSOR) or self.config_entry.data.get(CONF_TEMPERATURE_SENSOR)
+        temperature = None
+        if temp_sensor_id:
+            temp_state = self.hass.states.get(temp_sensor_id)
+            if temp_state and temp_state.state not in ("unknown", "unavailable", None):
+                try:
+                    from .unit_conversion import convert_sensor_value
+                    temperature = convert_sensor_value(
+                        float(temp_state.state),
+                        temp_state.attributes.get("unit_of_measurement", "°C"),
+                        "temperature"
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+        # Determine icon based on temperature and conditions
+        # Use snow icon if temperature is at or below freezing and there's precipitation risk
+        if temperature is not None and temperature <= 2.0 and probability >= 30:
+            # Cold enough for snow + significant precipitation probability
+            self._attr_icon = "mdi:weather-snowy"
+            precipitation_type = "snow"
+            _LOGGER.debug(
+                f"RainProb: Icon set to SNOW (temp={temperature:.1f}°C, probability={probability}%)"
+            )
+        elif temperature is not None and 2.0 < temperature <= 4.0 and probability >= 50:
+            # Marginal snow temperature + high probability → mixed precipitation
+            self._attr_icon = "mdi:weather-snowy-rainy"
+            precipitation_type = "mixed"
+            _LOGGER.debug(
+                f"RainProb: Icon set to MIXED (temp={temperature:.1f}°C, probability={probability}%)"
+            )
+        else:
+            # Rain or no temperature data
+            self._attr_icon = "mdi:weather-rainy"
+            precipitation_type = "rain"
+            _LOGGER.debug(
+                f"RainProb: Icon set to RAIN (temp={temperature if temperature is not None else 'unknown'}°C, probability={probability}%)"
+            )
+
         self._state = round(probability)
         _LOGGER.debug(f"RainProb: Setting state to: {round(probability)}%")
         self._attributes = {
@@ -2345,6 +2390,8 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             "humidity": humidity,
             "dewpoint_spread": dewpoint_spread,
             "current_rain_rate": current_rain,
+            "temperature": temperature,
+            "precipitation_type": precipitation_type,
             "factors_used": self._get_factors_used(humidity, dewpoint_spread),
         }
         # Note: Home Assistant automatically writes state after async_update() completes

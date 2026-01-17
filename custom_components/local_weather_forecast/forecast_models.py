@@ -189,8 +189,9 @@ class PressureModel:
 
         predicted_pressure = self.current + predicted_change
 
-        # Absolute limits: 950-1050 hPa (Zambretti range)
-        result = max(950.0, min(1050.0, predicted_pressure))
+        # Absolute limits: 910-1085 hPa (matches Negretti-Zambra global range)
+        # Covers global conditions including Medicanes, Australian cyclones, European storms
+        result = max(910.0, min(1085.0, predicted_pressure))
 
         _LOGGER.debug(
             f"PressureModel: {hours_ahead}h → {result:.1f} hPa "
