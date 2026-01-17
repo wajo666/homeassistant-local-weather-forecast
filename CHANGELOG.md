@@ -152,7 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Configurable in**: Initial setup AND Options Flow (can be changed anytime)
   - **Applies to**: Current condition, hourly forecast (24h), and daily forecast (3 days)
   - **User benefit**: Choose the most accurate model for your local weather patterns
-  - **🔄 Migration**: Existing installations (v3.1.3 → v3.1.4) use **Enhanced Dynamic** automatically to preserve behavior
+  - **Default**: New installations and upgrades from v3.1.3 default to **Enhanced Dynamic** (preserves v3.1.3 combined algorithm behavior)
 
 - **Pressure Type Change in Options**: You can now change pressure type (Absolute/Relative) after initial setup
   - Previously locked after first configuration

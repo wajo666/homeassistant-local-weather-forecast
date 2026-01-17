@@ -30,6 +30,7 @@ This integration was inspired by the original work of **[@HAuser1234](https://gi
 - 🎨 **Easy Setup** - Modern UI configuration, no YAML needed
 - 🌡️ **Advanced Features** - Feels Like temp, Dew Point, Fog Risk analysis
 - 🌧️ **Smart Rain Detection** - Enhanced probability with real-time override
+- ☀️ **Solar Radiation Cloud Detection** 🆕 - Real-time cloudiness from actual sunlight measurements
 - ❄️ **Snow Risk Detection** - 4-level snow probability (high/medium/low/none)
 - 🧊 **Frost/Ice Warning** - Critical black ice detection with 5 risk levels
 - ☀️ **Day/Night Awareness** - Automatic sunrise/sunset based icons
@@ -63,6 +64,7 @@ This integration automatically converts sensor values to the required format. No
 | **Wind Direction** | ⚠️ Optional | ° (degrees) | 180° (South), 270° (West) |
 | **Humidity** | ⚠️ Optional | % (percent) | 75%, 90% |
 | **Rain Rate** | ⚠️ Optional | mm, mm/h, in, in/h | 2.5 mm/h, 0.1 in/h |
+| **Solar Radiation** | ⚠️ Optional | W/m² (watts per square meter) | 850 W/m², 1200 W/m² |
 
 ### Common Unit Conversions (for reference)
 
@@ -159,11 +161,12 @@ The integration uses two independent forecast algorithms that can be combined in
 | **Stable temperate** | Zambretti | Consistent behavior, proven accuracy |
 | **Highly variable** | Negretti-Zambra | Better extreme weather handling |
 | **Coastal/windy** | Negretti-Zambra | Superior wind corrections |
-| **v3.1.3 → v3.1.4** | **Enhanced Dynamic** | Automatic migration preserves combined algorithm behavior |
+| **v3.1.3 → v3.1.4+** | **Enhanced Dynamic** (default) | Preserves v3.1.3 combined algorithm behavior |
 
 ### 🔄 Model Selection
 
-- **Initial Setup:** Choose during integration configuration (default: Enhanced Dynamic)
+- **Initial Setup:** Choose during integration configuration (default: **Enhanced Dynamic**)
+- **Existing Installations:** Upgrade from v3.1.3 defaults to **Enhanced Dynamic** (same behavior as before)
 - **Change Anytime:** Settings → Integrations → Local Weather Forecast → Configure → Forecast Model
 
 ### 🎯 Accuracy Comparison
@@ -240,6 +243,24 @@ The weather entity intelligently combines multiple data sources with **priority-
   - **Near saturation:** Dewpoint spread < 1.0°C + humidity > 80%
   - **Result:** Condition = `"fog"`
 
+#### **PRIORITY 2.5: Solar Radiation Detection** ☀️ (Real-Time Cloud Cover)
+- **Source:** Solar radiation sensor (if configured)
+- **Active:** Only during daytime (sun above horizon + radiation > 50 W/m²)
+- **Logic:** Measures actual vs. theoretical maximum solar radiation for location/season
+  - **Cloud cover calculation:** `(1 - measured/theoretical) × 100%`
+  - **Thresholds:**
+    - Cloud cover < 25% → `"sunny"` ☀️
+    - Cloud cover 25-65% → `"partlycloudy"` ⛅
+    - Cloud cover 65-85% → `"cloudy"` ☁️
+    - Cloud cover > 85% → Falls through to forecast model
+- **Location-Aware:** Automatically adjusts theoretical maximum based on:
+  - **Latitude zones:** Tropical (1300 W/m²), Temperate (1200 W/m²), Polar (800 W/m²)
+  - **Seasonal factor:** Cosine function for summer/winter transition
+  - **Hemisphere correction:** Automatic season inversion for Southern Hemisphere
+- **Example:** Singapore June: 1290 W/m² max, Košice June: 1050 W/m², Sydney December: 1150 W/m²
+- **Benefit:** Real-time cloudiness detection - updates immediately when clouds pass over
+- **Note:** If sensor not configured, priority falls through to forecast model
+
 #### **PRIORITY 3: Forecast Model** (Configurable Algorithm)
 - **Source:** Selected forecast model (Enhanced Dynamic/Zambretti/Negretti-Zambra)
 - **Uses:** Letter code (A-Z) → HA condition mapping
@@ -269,6 +290,7 @@ The weather entity intelligently combines multiple data sources with **priority-
 | **Rain Override** | Rain rate sensor | ❌ Optional |
 | **Snow Detection** | Temperature + Humidity + Precipitation probability | ❌ Optional |
 | **Fog Detection** | Temperature + Humidity + Dewpoint | ❌ Optional |
+| **Solar Radiation** | Solar radiation sensor (W/m²) | ❌ Optional |
 | **Humidity Correction** | Humidity sensor | ❌ Optional |
 | **Night Detection** | Sunrise/Sunset (automatic) | ✅ Built-in |
 | **Temperature** | Temperature sensor | ⚠️ Recommended |
@@ -306,6 +328,11 @@ Scenario 2: Freezing with high humidity
 Scenario 3: Near saturation
   Dewpoint spread: 0.8°C, Humidity: 88%
   → Condition: "fog" (Priority 2 override)
+
+Scenario 3.5: Solar radiation detection (daytime only)
+  Solar radiation: 300 W/m², Theoretical max: 1050 W/m²
+  Cloud cover: (1 - 300/1050) × 100% = 71%
+  → Condition: "cloudy" (Priority 2.5, real-time cloud detection)
 
 Scenario 4: Normal forecast
   Zambretti: Letter "A" (Settled Fine)
@@ -364,6 +391,7 @@ Scenario 5: High humidity correction
 | **Wind Direction** | ❌ Optional | Improves forecast accuracy by 5-10% | ° (0-360) | 0° (North) |
 | **Wind Speed** | ❌ Optional | Improves forecast accuracy by 3-5% | m/s, km/h, mph, knots, ft/s | 0.0 m/s |
 | **Humidity** | ❌ Optional | Enables fog detection and enhanced forecasts | % (0-100) | - |
+| **Solar Radiation** | ❌ Optional | Real-time cloud cover detection from actual sunlight | W/m² (0-1500) | - |
 
 💡 **The integration automatically converts all units to the required format for calculations.**
 
@@ -451,7 +479,8 @@ All sensors + Extended:
   - Humidity sensor             ← Enables fog detection, enhanced rain %, automatic dew point calculation
   - Wind Gust sensor            ← Enables atmospheric stability analysis (gust ratio)
   - Rain Rate sensor            ← Enables real-time rain override (100% probability + weather condition → "rainy" when rain > 0.1 mm/h)
-  - Solar Radiation sensor (W/m²) **OR** UV Index sensor (0-15) ← Enables solar warming in "feels like" temperature (pick one, not both)
+  - Solar Radiation sensor (W/m²) ← Enables real-time cloud cover detection (PRIORITY 2.5) and solar warming in "feels like" temperature
+    **OR** UV Index sensor (0-15) ← Alternative for solar warming (pick one, not both)
 ```
 
 > **Note:** Dew point is **calculated automatically** from temperature and humidity - no external sensor needed.
@@ -467,6 +496,7 @@ All sensors + Extended:
 | **Humidity** | ⚠️ Optional | **Enables:** Fog risk levels, enhanced rain %, automatic dew point calculation | ⚠️ Fog/dew features disabled |
 | **Wind Gust** | ⚠️ Optional | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
 | **Rain Rate** | ⚠️ Optional | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
+| **Solar Radiation** | ⚠️ Optional | **Enables:** Real-time cloud cover detection during daytime (PRIORITY 2.5 - overrides forecast model cloudiness) | ⚠️ Uses forecast model only |
 | **Solar Radiation OR UV Index** | ⚠️ Optional | **Enables:** Solar warming effect in "feels like" temperature (uses W/m² or converts UV index) | ⚠️ Ignores solar heating |
 
 > **Solar sensors:** You only need **one** of these:
