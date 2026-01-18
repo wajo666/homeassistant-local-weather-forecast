@@ -202,16 +202,23 @@ def calculate_negretti_zambra_forecast(
         _LOGGER.debug(f"Negretti: No wind direction adjustment applied (hemisphere={'north' if hemisphere_numeric == 1 else 'south'}, wind_speed_fak={wind_speed_fak})")
 
     # Summer adjustment for rising/falling trends
-    if is_summer:
+    # Apply only for moderate pressure (975-1025 hPa) - same logic as Zambretti
+    # Very low pressure (<975 hPa) = storm conditions, no adjustment needed
+    # Very high pressure (>1025 hPa) = already optimal, no adjustment needed
+    if is_summer and 975 <= p0 <= 1025:
         if trend == 1:
             adjustment = 7 / 100 * bar_range
             z_hp = z_hp + adjustment
-            _LOGGER.debug(f"Negretti: Summer RISING adjustment: +{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa")
+            _LOGGER.debug(f"Negretti: Summer RISING adjustment: +{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
         elif trend == -1:
             adjustment = 7 / 100 * bar_range
             z_hp = z_hp - adjustment
-            _LOGGER.debug(f"Negretti: Summer FALLING adjustment: -{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa")
-    else:
+            _LOGGER.debug(f"Negretti: Summer FALLING adjustment: -{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
+    elif is_summer and p0 < 975:
+        _LOGGER.debug(f"Negretti: Skipping summer adjustment for very low pressure ({p0:.1f} hPa < 975, storm conditions)")
+    elif is_summer and p0 > 1025:
+        _LOGGER.debug(f"Negretti: Skipping summer adjustment for high pressure ({p0:.1f} hPa > 1025, already optimal)")
+    elif not is_summer:
         _LOGGER.debug(f"Negretti: No summer adjustment (winter month)")
 
     # Ensure within bounds (use float comparison for consistency)

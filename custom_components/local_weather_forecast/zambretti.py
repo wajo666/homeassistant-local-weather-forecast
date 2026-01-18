@@ -57,17 +57,42 @@ def calculate_zambretti_forecast(
     elif trend == 0:  # Steady pressure
         z_before_wind = round(144 - 0.13 * p0)
         _LOGGER.debug(f"Zambretti: STEADY formula: z = round(144 - 0.13 * {p0:.1f}) = {z_before_wind}")
+
+        # Special handling for very low pressure (<970 hPa) with steady trend
+        # Very low steady pressure = stormy conditions, should not give high z-numbers
+        # Clamp to maximum z=12 to ensure unsettled forecast
+        if p0 < 970 and z_before_wind > 12:
+            _LOGGER.debug(
+                f"Zambretti: Very low pressure ({p0:.1f} hPa < 970) with steady trend, "
+                f"clamping z from {z_before_wind} to 12 (stormy conditions)"
+            )
+            z_before_wind = 12
+
         # Season adjustment
-        if not is_summer:
+        # Winter adjustment only for moderate pressure (975-1025 hPa)
+        # High stable pressure (>1025) in winter = fine weather, not unsettled
+        # Very low pressure (<975) = stormy even in winter, no adjustment needed
+        if not is_summer and 975 <= p0 <= 1025:
             z_before_wind = z_before_wind - 1  # Winter
             _LOGGER.debug(f"Zambretti: Winter adjustment: z = {z_before_wind} (steady winter -1)")
+        elif not is_summer and p0 > 1025:
+            _LOGGER.debug(f"Zambretti: Skipping winter adjustment for high pressure ({p0:.1f} hPa > 1025)")
+        elif not is_summer and p0 < 975:
+            _LOGGER.debug(f"Zambretti: Skipping winter adjustment for very low pressure ({p0:.1f} hPa < 975, stormy conditions)")
     else:  # Rising pressure (trend == 1)
         z_before_wind = round(185 - 0.16 * p0)
         _LOGGER.debug(f"Zambretti: RISING formula: z = round(185 - 0.16 * {p0:.1f}) = {z_before_wind}")
         # Season adjustment
-        if is_summer:
+        # Summer adjustment only for moderate pressure (975-1025 hPa)
+        # Very low pressure (<975) = storm recovery, no adjustment needed
+        # Very high pressure (>1025) = already optimistic, no adjustment needed
+        if is_summer and 975 <= p0 <= 1025:
             z_before_wind = z_before_wind + 1  # Summer
             _LOGGER.debug(f"Zambretti: Summer adjustment: z = {z_before_wind} (rising summer +1)")
+        elif is_summer and p0 < 975:
+            _LOGGER.debug(f"Zambretti: Skipping summer adjustment for very low pressure ({p0:.1f} hPa < 975, storm recovery)")
+        elif is_summer and p0 > 1025:
+            _LOGGER.debug(f"Zambretti: Skipping summer adjustment for high pressure ({p0:.1f} hPa > 1025)")
 
     # Apply wind correction
     wind_fak = wind_data[0]

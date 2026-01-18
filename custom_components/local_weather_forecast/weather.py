@@ -110,7 +110,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.5",
+            sw_version="3.1.6",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)

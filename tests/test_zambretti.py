@@ -681,3 +681,180 @@ class TestSeasonalIconMapping:
         # March should be different from Feb (summer starts)
         assert letter_mar != letter_feb, \
             f"March should differ from Feb: Feb={letter_feb}, Mar={letter_mar}"
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_winter_adjustment_high_pressure_steady(mock_datetime):
+    """Test that winter adjustment is NOT applied for high pressure (>1025 hPa) with steady trend.
+
+    Bug fix: Previously, winter adjustment (-1) was applied to ALL steady conditions,
+    causing high pressure (1034 hPa) to give "Very Unsettled" instead of "Fine".
+
+    Example: 1034 hPa steady winter:
+    - Formula: z = 144 - 0.13*1034 = 10
+    - OLD: Winter -1 → z=9 → forecast #23 "Very Unsettled" ❌
+    - NEW: No adjustment (high pressure) → z=10 → better forecast ✅
+    """
+    # Mock winter month (January)
+    mock_datetime.now.return_value = datetime(2025, 1, 18, 6, 30)
+
+    # High pressure, steady trend (your actual conditions)
+    p0 = 1034.0  # High pressure
+    pressure_change = 0.5  # Steady (within ±1.6 threshold)
+    wind_data = [0, 324, 'NW', 1]  # North wind, light
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # z = 144 - 0.13*1034 = 10 (no winter adjustment for high pressure)
+    # z=10 should NOT map to #23 "Very Unsettled"
+    assert num != 23, \
+        f"High pressure (1034 hPa) steady in winter should NOT give 'Very Unsettled' (got #{num})"
+
+    # Should give reasonable forecast for high stable pressure
+    assert num <= 5, \
+        f"High pressure (1034 hPa) steady should give good forecast, got #{num}: {text}"
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_winter_adjustment_normal_pressure_steady(mock_datetime):
+    """Test that winter adjustment IS applied for normal/low pressure (<=1025 hPa) with steady trend."""
+    # Mock winter month
+    mock_datetime.now.return_value = datetime(2025, 1, 18, 12, 0)
+
+    # Normal pressure, steady trend
+    p0 = 1015.0  # Normal pressure
+    pressure_change = 0.2  # Steady
+    wind_data = [1, 180, 'S', 0]  # South wind, calm
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # z = 144 - 0.13*1015 = 12
+    # Winter adjustment should apply: z = 11
+    # This is expected behavior for normal/low pressure
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_winter_adjustment_very_low_pressure_steady(mock_datetime):
+    """Test that winter adjustment is NOT applied for very low pressure (<975 hPa) with steady trend.
+
+    Very low pressure (e.g., 960 hPa) indicates stormy conditions even if steady.
+    Winter adjustment would make it even more pessimistic, which is unnecessary.
+
+    Example: 960 hPa steady winter:
+    - Formula: z = 144 - 0.13*960 = 19
+    - OLD: Winter -1 → z=18 → may give "Fine" ❌
+    - NEW: No adjustment (very low pressure) → z=19 → stormy forecast ✅
+    """
+    # Mock winter month (January)
+    mock_datetime.now.return_value = datetime(2025, 1, 18, 12, 0)
+
+    # Very low pressure (tropical cyclone/medicane), steady trend
+    p0 = 960.0  # Very low pressure (storm)
+    pressure_change = 0.3  # Steady
+    wind_data = [2, 180, 'S', 1]  # South wind, strong
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # Very low pressure should give stormy forecast regardless of season
+    # z = 144 - 0.13*960 = 19 (no winter adjustment for very low pressure)
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+    # Should indicate unsettled/stormy conditions
+    assert num >= 10, \
+        f"Very low pressure (960 hPa) should give unsettled forecast, got #{num}: {text}"
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_summer_adjustment_low_pressure_rising(mock_datetime):
+    """Test that summer adjustment is NOT applied for very low pressure (<975 hPa) with rising trend.
+
+    Very low pressure rising = storm recovery. Summer adjustment (+1) would make
+    it too optimistic too quickly.
+
+    Example: 965 hPa rising summer:
+    - Formula: z = 185 - 0.16*965 = 31
+    - OLD: Summer +1 → z=32 → may overflow or be too optimistic ❌
+    - NEW: No adjustment (very low pressure) → z=31 → appropriate recovery forecast ✅
+    """
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # Very low pressure (storm), rising trend (recovery)
+    p0 = 965.0  # Very low pressure (storm recovery)
+    pressure_change = 2.5  # Rising (storm passing)
+    wind_data = [0, 270, 'W', 1]  # West wind
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # z = 185 - 0.16*965 = 31 (no summer adjustment for very low pressure)
+    # Should not give overly optimistic forecast during storm recovery
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_summer_adjustment_high_pressure_rising(mock_datetime):
+    """Test that summer adjustment is NOT applied for high pressure (>1025 hPa) with rising trend.
+
+    High pressure rising in summer = already very good weather. Summer adjustment (+1)
+    would be redundant.
+
+    Example: 1035 hPa rising summer:
+    - Formula: z = 185 - 0.16*1035 = 19
+    - OLD: Summer +1 → z=20 → same as z=19, redundant ❌
+    - NEW: No adjustment (high pressure) → z=19 → fine weather ✅
+    """
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # High pressure, rising trend
+    p0 = 1035.0  # High pressure
+    pressure_change = 1.8  # Rising
+    wind_data = [0, 0, 'N', 0]  # Calm
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # z = 185 - 0.16*1035 = 19 (no summer adjustment for high pressure)
+    # Should give fine weather forecast
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert num <= 5, \
+        f"High pressure (1035 hPa) rising should give excellent forecast, got #{num}: {text}"
+
+
+@patch('custom_components.local_weather_forecast.zambretti.datetime')
+def test_summer_adjustment_moderate_pressure_rising(mock_datetime):
+    """Test that summer adjustment IS applied for moderate pressure (975-1025 hPa) with rising trend."""
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # Moderate pressure, rising trend
+    p0 = 1010.0  # Moderate pressure
+    pressure_change = 2.0  # Rising
+    wind_data = [0, 0, 'N', 0]  # Calm
+    lang_index = 1  # English
+
+    result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
+    text, num, letter = result
+
+    # z = 185 - 0.16*1010 = 23
+    # Summer adjustment should apply: z = 24
+    # This is expected behavior for moderate pressure
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0

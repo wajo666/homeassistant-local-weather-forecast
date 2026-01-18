@@ -47,7 +47,7 @@
           "wind_speed_sensor": "Sensore velocità vento",
           "humidity_sensor": "Sensore di umidità (Avanzato)",
           "wind_gust_sensor": "Sensore raffiche di vento (Avanzato)",
-          "rain_rate_sensor": "Sensore rilevamento pioggia (mm)",
+          "rain_rate_sensor": "Sensore precipitazioni (5-minuti)",
           "solar_radiation_sensor": "Sensore radiazione solare (W/m²)",
           "uv_index_sensor": "Sensore indice UV (0-15)",
           "elevation": "Altitudine",
@@ -57,9 +57,9 @@
           "enable_weather_entity": "Abilita entità meteo"
         },
         "data_description": {
-          "humidity_sensor": "Sensore di umidità per rilevamento avanzato nebbia, calcolo punto di rugiada e probabilità di pioggia (opzionale)",
+          "humidity_sensor": "Sensore di umidità per rilevamento avanzato nebbia, calcolo punto di rugiada e probabilità di precipitazioni (opzionale)",
           "wind_gust_sensor": "Sensore raffiche per rilevamento stabilità atmosferica e allerte meteo (opzionale)",
-          "rain_rate_sensor": "Sensore rilevamento pioggia con device_class='precipitation' e unit='mm'. L'integrazione rileva automaticamente la pioggia quando il valore del sensore > 0 (Netatmo: incrementi 0.101, 0.202... / Ecowitt WS90: simile). NON utilizzare sensori totali orari (opzionale)",
+          "rain_rate_sensor": "Sensore precipitazioni con device_class='precipitation' e unit='mm'. L'integrazione rileva automaticamente precipitazioni quando il valore del sensore > 0 (Netatmo: incrementi 0.101, 0.202... / Ecowitt WS90: simile). NON utilizzare sensori totali orari (opzionale)",
           "solar_radiation_sensor": "Sensore radiazione solare in W/m² per temperatura percepita accurata. Se fornito sensore indice UV, la radiazione solare può essere calcolata automaticamente (opzionale)",
           "uv_index_sensor": "Sensore indice UV (scala 0-15). Se fornito sensore radiazione solare, l'indice UV può essere calcolato automaticamente. Utilizzato per allerte protezione solare e temperatura apparente (opzionale)",
           "hemisphere": "Il tuo emisfero per adattamenti stagionali meteo. Rilevato automaticamente dalla posizione Home Assistant (latitudine >= 0 = Nord, < 0 = Sud).",

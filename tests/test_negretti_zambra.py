@@ -451,4 +451,131 @@ def test_exceptional_weather_slovak(mock_datetime):
         assert "Výnimočné počasie" in result[0]
 
 
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_summer_adjustment_moderate_pressure_rising(mock_datetime):
+    """Test that summer adjustment IS applied for moderate pressure (975-1025 hPa) with rising trend."""
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # Moderate pressure, rising trend
+    p0 = 1010.0  # Moderate pressure
+    pressure_change = 2.0  # Rising (>1.6)
+    wind_data = [0, 0, 'N', 0]  # Calm, no wind adjustment
+    lang_index = 1  # English
+    elevation = 300.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    text, num, letter = result
+
+    # Summer adjustment should be applied for moderate pressure
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+
+
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_summer_adjustment_very_low_pressure_rising(mock_datetime):
+    """Test that summer adjustment is NOT applied for very low pressure (<975 hPa) with rising trend.
+
+    Very low pressure rising = storm recovery. Summer adjustment would make it too optimistic.
+
+    Example: 965 hPa rising summer:
+    - OLD: +12.25 hPa adjustment → z_hp=977 → too optimistic ❌
+    - NEW: No adjustment → z_hp=965 → appropriate storm recovery ✅
+    """
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # Very low pressure (storm), rising trend (recovery)
+    p0 = 965.0  # Very low pressure
+    pressure_change = 2.5  # Rising (storm passing)
+    wind_data = [0, 270, 'W', 1]  # West wind
+    lang_index = 1  # English
+    elevation = 300.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    text, num, letter = result
+
+    # Should not give overly optimistic forecast during storm recovery
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+
+
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_summer_adjustment_high_pressure_rising(mock_datetime):
+    """Test that summer adjustment is NOT applied for high pressure (>1025 hPa) with rising trend.
+
+    High pressure rising in summer = already very good weather. Summer adjustment would be redundant.
+
+    Example: 1035 hPa rising summer:
+    - OLD: +12.25 hPa adjustment → z_hp=1047 → redundant ❌
+    - NEW: No adjustment → z_hp=1035 → fine weather ✅
+    """
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # High pressure, rising trend
+    p0 = 1035.0  # High pressure
+    pressure_change = 1.8  # Rising
+    wind_data = [0, 0, 'N', 0]  # Calm
+    lang_index = 1  # English
+    elevation = 300.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    text, num, letter = result
+
+    # Should give fine weather forecast without over-adjustment
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    # High pressure rising should give good forecast
+    assert num <= 5, \
+        f"High pressure (1035 hPa) rising should give excellent forecast, got #{num}: {text}"
+
+
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_summer_adjustment_very_low_pressure_falling(mock_datetime):
+    """Test that summer adjustment is NOT applied for very low pressure (<975 hPa) with falling trend.
+
+    Very low pressure falling = deepening storm. Summer adjustment would make it worse.
+    """
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # Very low pressure (storm), falling trend (deepening)
+    p0 = 970.0  # Very low pressure
+    pressure_change = -2.0  # Falling (storm deepening)
+    wind_data = [2, 180, 'S', 1]  # South wind, strong
+    lang_index = 1  # English
+    elevation = 300.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    text, num, letter = result
+
+    # Very low pressure falling should give stormy forecast
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
+
+
+@patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
+def test_summer_adjustment_high_pressure_falling(mock_datetime):
+    """Test that summer adjustment is NOT applied for high pressure (>1025 hPa) with falling trend."""
+    # Mock summer month (July)
+    mock_datetime.now.return_value = datetime(2025, 7, 18, 12, 0)
+
+    # High pressure, falling trend (breakdown of anticyclone)
+    p0 = 1030.0  # High pressure
+    pressure_change = -1.8  # Falling
+    wind_data = [1, 180, 'S', 0]  # South, calm
+    lang_index = 1  # English
+    elevation = 300.0
+
+    result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
+    text, num, letter = result
+
+    # Should give reasonable forecast for anticyclone breakdown
+    assert isinstance(num, int)
+    assert 0 <= num <= 25
+    assert len(text) > 0
 

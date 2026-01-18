@@ -156,7 +156,7 @@ cards:
       {{states("sensor.local_forecast_enhanced")}}
     secondary: |
       Confidence: {{state_attr("sensor.local_forecast_enhanced", "confidence") | capitalize}}
-      Rain: {{states("sensor.local_forecast_rain_probability")}}%
+      Precipitation: {{states("sensor.local_forecast_rain_probability")}}%
     icon: |
       {% set condition = states("weather.local_weather_forecast_weather") %}
       {% if condition == "sunny" %}mdi:weather-sunny
@@ -296,7 +296,7 @@ entities:
   - type: attribute
     entity: sensor.local_forecast_zambretti_detail
     attribute: rain_prob
-    name: Rain Probability (6h / 12h)
+    name: Precipitation Probability (6h / 12h)
   
   - type: section
     label: Negretti-Zambra Method
@@ -305,7 +305,7 @@ entities:
   - type: attribute
     entity: sensor.local_forecast_neg_zam_detail
     attribute: rain_prob
-    name: Rain Probability (6h / 12h)
+    name: Precipitation Probability (6h / 12h)
   
   - type: section
     label: Consensus
@@ -853,7 +853,7 @@ cards:
 **💡 Why this card?**
 - Home Assistant weather UI shows only 5 basic attributes (temperature, pressure, humidity, wind speed, wind bearing)
 - Weather entity has **25+ additional attributes** with valuable data!
-- This card exposes everything: feels like, dew point, fog risk, wind gust, rain probability, forecasts, etc.
+- This card exposes everything: feels like, dew point, fog risk, wind gust, precipitation probability, forecasts, etc.
 
 ### Option A: Simple Entities Card (No Custom Cards Needed)
 
@@ -958,18 +958,18 @@ entities:
     attribute: frost_risk
     name: Frost Risk
   
-  # Rain Forecast
+  # Precipitation Forecast
   - type: section
-    label: 🌧️ Rain Forecast
+    label: 🌧️❄️ Precipitation Forecast
   - entity: weather.local_weather_forecast_weather
     type: attribute
     attribute: rain_probability
-    name: Rain Probability
+    name: Precipitation Probability
     suffix: '%'
   - entity: weather.local_weather_forecast_weather
     type: attribute
     attribute: rain_confidence
-    name: Rain Confidence
+    name: Precipitation Confidence
   
   # Forecasts
   - type: section
@@ -1112,7 +1112,7 @@ cards:
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-template-card
-        primary: Rain Probability
+        primary: Precipitation Probability
         secondary: |
           {{state_attr("weather.local_weather_forecast_weather", "rain_probability")}}%
           Confidence: {{state_attr("weather.local_weather_forecast_weather", "rain_confidence")}}
@@ -1259,7 +1259,7 @@ cards:
   - `snow_risk_text` - e.g., "Žiadne riziko snehu", "Vysoké riziko snehu"
   - `frost_risk_text` - e.g., "Žiadne riziko námrazy", "Vysoké riziko námrazy"
 - `visibility_estimate`
-- `rain_probability`, `rain_confidence`
+- `rain_probability`, `rain_confidence` - Precipitation probability (covers both rain and snow)
 - `forecast_zambretti`, `zambretti_number`
 - `forecast_negretti_zambra`, `neg_zam_number`
 - `forecast_short_term`, `forecast_confidence`

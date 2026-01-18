@@ -146,7 +146,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.5",
+            "sw_version": "3.1.6",
         }
 
     async def _wait_for_entity(
@@ -2216,6 +2216,31 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         """When entity is added to hass - schedule delayed update for startup."""
         await super().async_added_to_hass()
 
+        # Track detail sensors for updates
+        sensors_to_track = [
+            "sensor.local_forecast_zambretti_detail",
+            "sensor.local_forecast_neg_zam_detail",
+        ]
+
+        # Add optional sensors if configured
+        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+        if humidity_sensor:
+            sensors_to_track.append(humidity_sensor)
+
+        temp_sensor = self.config_entry.options.get(CONF_TEMPERATURE_SENSOR) or self.config_entry.data.get(CONF_TEMPERATURE_SENSOR)
+        if temp_sensor:
+            sensors_to_track.append(temp_sensor)
+
+        rain_sensor = self.config_entry.options.get(CONF_RAIN_RATE_SENSOR) or self.config_entry.data.get(CONF_RAIN_RATE_SENSOR)
+        if rain_sensor:
+            sensors_to_track.append(rain_sensor)
+
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, sensors_to_track, self._handle_sensor_update
+            )
+        )
+
         # Schedule delayed update to wait for dependent sensors to load
         async def delayed_startup_update():
             await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
@@ -2224,6 +2249,24 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             self.async_write_ha_state()
 
         self.hass.async_create_task(delayed_startup_update())
+
+    @callback
+    async def _handle_sensor_update(self, event):
+        """Handle source sensor state changes."""
+        # Throttle updates to prevent flooding
+        now = dt_util.now()
+        if self._last_update_time is not None:
+            time_since_last_update = (now - self._last_update_time).total_seconds()
+            if time_since_last_update < self._update_throttle_seconds:
+                _LOGGER.debug(
+                    f"RainProb: Skipping update, only {time_since_last_update:.1f}s since last update"
+                )
+                return
+
+        self._last_update_time = now
+        _LOGGER.debug("RainProb: Handling sensor update")
+        await self.async_update()
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> int | None:
@@ -2346,11 +2389,10 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             temp_state = self.hass.states.get(temp_sensor_id)
             if temp_state and temp_state.state not in ("unknown", "unavailable", None):
                 try:
-                    from .unit_conversion import convert_sensor_value
-                    temperature = convert_sensor_value(
+                    temperature = UnitConverter.convert_sensor_value(
                         float(temp_state.state),
-                        temp_state.attributes.get("unit_of_measurement", "°C"),
-                        "temperature"
+                        "temperature",
+                        temp_state.attributes.get("unit_of_measurement", "°C")
                     )
                 except (ValueError, TypeError):
                     pass
@@ -2394,7 +2436,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             "precipitation_type": precipitation_type,
             "factors_used": self._get_factors_used(humidity, dewpoint_spread),
         }
-        # Note: Home Assistant automatically writes state after async_update() completes
 
     def _get_factors_used(self, humidity, dewpoint_spread):
         """Get list of factors used in calculation."""

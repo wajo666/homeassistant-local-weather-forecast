@@ -47,7 +47,7 @@
           "wind_speed_sensor": "Senzor rýchlosti vetra",
           "humidity_sensor": "Senzor vlhkosti (rozšírený)",
           "wind_gust_sensor": "Senzor nárazov vetra (rozšírený)",
-          "rain_rate_sensor": "Senzor detekcie dažďa (mm)",
+          "rain_rate_sensor": "Senzor zrážok (5-min prírastky)",
           "solar_radiation_sensor": "Senzor slnečného žiarenia (W/m²)",
           "uv_index_sensor": "Senzor UV indexu (0-15)",
           "elevation": "Nadmorská výška",
@@ -57,9 +57,9 @@
           "enable_weather_entity": "Povoliť weather entitu"
         },
         "data_description": {
-          "humidity_sensor": "Senzor vlhkosti pre detekciu rizika hmly, výpočet rosného bodu a pravdepodobnosť dažďa. Podporuje % jednotky (voliteľné)",
+          "humidity_sensor": "Senzor vlhkosti pre detekciu rizika hmly, výpočet rosného bodu a pravdepodobnosť zrážok. Podporuje % jednotky (voliteľné)",
           "wind_gust_sensor": "Senzor nárazov vetra. Podporuje m/s, km/h, mph, ft/s, knots - automaticky konvertované. Používa sa pre detekciu stability atmosféry a varovanie pred búrkami (voliteľné)",
-          "rain_rate_sensor": "Senzor detekcie dažďa s device_class='precipitation'. Podporuje mm, in - automaticky konvertované. Integrácia automaticky detekuje dážď keď hodnota senzora > 0 (Netatmo: prírastky 0.101, 0.202... / Ecowitt WS90: podobne). NEPOUŽÍVAJTE hodinové súčty (voliteľné)",
+          "rain_rate_sensor": "Senzor zrážok s device_class='precipitation'. Podporuje mm, in - automaticky konvertované. Integrácia automaticky detekuje zrážky keď hodnota senzora > 0 (Netatmo: prírastky 0.101, 0.202... / Ecowitt WS90: podobne). NEPOUŽÍVAJTE hodinové súčty (voliteľné)",
           "solar_radiation_sensor": "Senzor slnečného žiarenia v W/m² pre presný pocit teploty. Ak je poskytnutý UV Index senzor, slnečné žiarenie sa môže vypočítať automaticky (voliteľné)",
           "uv_index_sensor": "Senzor UV indexu (0-15 stupnica). Ak je poskytnutý senzor slnečného žiarenia, UV index sa môže vypočítať automaticky. Používa sa pre upozornenia na ochranu pred slnkom a pocitovú teplotu (voliteľné)",
           "hemisphere": "Vaša hemisféra pre sezónne úpravy počasia. Automaticky detekované z polohy Home Assistant (zemepisná šírka >= 0 = Sever, < 0 = Juh).",

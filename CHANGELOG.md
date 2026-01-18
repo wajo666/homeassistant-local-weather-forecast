@@ -6,6 +6,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.6] - 2026-01-18
+
+### 🔧 Fixed
+
+- **Forecast Algorithms - Fixed Incorrect Predictions for Extreme Weather** 🌡️❄️
+  - Fixed wrong forecasts during high pressure in winter (e.g., showing "Very Unsettled" when pressure is 1034 hPa and stable)
+  - Fixed overly optimistic forecasts during storm recovery in summer
+  - Fixed incorrect predictions during very low pressure conditions
+  - Seasonal adjustments now work correctly across all pressure ranges (910-1085 hPa)
+  - **Impact**: More accurate forecasts, especially during extreme weather conditions ✅
+
+- **Precipitation Probability Sensor - Fixed Auto-Update Issues** 🐛
+  - Fixed sensor not updating automatically after Home Assistant restart
+  - Fixed sensor registration errors
+  - Sensor now updates in real-time when forecast changes
+  - **Impact**: Sensor works reliably and shows current predictions ✅
+
+- **Improved Winter Weather Display** 🌍❄️
+  - Changed "Rain" to "Precipitation" in all languages
+  - Sensor now correctly shows snow icon (❄️) when temperature is below freezing
+  - **Languages Updated**: English, Slovak, German, Greek, Italian
+
 ## [3.1.5] - 2026-01-17
 
 ### 🌍 Major Release - Global Pressure Range, Precision & Precipitation
