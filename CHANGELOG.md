@@ -6,6 +6,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.7] - 2026-01-19
+
+### 🌍 Enhanced
+
+- **Universal Solar Radiation Calculation** ☀️🌐
+  - **Automatically uses your location** from Home Assistant settings (Configuration → General)
+  - Works accurately **anywhere on Earth** - from equator to poles, sea level to mountains
+  - Accounts for latitude, elevation (+10% per 1000m), season, and time of day
+  - **No configuration needed** - just works! 🎉
+  - **Example**: Košice (314m elevation) - Winter: 186 W/m², Summer: 949 W/m²
+
+### 🔧 Fixed
+
+- **Precipitation Sensor Snow Icon** ❄️🌧️
+  - Fixed false snow icon when temperature is cold but conditions don't support snowfall
+  - Now requires actual snow risk (high humidity + saturation + precipitation probability)
+  - Example: -5°C with 19% precipitation → shows RAIN icon (correct), not snow
+
+- **Solar Radiation Sensors in Lux** ☀️
+  - Added automatic conversion from lux to W/m² (for Xiaomi, Shelly sensors)
+  - Config flow now accepts both `irradiance` (W/m²) and `illuminance` (lux) device classes
+  - Supported units: W/m², W/m2, watt/m², lx, lux
+
+- **Sunrise/Sunset False Cloudy Detection** 🌅
+  - Fixed false "cloudy" condition at sunrise/sunset when sky is actually clear
+  - Solar radiation detection now requires minimum 50 W/m² to activate
+
+---
+
 ## [3.1.6] - 2026-01-18
 
 ### 🔧 Fixed
@@ -27,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Changed "Rain" to "Precipitation" in all languages
   - Sensor now correctly shows snow icon (❄️) when temperature is below freezing
   - **Languages Updated**: English, Slovak, German, Greek, Italian
+
+---
 
 ## [3.1.5] - 2026-01-17
 

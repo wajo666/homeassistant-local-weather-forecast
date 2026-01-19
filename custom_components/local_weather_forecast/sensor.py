@@ -146,7 +146,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.6",
+            "sw_version": "3.1.7",
         }
 
     async def _wait_for_entity(
@@ -2382,7 +2382,8 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             confidence = "very_high"
 
         # Dynamic icon based on temperature and snow conditions
-        # Get temperature to determine if precipitation would be rain or snow
+        # Get temperature and snow risk to determine if precipitation would be rain or snow
+        # IMPORTANT: Must be consistent with weather entity snow detection logic!
         temp_sensor_id = self.config_entry.options.get(CONF_TEMPERATURE_SENSOR) or self.config_entry.data.get(CONF_TEMPERATURE_SENSOR)
         temperature = None
         if temp_sensor_id:
@@ -2397,15 +2398,60 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 except (ValueError, TypeError):
                     pass
 
-        # Determine icon based on temperature and conditions
-        # Use snow icon if temperature is at or below freezing and there's precipitation risk
-        if temperature is not None and temperature <= 2.0 and probability >= 30:
-            # Cold enough for snow + significant precipitation probability
-            self._attr_icon = "mdi:weather-snowy"
-            precipitation_type = "snow"
-            _LOGGER.debug(
-                f"RainProb: Icon set to SNOW (temp={temperature:.1f}°C, probability={probability}%)"
-            )
+        # Get snow risk from enhanced sensor for consistent snow detection
+        snow_risk = None
+        enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+        if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable", None):
+            try:
+                enhanced_attrs = enhanced_sensor.attributes or {}
+                snow_risk = enhanced_attrs.get("snow_risk", None)
+            except (AttributeError, KeyError, TypeError):
+                pass
+
+        # Determine icon based on temperature, conditions AND snow risk
+        # CONSISTENCY: Use same logic as weather entity (weather.py lines 447-477)
+        #
+        # Snow detection requires BOTH:
+        # 1. Cold temperature (≤ 2°C)
+        # 2. HIGH snow risk from enhanced sensor OR very high probability (≥ 60%)
+        #
+        # This prevents showing snow icon when conditions are just "cold" but not "snowy"
+        # Example: -5°C, 75% humidity, spread 3.8°C, snow_risk=low → RAIN icon (not snow)
+
+        if temperature is not None and temperature <= 2.0:
+            # Cold enough for snow - check snow risk
+            if snow_risk in ("high", "Vysoké riziko snehu") and probability >= 40:
+                # High snow risk + moderate probability → SNOW
+                self._attr_icon = "mdi:weather-snowy"
+                precipitation_type = "snow"
+                _LOGGER.debug(
+                    f"RainProb: Icon set to SNOW (high risk) - temp={temperature:.1f}°C, "
+                    f"probability={probability}%, snow_risk={snow_risk}"
+                )
+            elif snow_risk in ("medium", "Stredné riziko snehu") and probability >= 50:
+                # Medium snow risk + higher probability → SNOW
+                self._attr_icon = "mdi:weather-snowy"
+                precipitation_type = "snow"
+                _LOGGER.debug(
+                    f"RainProb: Icon set to SNOW (medium risk) - temp={temperature:.1f}°C, "
+                    f"probability={probability}%, snow_risk={snow_risk}"
+                )
+            elif probability >= 60 and humidity is not None and humidity > 70:
+                # Very high probability + cold + humid → likely SNOW even without high snow_risk
+                self._attr_icon = "mdi:weather-snowy"
+                precipitation_type = "snow"
+                _LOGGER.debug(
+                    f"RainProb: Icon set to SNOW (high prob + humid) - temp={temperature:.1f}°C, "
+                    f"probability={probability}%, humidity={humidity}%"
+                )
+            else:
+                # Cold but low snow risk or low probability → RAIN (frozen rain sensor scenario)
+                self._attr_icon = "mdi:weather-rainy"
+                precipitation_type = "rain"
+                _LOGGER.debug(
+                    f"RainProb: Icon set to RAIN (cold but low snow risk) - temp={temperature:.1f}°C, "
+                    f"probability={probability}%, snow_risk={snow_risk}"
+                )
         elif temperature is not None and 2.0 < temperature <= 4.0 and probability >= 50:
             # Marginal snow temperature + high probability → mixed precipitation
             self._attr_icon = "mdi:weather-snowy-rainy"
@@ -2414,7 +2460,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 f"RainProb: Icon set to MIXED (temp={temperature:.1f}°C, probability={probability}%)"
             )
         else:
-            # Rain or no temperature data
+            # Warm temperature or no temperature data → RAIN
             self._attr_icon = "mdi:weather-rainy"
             precipitation_type = "rain"
             _LOGGER.debug(

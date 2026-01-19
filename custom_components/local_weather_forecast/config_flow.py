@@ -663,7 +663,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="sensor",
-                        device_class="irradiance",
+                        device_class=["irradiance", "illuminance"],  # Support both W/m² and lux sensors
                         multiple=False,
                     )
                 ),

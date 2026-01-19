@@ -23,6 +23,7 @@ class UnitConverter:
         "wind_speed": UnitOfSpeed.METERS_PER_SECOND,  # m/s for Zambretti threshold
         "humidity": PERCENTAGE,  # % for calculations
         "precipitation": "mm",  # mm or mm/h for rain detection
+        "solar_radiation": "W/m²",  # W/m² for solar radiation
     }
 
     @staticmethod
@@ -142,6 +143,34 @@ class UnitConverter:
         return result
 
     @staticmethod
+    def convert_solar_radiation(value: float, from_unit: str) -> float:
+        """Convert solar radiation to W/m².
+
+        Args:
+            value: Solar radiation value
+            from_unit: Source unit (W/m², lx, lux)
+
+        Returns:
+            Solar radiation in W/m²
+        """
+        if from_unit in ("W/m²", "W/m2", "watt/m²"):
+            _LOGGER.debug(f"Solar radiation conversion: {value} {from_unit} (no conversion needed)")
+            return value
+
+        result = value
+        if from_unit in ("lx", "lux"):
+            # Convert lux to W/m²
+            # For direct sunlight: 1 lux ≈ 0.0079 W/m²
+            # This is an approximation as the exact conversion depends on light spectrum
+            result = value * 0.0079
+            _LOGGER.debug(f"Solar radiation conversion: {value} {from_unit} → {result:.2f} W/m²")
+        else:
+            _LOGGER.warning(f"Unknown solar radiation unit: {from_unit}, assuming W/m²")
+            return value
+
+        return result
+
+    @staticmethod
     def get_sensor_unit(hass, entity_id: str) -> str | None:
         """Get unit of measurement from sensor entity.
 
@@ -192,6 +221,8 @@ class UnitConverter:
             return value
         elif sensor_type == "precipitation":
             return cls.convert_precipitation(value, from_unit)
+        elif sensor_type == "solar_radiation":
+            return cls.convert_solar_radiation(value, from_unit)
         else:
             _LOGGER.warning(f"Unknown sensor type: {sensor_type}")
             return value

@@ -55,7 +55,6 @@ from .const import (
     FORECAST_MODEL_ENHANCED,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ZAMBRETTI,
-    ZAMBRETTI_TO_CONDITION,
 )
 from .forecast_calculator import (
     DailyForecastGenerator,
@@ -110,7 +109,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.6",
+            sw_version="3.1.7",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -308,7 +307,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
             solar_state = self.hass.states.get(solar_sensor_id)
             if solar_state and solar_state.state not in ("unknown", "unavailable"):
                 try:
-                    solar_radiation = float(solar_state.state)
+                    raw_value = float(solar_state.state)
+                    unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+                    # Convert to W/m² (from lux if needed)
+                    solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
                 except (ValueError, TypeError):
                     pass
 
@@ -518,43 +520,115 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_state = self.hass.states.get(solar_sensor_id)
                 if solar_state and solar_state.state not in ("unknown", "unavailable", None):
                     try:
-                        solar_radiation = float(solar_state.state)
+                        raw_value = float(solar_state.state)
+                        unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+                        # Convert to W/m² (from lux if needed)
+                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
                     except (ValueError, TypeError):
                         pass
 
-            # Only use solar radiation during daytime (sun above horizon)
-            if solar_radiation is not None and self.hass.states.is_state('sun.sun', 'above_horizon'):
-                # Get seasonal maximum solar radiation for comparison
-                # These are typical clear-sky values at noon for mid-latitudes
+            # Only use solar radiation during daytime with sufficient sunlight
+            # IMPORTANT: Check both sun position AND actual solar radiation value!
+            # - sun.sun above_horizon: Prevents use at night
+            # - solar_radiation > 50 W/m²: Prevents use at sunrise/sunset when radiation is too low
+            #
+            # Why 50 W/m² threshold?
+            # - At sunrise/sunset: radiation is 0-50 W/m² even with clear skies
+            # - During day: clear skies give >100 W/m² even in winter
+            # - This prevents false "cloudy" detection when sky is clear but sun is low
+            if (solar_radiation is not None
+                and self.hass.states.is_state('sun.sun', 'above_horizon')
+                and solar_radiation > 50):
+
+                # Calculate theoretical maximum solar radiation for current location and time
+                # UNIVERSAL: Works for any latitude, elevation, season, and time of day
                 from homeassistant.util import dt as dt_util
+                import math
+
                 now = dt_util.now()
                 month = now.month
-
-                # Seasonal maximum solar radiation at noon (W/m²)
-                # Based on typical clear-sky conditions for latitude ~48°N
-                if month in (1, 12):
-                    max_solar = 300  # Winter
-                elif month in (2, 11):
-                    max_solar = 400  # Late winter / early winter
-                elif month in (3, 10):
-                    max_solar = 550  # Spring / Autumn
-                elif month in (4, 9):
-                    max_solar = 750  # Late spring / early autumn
-                elif month in (5, 8):
-                    max_solar = 950  # Early summer / late summer
-                else:  # June, July
-                    max_solar = 1100  # Peak summer
-
-                # Adjust for time of day (solar angle)
                 hour = now.hour + (now.minute / 60.0)
-                # Simple cosine approximation: peak at 12:00, zero at sunrise/sunset
-                # Assume ~6:00 sunrise, ~18:00 sunset (adjust by season if needed)
-                hour_angle = abs(hour - 12.0)
-                if hour_angle < 6:  # Between 6am-6pm roughly
-                    time_factor = max(0.0, (1.0 - (hour_angle / 7.0)))  # Gradual decrease from noon
-                    theoretical_max = max_solar * time_factor
+
+                # Get location parameters with smart fallback priority:
+                # 1st: Home Assistant global config (most accurate, set by user in HA)
+                # 2nd: Integration config entry (for custom override)
+                # 3rd: Default values (fallback if nothing configured)
+
+                # Latitude from HA config or fallback
+                latitude = None
+                if self.hass.config.latitude is not None:
+                    latitude = self.hass.config.latitude
+                    _LOGGER.debug(f"Solar: Using HA global latitude: {latitude:.4f}°")
                 else:
-                    theoretical_max = 0
+                    latitude = self._get_config(CONF_LATITUDE) or DEFAULT_LATITUDE
+                    _LOGGER.debug(f"Solar: Using config/default latitude: {latitude:.4f}°")
+
+                # Elevation from HA config or fallback
+                elevation = None
+                if self.hass.config.elevation is not None:
+                    elevation = self.hass.config.elevation
+                    _LOGGER.debug(f"Solar: Using HA global elevation: {elevation:.0f}m")
+                else:
+                    elevation = self._get_config(CONF_ELEVATION) or DEFAULT_ELEVATION
+                    _LOGGER.debug(f"Solar: Using config/default elevation: {elevation:.0f}m")
+
+                # 1. Calculate solar declination (angle of sun relative to equator)
+                # Varies from -23.45° (Dec 21) to +23.45° (Jun 21)
+                day_of_year = now.timetuple().tm_yday
+                solar_declination = 23.45 * math.sin(math.radians((360/365) * (day_of_year - 81)))
+
+                # 2. Calculate hour angle (sun's position in sky relative to solar noon)
+                # 0° at noon, ±15° per hour
+                hour_angle_deg = (hour - 12) * 15
+
+                # 3. Calculate solar elevation angle (altitude above horizon)
+                # Uses spherical trigonometry to find sun's position
+                lat_rad = math.radians(latitude)
+                dec_rad = math.radians(solar_declination)
+                hour_rad = math.radians(hour_angle_deg)
+
+                sin_elevation = (
+                    math.sin(lat_rad) * math.sin(dec_rad) +
+                    math.cos(lat_rad) * math.cos(dec_rad) * math.cos(hour_rad)
+                )
+                # Clamp to valid range [-1, 1] for asin
+                sin_elevation = max(-1.0, min(1.0, sin_elevation))
+                solar_elevation_deg = math.degrees(math.asin(sin_elevation))
+
+                # 4. Calculate air mass (amount of atmosphere sunlight passes through)
+                # Air mass = 1 at zenith (sun directly overhead)
+                # Air mass ≈ 38 at horizon (sun at 90° angle)
+                if solar_elevation_deg > 0:
+                    # Kasten-Young formula (accurate for elevation > 0°)
+                    air_mass = 1 / (math.sin(math.radians(solar_elevation_deg)) +
+                                   0.50572 * (solar_elevation_deg + 6.07995) ** -1.6364)
+                else:
+                    air_mass = 38  # Sun below horizon
+
+                # 5. Calculate clear-sky solar radiation at sea level
+                # Solar constant (1361 W/m²) × atmospheric transmission
+                solar_constant = 1361  # W/m² at top of atmosphere
+
+                # Atmospheric transmission coefficient (0.7-0.8 for clear sky)
+                # Varies with air mass: more atmosphere = more absorption
+                transmission = 0.7 ** (air_mass ** 0.678)
+
+                # Maximum solar radiation at sea level for current sun position
+                max_solar_sea_level = solar_constant * transmission * max(0.0, sin_elevation)
+
+                # 6. Adjust for elevation (thinner atmosphere at higher altitude)
+                # For every 1000m elevation: ~10% more solar radiation
+                # Formula: radiation increases by ~7-12% per 1000m (we use 10%)
+                elevation_factor = 1 + (elevation / 1000) * 0.10
+
+                # Final theoretical maximum for clear sky at this location and time
+                theoretical_max = max_solar_sea_level * elevation_factor
+
+                _LOGGER.debug(
+                    f"Weather: Solar calculation - lat={latitude:.1f}°, elev={elevation}m, "
+                    f"month={month}, hour={hour:.1f}, sun_elevation={solar_elevation_deg:.1f}°, "
+                    f"air_mass={air_mass:.2f}, theoretical_max={theoretical_max:.0f} W/m²"
+                )
 
                 if theoretical_max > 50:  # Only during significant daylight
                     # Calculate cloud cover percentage from solar radiation
@@ -599,6 +673,11 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             f"Weather: Solar radiation shows heavy clouds ({cloud_percent:.0f}%), "
                             f"falling through to forecast model for rain/cloudy determination"
                         )
+            elif solar_radiation is not None and solar_radiation <= 50:
+                _LOGGER.debug(
+                    f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 50), "
+                    f"skipping cloud detection (sunrise/sunset or night)"
+                )
 
             # PRIORITY 3: Get forecast condition based on selected model
             # User can choose: Enhanced (default), Zambretti, Negretti-Zambra, or Combined
@@ -1187,7 +1266,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_state = self.hass.states.get(solar_sensor_id)
                 if solar_state and solar_state.state not in ("unknown", "unavailable"):
                     try:
-                        solar_radiation = float(solar_state.state)
+                        raw_value = float(solar_state.state)
+                        unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+                        # Convert to W/m² (from lux if needed)
+                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
                         _LOGGER.debug(f"☀️ Solar radiation: {solar_radiation} W/m²")
                     except (ValueError, TypeError):
                         pass
@@ -1375,8 +1457,11 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_state = self.hass.states.get(solar_sensor_id)
                 if solar_state and solar_state.state not in ("unknown", "unavailable"):
                     try:
-                        solar_radiation = float(solar_state.state)
-                        _LOGGER.debug(f"Solar radiation for hourly forecast: {solar_radiation} W/m²")
+                        raw_value = float(solar_state.state)
+                        unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+                        # Convert to W/m² (from lux if needed)
+                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        _LOGGER.debug(f"Solar radiation for daily forecast: {solar_radiation} W/m²")
                     except (ValueError, TypeError):
                         pass
 
