@@ -98,7 +98,7 @@ This integration uses **barometric pressure trends** combined with optional sens
 - **Seasonal adjustments** - Summer/winter patterns automatically applied
 
 ### Smart Features
-- **Solar-aware temperature forecasting** 🌡️☀️ - Uses real sun position (astral library) for accurate predictions
+- **Solar-aware temperature forecasting** 🌡️☀️ - Uses real sun position for accurate predictions
 - **Seasonal amplitude adjustments** - Winter ±3°C, Summer ±10°C (auto-adjusted for hemisphere)
 - **Automatic unit conversion** - Use any standard units (°F, inHg, mph, km/h, etc.)
 - **Multi-language support** - Detects your Home Assistant UI language automatically
@@ -367,38 +367,8 @@ Scenario 5: High humidity correction
 2. Copy it to your Home Assistant `custom_components` directory
 3. Restart Home Assistant
 
-**⚠️ IMPORTANT:** Manual installation requires manual dependency installation!
-
-After restart, you may see this error:
-```
-Requirements for local_weather_forecast not found: ['astral>=3.2']
-```
-
-**Fix:** Install `astral` manually via SSH:
-```bash
-docker exec homeassistant pip install astral>=3.2
-```
-
-Then restart Home Assistant again. See [INSTALL_ASTRAL.md](INSTALL_ASTRAL.md) for detailed instructions.
-
 💡 **Recommendation:** Use HACS installation instead - it handles dependencies automatically!
 
-### 🔧 Troubleshooting: "Requirements not found: ['astral>=3.2']"
-
-This error occurs when:
-1. **HACS installation:** Restart didn't complete properly
-2. **Manual installation:** You didn't install `astral` library
-
-**For HACS users (automatic fix):**
-1. **Remove integration**: Settings → Devices & Services → Local Weather Forecast → Delete
-2. **Restart Home Assistant**: Developer Tools → YAML → RESTART
-3. **Add integration again**: Settings → Devices & Services → + ADD INTEGRATION
-
-Home Assistant will automatically install the required `astral` library.
-
-**For manual installation users:**
-
-See [RIESENIE_ASTRAL.md](RIESENIE_ASTRAL.md) (Slovak) or [INSTALL_ASTRAL.md](INSTALL_ASTRAL.md) (English) for detailed manual installation instructions.
 
 ---
 
@@ -1466,8 +1436,8 @@ Contributions are welcome! Please:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
----
 
+---
 
 ## ⚖️ License
 
