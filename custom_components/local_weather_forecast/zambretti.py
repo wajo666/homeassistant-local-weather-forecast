@@ -191,7 +191,7 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
         6: 17,
         7: 20,
         8: 21,
-        9: 23, 18: 23,
+        9: 5, 18: 23,  # FIXED: z=9 (high pressure + steady) should be Fairly Fine (F=5), not Very Unsettled (X=23)!
         12: 4,
         13: 10,
         14: 13,
@@ -250,7 +250,7 @@ def _map_zambretti_to_letter(z: int) -> str:
         6: "R",
         7: "U",
         8: "V",
-        9: "X", 18: "X",
+        9: "F", 18: "X",  # FIXED: z=9 (high pressure + steady) should be F (Fairly Fine), not X (Very Unsettled)!
         12: "E",
         13: "K",
         14: "N",

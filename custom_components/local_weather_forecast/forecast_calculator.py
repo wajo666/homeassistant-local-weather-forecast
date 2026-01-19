@@ -983,7 +983,22 @@ class HourlyForecastGenerator:
                     # Zambretti is optimized for CHANGING pressure, not stable anticyclones
                     abs_change = abs(pressure_change)
 
-                    if abs_change > 5:  # Large change → Zambretti 80%
+                    # SPECIAL CASE: High pressure (anticyclone) - ALWAYS trust Negretti more
+                    # Zambretti STEADY formula has bugs at high pressure (gives wrong z-numbers)
+                    # Example: 1037.8 hPa → z=9 → "Very Unsettled" (WRONG!)
+                    if future_pressure > 1030:
+                        # Anticyclone detected - trust Negretti 85%+ regardless of change rate
+                        if abs_change > 5:
+                            zambretti_weight = 0.40  # Even rapid changes in anticyclone
+                            negretti_weight = 0.60
+                        elif abs_change > 3:
+                            zambretti_weight = 0.30  # Medium change in anticyclone
+                            negretti_weight = 0.70
+                        else:
+                            zambretti_weight = 0.10  # Stable anticyclone
+                            negretti_weight = 0.90
+                    # Normal pressure range - use standard weighting
+                    elif abs_change > 5:  # Large change → Zambretti 80%
                         zambretti_weight = 0.8
                         negretti_weight = 0.2
                     elif abs_change > 3:  # Medium change → Zambretti 65%
@@ -995,7 +1010,7 @@ class HourlyForecastGenerator:
                     elif abs_change > 0.5:  # Very small change → Negretti 70%
                         zambretti_weight = 0.30
                         negretti_weight = 0.70
-                    else:  # Stable/Anticyclone → Negretti 90%
+                    else:  # Stable → Negretti 90%
                         zambretti_weight = 0.10
                         negretti_weight = 0.90
 

@@ -35,7 +35,9 @@ class TestMapZambrettiToLetter:
 
     def test_map_letter_x(self):
         """Test mapping for letter X."""
-        assert _map_zambretti_to_letter(9) == "X"
+        # FIXED: z=9 now maps to 'F' (Fairly Fine) for high pressure + steady
+        # z=18 still maps to 'X' (Very Unsettled)
+        assert _map_zambretti_to_letter(9) == "F"
         assert _map_zambretti_to_letter(18) == "X"
 
     def test_map_letter_z(self):

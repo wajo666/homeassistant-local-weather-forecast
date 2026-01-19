@@ -10,13 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixed
 
-- **Anticyclone Forecast Accuracy** 🌤️
-  - Fixed incorrect rain predictions in stable high-pressure conditions (anticyclones)
-  - Enhanced model now gives 90% priority to Negretti-Zambra when pressure change < 0.5 hPa
-  - Rain probability calculation now correctly reduces probability in anticyclones (>1030 hPa)
-  - Fixed issue where Zambretti would predict 30% rain chance even during stable sunny weather
-  - **Impact**: More accurate forecasts during stable weather periods ✅
-  - **Example**: Pressure 1038 hPa, change +1.3 hPa → now correctly shows 0-5% rain instead of 30%
+- **Critical Weather Forecast Bug in Anticyclones** 🌤️
+  - **Problem**: Plugin showed rain ☔ during stable sunny weather (anticyclones with high pressure >1030 hPa)
+  - **Fixed**: Corrected algorithm mapping error that caused wrong forecasts
+  - **Impact**: Now correctly shows sunny ☀️ weather during stable high-pressure conditions
+  - **Example**: Pressure 1038 hPa → was showing "Very Unsettled, Rain" ❌ → now shows "Sunny" ✅
+  - **Applies to**: Current weather, hourly forecast, daily forecast
 
 ---
 

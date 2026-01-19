@@ -2044,14 +2044,35 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             # Anticyclone stability fix: Give MUCH more weight to Negretti in stable conditions
             # Zambretti is optimized for CHANGING pressure, not stable anticyclones
             abs_change = abs(pressure_change)
-            if abs_change >= 3.0:
+
+            # Get current pressure for anticyclone detection
+            current_pressure = 1013.25  # Default
+            pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
+            if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    current_pressure = float(pressure_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+
+            # SPECIAL CASE: High pressure (anticyclone) - ALWAYS trust Negretti more
+            # Zambretti STEADY formula has bugs at high pressure (gives wrong z-numbers)
+            if current_pressure > 1030:
+                # Anticyclone detected - trust Negretti 85%+ regardless of change rate
+                if abs_change >= 3.0:
+                    zambretti_weight = 0.30  # Even moderate changes in anticyclone
+                elif abs_change >= 1.5:
+                    zambretti_weight = 0.20  # Small change in anticyclone
+                else:
+                    zambretti_weight = 0.10  # Stable anticyclone - trust Negretti 90%
+            # Normal pressure range - use standard weighting
+            elif abs_change >= 3.0:
                 zambretti_weight = 0.75  # Rapid change - trust Zambretti more
             elif abs_change >= 1.5:
                 zambretti_weight = 0.65  # Moderate change
             elif abs_change >= 0.5:
                 zambretti_weight = 0.45  # Small change
             else:
-                zambretti_weight = 0.10  # Stable/Anticyclone - trust Negretti 90%
+                zambretti_weight = 0.10  # Stable - trust Negretti 90%
 
             negretti_weight = 1.0 - zambretti_weight
 

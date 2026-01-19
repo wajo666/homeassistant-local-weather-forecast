@@ -231,13 +231,19 @@ class TestAnticycloneForecast:
         ) / len(enhanced_forecasts)
 
         # Assertions
-        # Negretti should give lower rain probability in stable anticyclone
-        assert negretti_rain_avg < zambretti_rain_avg, (
-            f"Negretti should be drier in anticyclone: "
-            f"Negretti={negretti_rain_avg:.1f}% vs Zambretti={zambretti_rain_avg:.1f}%"
+        # After Zambretti mapping fix (z=9 → F instead of X), both models should give LOW rain probability
+        # in stable anticyclone
+        assert zambretti_rain_avg < 15, (
+            f"Zambretti rain probability too high in anticyclone: {zambretti_rain_avg:.1f}% "
+            f"(should be < 15% after mapping fix)"
         )
 
-        # Enhanced should be close to Negretti (90% weight)
+        assert negretti_rain_avg < 15, (
+            f"Negretti rain probability too high in anticyclone: {negretti_rain_avg:.1f}% "
+            f"(should be < 15%)"
+        )
+
+        # Enhanced should be close to Negretti (90% weight in stable anticyclone)
         diff = abs(enhanced_rain_avg - negretti_rain_avg)
         assert diff < 5, (
             f"Enhanced should follow Negretti in stable conditions: "
