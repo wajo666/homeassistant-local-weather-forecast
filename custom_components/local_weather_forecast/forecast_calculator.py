@@ -771,30 +771,16 @@ class ZambrettiForecaster:
 
         # For future times, calculate sunrise/sunset for the specific forecast date
         try:
-            # Try using astral to calculate sunrise/sunset for the specific forecast date
-            try:
-                from astral import LocationInfo
-                from astral.sun import sun as astral_sun
+            from homeassistant.helpers.sun import get_astral_event_date
+            from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
 
-                # Get latitude from hass
-                latitude = self.hass.config.latitude if self.hass.config else 48.0
+            # Get sunrise/sunset for the specific forecast date
+            forecast_date = check_time.date()
 
-                # Create location
-                location = LocationInfo(
-                    name="Station",
-                    region="",
-                    timezone="UTC",
-                    latitude=latitude,
-                    longitude=0  # Not critical for sunrise/sunset
-                )
+            sunrise = get_astral_event_date(self.hass, SUN_EVENT_SUNRISE, forecast_date)
+            sunset = get_astral_event_date(self.hass, SUN_EVENT_SUNSET, forecast_date)
 
-                # Get sunrise/sunset for the specific forecast date
-                forecast_date = check_time.date()
-                s = astral_sun(location.observer, date=forecast_date)
-
-                sunrise = s["sunrise"]
-                sunset = s["sunset"]
-
+            if sunrise and sunset:
                 # Make check_time timezone-aware if it isn't already
                 if check_time.tzinfo is None:
                     check_time = check_time.replace(tzinfo=timezone.utc)
@@ -812,9 +798,7 @@ class ZambrettiForecaster:
 
                 return is_night
 
-            except ImportError:
-                _LOGGER.debug("Astral library not available, using fallback time check")
-        except (ValueError, AttributeError) as err:
+        except (ImportError, ValueError, AttributeError) as err:
             _LOGGER.debug(f"Could not calculate sun times, using fallback: {err}")
 
         # Fallback: Night is between 19:00 and 07:00
@@ -1215,30 +1199,16 @@ class HourlyForecastGenerator:
 
         # For future times, calculate sunrise/sunset for the specific forecast date
         try:
-            # Try using astral to calculate sunrise/sunset for the specific forecast date
-            try:
-                from astral import LocationInfo
-                from astral.sun import sun as astral_sun
+            from homeassistant.helpers.sun import get_astral_event_date
+            from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
 
-                # Get latitude from hass
-                latitude = self.hass.config.latitude if self.hass.config else 48.0
+            # Get sunrise/sunset for the specific forecast date
+            forecast_date = check_time.date()
 
-                # Create location
-                location = LocationInfo(
-                    name="Station",
-                    region="",
-                    timezone="UTC",
-                    latitude=latitude,
-                    longitude=0  # Not critical for sunrise/sunset
-                )
+            sunrise = get_astral_event_date(self.hass, SUN_EVENT_SUNRISE, forecast_date)
+            sunset = get_astral_event_date(self.hass, SUN_EVENT_SUNSET, forecast_date)
 
-                # Get sunrise/sunset for the specific forecast date
-                forecast_date = check_time.date()
-                s = astral_sun(location.observer, date=forecast_date)
-
-                sunrise = s["sunrise"]
-                sunset = s["sunset"]
-
+            if sunrise and sunset:
                 # Make check_time timezone-aware if it isn't already
                 if check_time.tzinfo is None:
                     check_time = check_time.replace(tzinfo=timezone.utc)
@@ -1256,9 +1226,7 @@ class HourlyForecastGenerator:
 
                 return is_night
 
-            except ImportError:
-                _LOGGER.debug("Astral library not available, using fallback time check")
-        except (ValueError, AttributeError) as err:
+        except (ImportError, ValueError, AttributeError) as err:
             _LOGGER.debug(f"Could not calculate sun times, using fallback: {err}")
 
         # Fallback: Night is between 19:00 and 07:00

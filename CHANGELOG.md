@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Added
 
 - **Solar-Aware Temperature Forecasting** ☀️
-  - Temperature predictions now use **real sun position** (uses Home Assistant's built-in astral library)
+  - Temperature predictions now use **real sun position** (uses Home Assistant's built-in sun helper)
   - Seasonal amplitude adjustments: Winter ±3°C, Spring ±6°C, Summer ±10°C, Autumn ±5°C
   - Hemisphere-aware with automatic season reversal for southern hemisphere
   - Solar radiation integration: Sunny days +30%, cloudy -30%
@@ -23,10 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed incorrect rain forecast during stable sunny weather (high pressure >1030 hPa)
   - Now correctly shows sunny ☀️ weather during anticyclones
   - Example: 1038 hPa now shows "Sunny" (was "Very Unsettled, Rain" ❌)
-
-- **Dependencies** 📦
-  - Removed `astral>=3.2` from requirements - uses Home Assistant's built-in astral library instead
-  - No manual installation needed - works out of the box with HACS and manual installation
 
 ---
 

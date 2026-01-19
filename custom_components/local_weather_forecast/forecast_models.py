@@ -427,53 +427,36 @@ class HourlyForecastGenerator:
                     return is_night
             else:
                 # For future times, calculate sunrise/sunset using astral
-                _LOGGER.debug(f"🌙 Night check: Using ASTRAL for FUTURE time")
+                _LOGGER.debug(f"🌙 Night check: Using HA sun helper for FUTURE time")
                 try:
-                    from astral import LocationInfo
-                    from astral.sun import sun
-
-                    # Create location with latitude (longitude not critical for sunrise/sunset)
-                    location = LocationInfo(
-                        name="Station",
-                        region="",
-                        timezone="UTC",
-                        latitude=self.latitude,
-                        longitude=0  # Approximate, not critical
-                    )
+                    from homeassistant.helpers.sun import get_astral_event_date
+                    from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
 
                     # Get sunrise/sunset for the forecast day
                     forecast_date = check_time.date()
-                    s = sun(location.observer, date=forecast_date)
 
-                    sunrise = s["sunrise"]
-                    sunset = s["sunset"]
+                    sunrise = get_astral_event_date(self.hass, SUN_EVENT_SUNRISE, forecast_date)
+                    sunset = get_astral_event_date(self.hass, SUN_EVENT_SUNSET, forecast_date)
 
-                    _LOGGER.debug(
-                        f"🌙 Night check FUTURE: date={forecast_date}, "
-                        f"sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')}"
-                    )
+                    if sunrise and sunset:
+                        _LOGGER.debug(
+                            f"🌙 Night check FUTURE: date={forecast_date}, "
+                            f"sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')}"
+                        )
 
-                    # Make check_time timezone-aware if it isn't already
-                    if check_time.tzinfo is None:
-                        check_time = check_time.replace(tzinfo=timezone.utc)
+                        # Make check_time timezone-aware if it isn't already
+                        if check_time.tzinfo is None:
+                            check_time = check_time.replace(tzinfo=timezone.utc)
 
-                    # Check if time is before sunrise or after sunset
-                    is_night = check_time < sunrise or check_time > sunset
+                        # Check if time is before sunrise or after sunset
+                        is_night = check_time < sunrise or check_time > sunset
 
-                    _LOGGER.debug(
-                        f"🌙 Night check FUTURE result: check_time={check_time.strftime('%H:%M')}, "
-                        f"is_night={is_night} (sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')})"
-                    )
+                        _LOGGER.debug(
+                            f"🌙 Night check FUTURE result: check_time={check_time.strftime('%H:%M')}, "
+                            f"is_night={is_night} (sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')})"
+                        )
 
-                    return is_night
-
-                    _LOGGER.debug(
-                        f"Night check for {check_time.strftime('%Y-%m-%d %H:%M')}: "
-                        f"sunrise={sunrise.strftime('%H:%M')}, sunset={sunset.strftime('%H:%M')}, "
-                        f"is_night={is_night}"
-                    )
-
-                    return is_night
+                        return is_night
 
                 except ImportError:
                     # Fallback if astral not available
