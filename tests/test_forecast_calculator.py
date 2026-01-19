@@ -15,6 +15,16 @@ from custom_components.local_weather_forecast.forecast_calculator import (
 )
 
 
+def create_mock_hass():
+    """Create properly mocked HomeAssistant object with sun helper support."""
+    mock_hass = Mock()
+    mock_hass.data = {}  # Required for HA sun helper
+    mock_hass.config.latitude = 48.0
+    mock_hass.config.longitude = 21.0
+    mock_hass.config.elevation = 314
+    return mock_hass
+
+
 class TestPressureModel:
     """Test PressureModel class."""
 
@@ -367,7 +377,7 @@ class TestZambrettiForecaster:
 
     def test_sunny_converts_to_clear_night(self):
         """Test that sunny condition converts to clear-night at night."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
         mock_sun = Mock()
         mock_sun.state = "below_horizon"
         mock_sun.attributes = Mock()
@@ -376,6 +386,7 @@ class TestZambrettiForecaster:
             "next_setting": "2025-01-01T18:00:00+00:00"
         }.get(key, default))
         mock_hass.states.get.return_value = mock_sun
+
 
         forecaster = ZambrettiForecaster(hass=mock_hass)
 
@@ -396,7 +407,7 @@ class TestHourlyForecastGenerator:
         """Test basic hourly forecast generation."""
         from datetime import datetime, timezone, timedelta
 
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         # Mock sun entity for day/night detection
         mock_sun = Mock()
@@ -435,7 +446,7 @@ class TestHourlyForecastGenerator:
         """Test forecast generation with current rain - forecasts use model, NOT rain override."""
         from datetime import datetime, timezone, timedelta
 
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         # Mock sun entity for day/night detection
         mock_sun = Mock()
@@ -474,7 +485,7 @@ class TestHourlyForecastGenerator:
         """Test forecast generation with different intervals."""
         from datetime import datetime, timezone, timedelta
 
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         # Mock sun entity for day/night detection
         mock_sun = Mock()
@@ -506,9 +517,7 @@ class TestHourlyForecastGenerator:
         """Test that night detection works with forecasts (uses astral for specific dates)."""
         from datetime import datetime, timezone, timedelta
 
-        mock_hass = Mock()
-        mock_hass.config = Mock()
-        mock_hass.config.latitude = 48.0  # Needed for astral calculations
+        mock_hass = create_mock_hass()
 
         # Mock sun entity for current time check
         mock_sun = Mock()
@@ -547,7 +556,7 @@ class TestHourlyForecastGenerator:
 
     def test_night_detection_fallback_without_sun_entity(self):
         """Test that night detection falls back to hour-based check without sun entity."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
         # No sun entity available
         mock_hass.states.get.return_value = None
 
@@ -578,7 +587,7 @@ class TestHourlyForecastGenerator:
     def test_night_condition_conversion(self):
         """Test that sunny is converted to clear-night, but partlycloudy stays partlycloudy at night."""
 
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         # Mock sun entity that indicates it's night
         mock_sun = Mock()
@@ -624,7 +633,7 @@ class TestDailyForecastGenerator:
 
     def test_generate_basic(self):
         """Test basic daily forecast generation."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         pressure_model = PressureModel(1013.25, 0.0)
         temp_model = TemperatureModel(20.0, 0.0, diurnal_amplitude=3.0)
@@ -652,7 +661,7 @@ class TestDailyForecastGenerator:
 
     def test_daily_temp_range(self):
         """Test that daily forecast includes temperature range."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         pressure_model = PressureModel(1013.25, 0.0)
         temp_model = TemperatureModel(20.0, 0.0, diurnal_amplitude=10.0)  # ±10°C swing for clear range
@@ -685,7 +694,7 @@ class TestForecastCalculator:
 
     def test_generate_daily_forecast(self):
         """Test daily forecast generation via facade."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         forecasts = ForecastCalculator.generate_daily_forecast(
             hass=mock_hass,
@@ -704,7 +713,7 @@ class TestForecastCalculator:
 
     def test_generate_hourly_forecast(self):
         """Test hourly forecast generation via facade."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
 
         forecasts = ForecastCalculator.generate_hourly_forecast(
             hass=mock_hass,
@@ -723,7 +732,7 @@ class TestForecastCalculator:
 
     def test_generate_with_solar_radiation(self):
         """Test forecast generation with solar radiation."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
         mock_sun = Mock()
         mock_sun.state = "above_horizon"
         mock_sun.attributes = {
@@ -750,7 +759,7 @@ class TestForecastCalculator:
 
     def test_generate_with_rain_override(self):
         """Test that forecasts ignore rain override (only weather.entity uses it)."""
-        mock_hass = Mock()
+        mock_hass = create_mock_hass()
         mock_sun = Mock()
         mock_sun.state = "above_horizon"
         mock_sun.attributes = {

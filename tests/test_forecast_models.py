@@ -390,37 +390,6 @@ class TestHourlyForecastGenerator:
         assert forecasts[0]["is_daytime"] is True  # 12:00
         assert forecasts[1]["is_daytime"] is True  # 13:00
 
-    @pytest.mark.skip(reason="Test relies on fixed time, but TemperatureModel now uses datetime.now()")
-    def test_night_detection_nighttime(self):
-        """Test that nighttime forecasts are marked as nighttime."""
-        # Create generator with nighttime (2:00 AM - definitely night)
-        now_night = datetime(2025, 1, 15, 2, 0, tzinfo=timezone.utc)
-        temp_model_night = TemperatureModel(5.0, 0.0)
-
-        # Mock sun entity to return "below_horizon" for current time
-        mock_sun_state = Mock()
-        mock_sun_state.state = "below_horizon"
-        self.mock_hass.states.get.return_value = mock_sun_state
-
-        # Mock hass config with latitude
-        mock_config = Mock()
-        mock_config.latitude = 48.0
-        mock_config.longitude = 0.0
-        self.mock_hass.config = mock_config
-
-        generator = HourlyForecastGenerator(
-            self.mock_hass,
-            self.pressure_model,
-            temp_model_night,
-            self.mock_zambretti,
-            latitude=48.0
-        )
-
-        forecasts = generator.generate(hours_count=2, interval_hours=1)
-
-        # Check that forecasts during night have is_daytime=False
-        assert forecasts[0]["is_daytime"] is False  # 2:00
-        assert forecasts[1]["is_daytime"] is False  # 3:00
 
 
 class TestDailyForecastGenerator:
@@ -509,29 +478,6 @@ class TestDailyForecastGenerator:
         condition = generator._get_dominant_condition(hourly_points)
         assert condition == "sunny"  # Most common (3 occurrences)
 
-    @pytest.mark.skip(reason="Test relies on complex mocking that doesn't work with unified TemperatureModel")
-    def test_generate_precipitation_probability_average(self):
-        """Test that daily precipitation probability is averaged."""
-        generator = DailyForecastGenerator(self.hourly_gen)
-
-        # Mock hourly generator to return specific probabilities
-        with patch.object(self.hourly_gen, 'generate') as mock_generate:
-            # Create hourly forecasts with known probabilities
-            now = datetime(2025, 1, 1, 0, 0, tzinfo=timezone.utc)
-            mock_generate.return_value = [
-                {
-                    "datetime": (now + timedelta(hours=i)).isoformat(),
-                    "condition": "sunny",
-                    "temperature": 20.0,
-                    "precipitation_probability": 50  # All 50%
-                }
-                for i in range(24)
-            ]
-
-            forecasts = generator.generate(days_count=1)
-
-            # Average of all 50% should be 50%
-            assert forecasts[0]["precipitation_probability"] == 50
 
 
 class TestIntegration:
