@@ -8,14 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.8] - 2026-01-19
 
+### ✨ Added
+
+- **Solar-Aware Temperature Forecasting** ☀️
+  - Temperature predictions now use **real sun position** (powered by astral library)
+  - Seasonal amplitude adjustments: Winter ±3°C, Spring ±6°C, Summer ±10°C, Autumn ±5°C
+  - Hemisphere-aware with automatic season reversal for southern hemisphere
+  - Solar radiation integration: Sunny days +30%, cloudy -30%
+  - More accurate hourly and daily temperature forecasts
+
 ### 🔧 Fixed
 
-- **Critical Weather Forecast Bug in Anticyclones** 🌤️
-  - **Problem**: Plugin showed rain ☔ during stable sunny weather (anticyclones with high pressure >1030 hPa)
-  - **Fixed**: Corrected algorithm mapping error that caused wrong forecasts
-  - **Impact**: Now correctly shows sunny ☀️ weather during stable high-pressure conditions
-  - **Example**: Pressure 1038 hPa → was showing "Very Unsettled, Rain" ❌ → now shows "Sunny" ✅
-  - **Applies to**: Current weather, hourly forecast, daily forecast
+- **Weather Forecast in Anticyclones** 🌤️
+  - Fixed incorrect rain forecast during stable sunny weather (high pressure >1030 hPa)
+  - Now correctly shows sunny ☀️ weather during anticyclones
+  - Example: 1038 hPa now shows "Sunny" (was "Very Unsettled, Rain" ❌)
 
 ---
 
@@ -23,29 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🌍 Enhanced
 
-- **Universal Solar Radiation Calculation** ☀️🌐
-  - **Automatically uses your location** from Home Assistant settings (Configuration → General)
-  - Works accurately **anywhere on Earth** - from equator to poles, sea level to mountains
-  - Accounts for latitude, elevation (+10% per 1000m), season, and time of day
-  - **No configuration needed** - just works! 🎉
-  - **Example**: Košice (314m elevation) - Winter: 186 W/m², Summer: 949 W/m²
+- **Universal Solar Radiation Calculation** ☀️
+  - Automatically uses your location from Home Assistant
+  - Works accurately anywhere on Earth - from equator to poles
+  - Accounts for latitude, elevation, season, and time of day
+  - No configuration needed!
 
 ### 🔧 Fixed
 
+- **Precipitation Sensor Snow Icon** ❄️
+  - Fixed false snow icon when temperature is cold but no actual snow conditions
+  - Now requires high humidity + saturation + precipitation probability
 
-- **Precipitation Sensor Snow Icon** ❄️🌧️
-  - Fixed false snow icon when temperature is cold but conditions don't support snowfall
-  - Now requires actual snow risk (high humidity + saturation + precipitation probability)
-  - Example: -5°C with 19% precipitation → shows RAIN icon (correct), not snow
-
-- **Solar Radiation Sensors in Lux** ☀️
-  - Added automatic conversion from lux to W/m² (for Xiaomi, Shelly sensors)
-  - Config flow now accepts both `irradiance` (W/m²) and `illuminance` (lux) device classes
-  - Supported units: W/m², W/m2, watt/m², lx, lux
+- **Solar Radiation Sensors in Lux**
+  - Added automatic conversion from lux to W/m² (Xiaomi, Shelly sensors)
+  - Config flow accepts both irradiance (W/m²) and illuminance (lux)
 
 - **Sunrise/Sunset False Cloudy Detection** 🌅
-  - Fixed false "cloudy" condition at sunrise/sunset when sky is actually clear
-  - Solar radiation detection now requires minimum 50 W/m² to activate
+  - Fixed false "cloudy" at sunrise/sunset when sky is clear
+  - Solar detection now requires minimum 50 W/m²
 
 ---
 
@@ -53,233 +56,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixed
 
-- **Forecast Algorithms - Fixed Incorrect Predictions for Extreme Weather** 🌡️❄️
-  - Fixed wrong forecasts during high pressure in winter (e.g., showing "Very Unsettled" when pressure is 1034 hPa and stable)
-  - Fixed overly optimistic forecasts during storm recovery in summer
-  - Fixed incorrect predictions during very low pressure conditions
-  - Seasonal adjustments now work correctly across all pressure ranges (910-1085 hPa)
-  - **Impact**: More accurate forecasts, especially during extreme weather conditions ✅
+- **Forecast Algorithms for Extreme Weather** 🌡️
+  - Fixed incorrect predictions during high pressure in winter
+  - Fixed overly optimistic forecasts during storm recovery
+  - Seasonal adjustments now work across all pressure ranges (910-1085 hPa)
 
-- **Precipitation Probability Sensor - Fixed Auto-Update Issues** 🐛
-  - Fixed sensor not updating automatically after Home Assistant restart
-  - Fixed sensor registration errors
-  - Sensor now updates in real-time when forecast changes
-  - **Impact**: Sensor works reliably and shows current predictions ✅
+- **Precipitation Sensor Auto-Update** 🐛
+  - Fixed sensor not updating after Home Assistant restart
+  - Sensor now updates in real-time
 
-- **Improved Winter Weather Display** 🌍❄️
+- **Winter Weather Display** ❄️
   - Changed "Rain" to "Precipitation" in all languages
-  - Sensor now correctly shows snow icon (❄️) when temperature is below freezing
-  - **Languages Updated**: English, Slovak, German, Greek, Italian
+  - Correctly shows snow icon when temperature below freezing
 
 ---
 
 ## [3.1.5] - 2026-01-17
 
-### 🌍 Major Release - Global Pressure Range, Precision & Precipitation
-
 ### ✨ Added
 
 - **Precipitation Probability with Dynamic Icon** ❄️🌧️🌨️
-  - 🎯 **Feature Request**: Renamed "Rain Probability" to "Precipitation Probability"
-  - 🌡️ **Smart Icon**: Automatically shows appropriate icon based on temperature:
-    - 🌧️ **Rain** (`mdi:weather-rainy`): Temperature > 4°C or probability < 30%
-    - ❄️ **Snow** (`mdi:weather-snowy`): Temperature ≤ 2°C + probability ≥ 30%
-    - 🌨️ **Mixed** (`mdi:weather-snowy-rainy`): Temperature 2-4°C + probability ≥ 50%
-  - 📊 **New Attributes**:
-    - `temperature`: Current temperature used for icon determination
-    - `precipitation_type`: "rain", "snow", or "mixed"
-  - ✅ **Covers Cold Seasons**: Now accurately represents winter precipitation
-  - 🔧 **Backwards Compatible**: Sensor unique_id unchanged, just better presentation
-  - 🎉 **User Experience**: No more rain icon when it's snowing!
+  - Smart icon based on temperature: Rain >4°C, Snow ≤2°C, Mixed 2-4°C
+  - New attributes: `temperature`, `precipitation_type`
 
-- **Expanded Pressure Range for Global Coverage** 🌐
-  - 📊 **New Range**: 910-1085 hPa (was 950-1050 hPa)
-  - 🎯 **Coverage**: Now covers 99% of global weather conditions:
-    - 🇮🇹 **Mediterranean Hurricanes (Medicanes)**: 940-960 hPa ✅
-    - 🇦🇺 **Australian Cyclones**: 955-975 hPa ✅
-    - 🇪🇺 **European Storms**: 920-1070 hPa ✅
-    - 🇸🇰 **Central Europe**: 925-1065 hPa ✅
-  - 🔧 **Adjustments Included**: Range accounts for wind adjustments (±20.1 hPa) and summer adjustments (±12.3 hPa)
-  - ✅ **Impact**: Users in Italy, Greece, Australia, and other regions with extreme weather now get accurate forecasts
+- **Expanded Pressure Range** 🌐
+  - New range: 910-1085 hPa (was 950-1050 hPa)
+  - Covers Mediterranean hurricanes, Australian cyclones, European storms
+  - 99% global weather coverage
 
 - **44 Indexes for 2× Higher Precision** 🎯
-  - 📈 **Precision**: Expanded from 22 to 44 indexes in Negretti-Zambra lookup tables
-  - 📊 **Before**: 7.95 hPa per index (low precision)
-  - 🎯 **After**: 3.98 hPa per index (2× better precision!)
-  - ✨ **Better than Original**: 3.98 hPa/index < 4.55 hPa/index (original 950-1050 range)
-  - 🔧 **Implementation**: Each value in lookup tables doubled for finer granularity
-  - ✅ **Compatibility**: Maintains full compatibility - still returns forecast_idx 0-25
-  - 🎉 **Best of Both Worlds**: Global coverage (99%) + highest precision (3.98 hPa/index)
+  - Expanded from 22 to 44 indexes in Negretti-Zambra tables
+  - Precision improved from 7.95 to 3.98 hPa per index
 
-- **Solar Radiation Priority in Weather Condition Logic** ☀️
-  - 🎯 **Priority**: Added solar radiation sensor as PRIORITY 2.5 (between fog detection and forecast model)
-  - 📊 **Detection Logic**: If solar radiation sensor is configured, it influences current weather condition during daytime
-    - Measures actual solar radiation vs. theoretical maximum for current time/season
-    - Cloud cover calculation: `(1 - measured/theoretical) × 100%`
-    - Thresholds: <25% → sunny ☀️, 25-65% → partly cloudy ⛅, 65-85% → cloudy ☁️
-  - ⚡ **Real-time**: Updates immediately when clouds pass over solar sensor
-  - 🔧 **Configuration**: Automatically enabled if `CONF_SOLAR_RADIATION_SENSOR` is configured
-  - ✅ **Optional**: If sensor not configured, weather entity works normally (falls through to forecast model)
-  - 📍 **Works**: Only during daytime (sun above horizon) with significant daylight (>50 W/m²)
-  - 🛡️ **Backwards Compatible**: No breaking changes - existing configs continue to work
+- **Solar Radiation Priority** ☀️
+  - Real-time weather detection using solar radiation sensor
+  - Cloud cover calculation: <25% sunny, 25-65% partly cloudy, 65-85% cloudy
 
-### 🐛 Fixed
+### 🔧 Fixed
 
-- **Zambretti High Pressure Mapping (z=19)**: Fixed incorrect "Stormy" forecast at high pressure with rising trend
-  - ❌ **Problem**: At 1040 hPa with +6.5 hPa/3h rising trend, hourly forecast showed `lightning-rainy` ⛈️ (60% rain) despite actual "clear-night" ✨ conditions
-  - 🔍 **Root Cause**: Zambretti formula `z = 185 - 0.16 * 1040 = 19` was incorrectly mapped to forecast_index=25 ("Stormy, Much Rain") and letter='Z'
-  - 🔧 **Solution**: Corrected mapping for z=19:
-    - **Before**: z=19 → forecast_index=25 (Stormy, Much Rain), letter='Z'
-    - **After**: z=19 → forecast_index=1 (Fine), letter='B'
-  - ✅ **Logic**: High pressure (>1030 hPa) + rising trend = stable anticyclone → Fine weather
-  - 📊 **Impact**: Hourly forecasts now correctly show sunny/clear conditions at high pressure, not storms
-  - 🎯 **Examples**: 
-    - 1040 hPa + rising: Now "Fine" ✅ (was "Stormy" ❌)
-    - 1035 hPa + rising: Now "Fine" ✅ (was "Stormy" ❌)
-  - 🔐 **Preserved**: z=32-33 still correctly map to "Stormy" (extreme rising pressure = storm recovery)
-  - 📋 **Note**: Other extreme-pressure mappings remain unchanged due to Zambretti algorithm limitations
-    - Zambretti was designed for 960-1050 hPa range (1915)
-    - Extended range (910-1085 hPa) causes z-number cycling at extremes
-    - **Solution**: Use Enhanced Dynamic model (default) for best accuracy at all pressures
-    - See `ZAMBRETTI_LIMITATIONS.md` for detailed analysis
+- **Zambretti High Pressure Mapping**
+  - Fixed incorrect "Stormy" forecast at high pressure
+  - 1040 hPa + rising now shows "Fine" (was "Stormy" ❌)
 
 ---
 
 ## [3.1.4] - 2026-01-16
 
-### 🎯 Major Release - Forecast Model Selection & Enhanced Accuracy
-
-### 🐛 Fixed
-
-- **Solar Radiation Cloudiness Detection - Southern Hemisphere**: Fixed incorrect cloudiness detection for Southern Hemisphere locations
-  - ❌ **Problem**: In Sydney (December = summer), expected clear-sky solar was 500 W/m² (winter value), causing incorrect "sunny" detection when actual was 1000 W/m²
-  - ✅ **Root Cause**: Seasonal factor calculation did not account for inverted seasons in Southern Hemisphere
-  - 🔧 **Solution**: Added hemisphere correction to seasonal factor calculation in `forecast_calculator.py` (line 592)
-    - Southern Hemisphere: Months shifted by 6 (December → June calculation = summer)
-    - Northern Hemisphere: Standard seasonal calculation (June = summer)
-  - 📊 **Impact**: Cloudiness detection now works correctly worldwide:
-    - Sydney (December): Expected 1150 W/m² (was 500 W/m²) ✅
-    - Košice (June): Expected 1050 W/m² (unchanged) ✅
-    - Oslo (June): Expected 900 W/m² (unchanged) ✅
-  - 🌍 **Benefit**: More than 200 million users in Southern Hemisphere get accurate cloudiness detection
-
-- **Fog & Humidity Corrections**: Fixed overly aggressive downgrades overriding strong "fine weather" forecasts
-  - ❌ **Problem**: "Pekné počasie!" (Fine weather, Zambretti #1) + medium fog + 87% humidity → **cloudy** (incorrect)
-  - ✅ **Root Cause**: Corrections ignored forecast confidence - humidity/fog always overrode the model
-  - 🔧 **Solution**: Now respects forecast strength (forecast_num) when applying corrections:
-    - **Medium fog risk**: Downgrades sunny → **partlycloudy** (haze, not overcast)
-    - **Low fog risk**: Only downgrades if forecast_num > 3 (respects "settled fine" forecasts 0-3)
-    - **Humidity > 90%**: Always cloudy (extreme override)
-    - **Humidity > 85%**: Cloudy only if forecast_num > 2 (respects strong forecasts)
-    - **Humidity > 75%**: Partlycloudy only if forecast_num > 3 (respects settled weather)
-  - 📊 **Impact**: "Fine weather" forecasts no longer incorrectly downgraded to overcast
-  - 🎯 **Balance**: System now weighs forecast model confidence vs. atmospheric observations
-
-- **Snow Risk Calculation**: Fixed false HIGH risk when high humidity at freezing but no precipitation
-  - ❄️ **Problem**: System reported HIGH snow risk at 0°C with 87% humidity but only 25% precipitation probability
-  - ✅ **Root Cause**: High humidity + freezing = FOG/FROST, not snow without precipitation!
-  - 🔧 **Solution**: Snow risk now REQUIRES precipitation probability:
-    - **HIGH**: T≤0°C, RH>75%, spread<2°C, **precipitation>60%**
-    - **MEDIUM**: T≤2°C, RH>65%, spread<3°C, **precipitation>40%**
-    - **LOW**: T≤4°C, RH>60%, **precipitation>50%** OR marginal conditions
-    - **Without precipitation**: High humidity at freezing → **LOW risk** (fog/frost warning)
-  - 📊 **Impact**: More accurate snow warnings aligned with actual precipitation forecasts
-
 ### ✨ Added
 
-- **Location-Aware Maximum Solar Radiation**: Dynamic calculation based on geographic location and season
-  - 🌍 **Smart Calculation**: Replaces fixed 1000 W/m² with location-specific maximum
-  - **Factors considered**:
-    - **Latitude zones**:
-      - Tropical (0-23.5°): Base max 1300 W/m² (sun can be directly overhead)
-      - Temperate (23.5-66.5°): Base max 1200 W/m² (angled sun, most accurate)
-      - Polar (66.5-90°): Base max 800 W/m² (very low sun)
-    - **Seasonal adjustment**: Cosine function for smooth summer/winter transition
-    - **Hemisphere correction**: Automatic season inversion for Southern Hemisphere
-  - **Examples**:
-    - Singapore (Equator, June): 1290 W/m² (was 1000 W/m², +29% ✅)
-    - Madrid (40°N, June): 1130 W/m² (was 1000 W/m², +13% ✅)
-    - Košice (48°N, June): 1050 W/m² (was 1000 W/m², +5% ✅)
-    - London (51°N, June): 980 W/m² (was 1000 W/m², -2% ✅)
-    - Oslo (59°N, June): 900 W/m² (was 1000 W/m², -10% ✅)
-    - Sydney (-33°S, December): 1150 W/m² (was incorrectly 500 W/m², FIXED! ✅)
-  - 📈 **Accuracy improvements**:
-    - Tropical regions: +20-30% more accurate
-    - Polar regions: -10-20% more realistic
-    - Southern Hemisphere: **Correctly inverted seasons**
-  - 🎯 **Implementation**: New function `calculate_max_solar_radiation_for_location(latitude, month)` in `calculations.py`
-  - 🔄 **Backward compatible**: Existing installations automatically benefit from improved accuracy
+- **Forecast Model Selection** 🎯
+  - Choose between three forecast algorithms:
+    - **Combined (Dynamic)**: Smart adaptive weighting (~98% accuracy) - **Default**
+    - **Zambretti**: Faster response to changes (~94% accuracy)
+    - **Negretti & Zambra**: More stable predictions (~92% accuracy)
+  - Configurable in setup and can be changed anytime
+  - Applies to current condition, hourly, and daily forecasts
 
-- **Combined Dynamic Forecast Model** 🆕: Smart adaptive weighting system for best accuracy
-  - **Automatic adaptation** to atmospheric conditions based on pressure change rate
-  - **Dynamic weighting**:
-    - Large change (>5 hPa/3h): Zambretti 80% + Negretti 20% → Fast response to rapid changes
-    - Medium change (3-5 hPa/3h): Zambretti 60% + Negretti 40% → Balanced response
-    - Small change (1-3 hPa/3h): Zambretti 50% + Negretti 50% → Equal weight
-    - Stable (<1 hPa/3h): Zambretti 20% + Negretti 80% → Conservative in stable conditions
-  - **Best of both worlds**: Fast response to changes (Zambretti) + Stability in extremes (Negretti)
-  - **Recommended for**: All climates - automatically adapts to local weather patterns
-  - **Accuracy**: ~98% with full sensor setup
-  - **Debug logging**: Shows dynamic weight calculation for transparency
+- **Location-Aware Solar Radiation** 🌍
+  - Dynamic calculation based on latitude and season
+  - Tropical: max 1300 W/m², Temperate: 1200 W/m², Polar: 800 W/m²
+  - Southern hemisphere automatic season inversion
+  - 20-30% more accurate in tropical/polar regions
 
-- **Forecast Model Selection**: Configuration option to choose preferred forecast algorithm
-  - **Combined (Dynamic)** 🆕: Smart adaptive weighting combining both algorithms - best accuracy (~98%)
-    - Adapts weight ratio based on atmospheric conditions (pressure change rate)
-    - Large changes: 80% Zambretti / 20% Negretti (fast response)
-    - Medium changes: 60% Zambretti / 40% Negretti (balanced)
-    - Small changes: 50% Zambretti / 50% Negretti (equal weight)
-    - Stable conditions: 20% Zambretti / 80% Negretti (conservative)
-  - **Zambretti**: Classic algorithm - faster to respond to pressure changes (~94%)
-    - Best for rapidly changing weather
-    - More responsive to pressure trends
-  - **Negretti & Zambra**: Slide rule algorithm - more stable predictions (~92%)
-    - Best for stable weather patterns
-    - More conservative forecasts
-    - Considers wind direction sectors
-  - **Configurable in**: Initial setup AND Options Flow (can be changed anytime)
-  - **Applies to**: Current condition, hourly forecast (24h), and daily forecast (3 days)
-  - **User benefit**: Choose the most accurate model for your local weather patterns
-  - **Default**: New installations and upgrades from v3.1.3 default to **Enhanced Dynamic** (preserves v3.1.3 combined algorithm behavior)
+- **Hemisphere Configuration**
+  - Auto-detection from Home Assistant location
+  - Manual override available
+  - Accurate seasonal adjustments for Southern hemisphere
 
-- **Pressure Type Change in Options**: You can now change pressure type (Absolute/Relative) after initial setup
-  - Previously locked after first configuration
-  - Now editable via Settings → Integrations → Local Weather Forecast → Configure
-  - Useful when switching weather stations or realizing incorrect initial setting
+- **Pressure Sensor Change in Options**
+  - Can now change pressure sensor after initial setup
+  - Edit via Settings → Integrations → Configure
 
-- **Hemisphere Configuration** 🆕: Automatic seasonal adjustment for accurate Negretti-Zambra forecasts
-  - **Auto-detection** from Home Assistant location (latitude >= 0 = North, < 0 = South)
-  - **Manual override** available in configuration if needed
-  - **North**: Standard seasonal patterns (April-September = summer)
-  - **South**: Inverted seasonal patterns (October-March = summer)
-  - **Impact**: More accurate forecasts in Southern hemisphere locations
-  - **Debug logging**: Shows hemisphere detection and seasonal adjustments
-  - 📍 Defaults to Northern hemisphere if not configured
+### 🔧 Fixed
 
-- **Pressure Sensor Change in Options**: You can now change pressure sensor after initial setup 🆕
-  - Previously locked after first configuration - you could only add it during initial setup
-  - Now **editable** via Settings → Integrations → Local Weather Forecast → Configure
-  - Useful when switching weather stations, adding new sensors, or fixing incorrect initial configuration
-  - **Required field** - must always have a valid pressure sensor
+- **Solar Radiation - Southern Hemisphere**
+  - Fixed incorrect cloudiness detection in Southern hemisphere
+  - Sydney (December): Now correctly expects 1150 W/m² (was 500 W/m²)
 
-### 🐛 Fixed
+- **Fog & Humidity Corrections**
+  - Fixed overly aggressive downgrades overriding "fine weather" forecasts
+  - System now respects forecast confidence
 
-- **Config Flow - Pressure Sensor Locked After Setup**: Fixed inability to change pressure sensor after initial configuration
-  - **Issue**: Once Local Weather Forecast was configured, pressure sensor could not be changed via Options Flow
-  - **Impact**: Users who needed to switch weather stations or fix incorrect sensor had to delete and re-add the integration
-  - **Fix**: Added pressure sensor to Options Flow schema with validation
-  - **Result**: Pressure sensor can now be changed anytime via Settings → Integrations → Local Weather Forecast → Configure
+- **Snow Risk Calculation**
+  - Fixed false HIGH risk when high humidity but no precipitation
+  - Snow risk now requires precipitation probability
 
-- **Weather Entity Fog Risk Correction**: Added fog risk-based cloud cover correction
-  - **Issue**: When fog risk is medium/low, weather still showed "sunny" or "partlycloudy" even though visibility is reduced
-  - **Fix**: 
-    - **Medium fog risk** (spread 1.5-2.5°C, humidity 75-85%): `sunny`/`partlycloudy` → **`cloudy`**
-    - **Low fog risk** (spread 2.5-3.5°C, humidity 65-75%): `sunny` → **`partlycloudy`**
-  - **Meteorological Justification**: Fog/haze reduces visibility and creates overcast feel even if forecast says "Settled Fine"
-  - **Works together with humidity correction** to provide accurate cloud cover representation
+- **Weather Entity Snow Detection**
+  - Fixed incorrect "pouring" (rain) when snowing
 
-- **Weather Entity Snow Detection**: Fixed incorrect "pouring" (rain) condition when snowing
-  - **Issue**: At -5.6°C with 79% humidity and 3.01°C dewpoint spread, weather entity showed "pouring" instead of "snowy"
-  - **Root Cause**: Old logic required `dewpoint_spread < 2.0°C` AND `rain_prob > 60%` for snow detection
+### ⚠️ Breaking Changes
+
+- **Risk Attributes - Automation-Friendly**
+  - `fog_risk`, `snow_risk`, `frost_risk` now contain RAW English values: `"none"`, `"low"`, `"medium"`, `"high"`, `"critical"`
+  - `fog_risk_text`, `snow_risk_text`, `frost_risk_text` contain translated text for UI
+  - Update automations to use RAW values for language-independent operation
+
+---
   - **Fix**: Implemented multiple snow detection methods:
     - **METHOD 1**: Direct `snow_risk` sensor reading (high/medium) → instant SNOWY condition
     - **METHOD 2**: Temperature-based: `temp ≤ 0°C` + `humidity > 75%` + `spread < 3.5°C` → SNOWY (no rain_prob required)
@@ -342,240 +214,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Changed
 
-- **Solar Radiation Expected Maximum**: Improved calculation for cloudiness detection
-  - **estimate_solar_radiation_from_time_and_clouds()**: Now uses `calculate_max_solar_radiation_for_location()` instead of fixed 1000 W/m²
-  - **forecast_calculator.py**: Cloudiness detection uses location-aware maximum for accurate expected values
-  - **Result**: Better differentiation between sunny/partly_cloudy/cloudy based on realistic expectations
-
-- **Weather Condition Thresholds**: Adjusted for better real-world accuracy
-  - Snow detection now works with lower humidity levels (75% vs 80% previously)
-  - Frozen rain sensor scenario explicitly handled with temperature-based detection
-
-- **Minimum Home Assistant version**: Updated to 2024.12.0 (from 2024.1.0)
-- **Python Support**: Officially supporting Python 3.12 and 3.13
-- **Testing**: CI/CD pipeline tests against Python 3.12 and 3.13
-
-### ⚠️ Breaking Changes
-
-- **Risk Attributes - RAW vs Translated Values**: Changed sensor attribute structure for better automation support
-  - **OLD behavior** (v3.1.3 and earlier): `fog_risk`, `snow_risk`, `frost_risk` contained **translated text** (e.g., "Žiadne riziko snehu")
-  - **NEW behavior** (v3.1.4+): 
-    - `fog_risk`, `snow_risk`, `frost_risk` now contain **RAW English values**: `"none"`, `"low"`, `"medium"`, `"high"`, `"critical"`
-    - `fog_risk_text`, `snow_risk_text`, `frost_risk_text` contain **translated text** for UI display
-  - **Why?**: Weather cards failed because they compared translated text against English keywords
-  - **Migration needed**: Update weather card templates from:
-    ```yaml
-    # OLD - will break after update
-    {% if state_attr("sensor.local_forecast_enhanced", "snow_risk") == "Vysoké riziko snehu" %}
-    ```
-    To:
-    ```yaml
-    # NEW - works with all languages
-    {% if state_attr("sensor.local_forecast_enhanced", "snow_risk") == "high" %}
-    ```
-  - **Benefit**: Automations and cards now work consistently regardless of Home Assistant language setting
-  - See [WEATHER_CARDS.md](WEATHER_CARDS.md) for updated examples
-
-### 🔧 Changed
-
-- **Weather Condition Thresholds**: Adjusted for better real-world accuracy
-  - Snow detection now works with lower humidity levels (75% vs 80% previously)
-  - Frozen rain sensor scenario explicitly handled with temperature-based detection
-
-- **Minimum Home Assistant version**: Updated to 2024.12.0 (from 2024.1.0)
-- **Python Support**: Officially supporting Python 3.12 and 3.13
-- **Testing**: CI/CD pipeline tests against Python 3.12 and 3.13
-
-### 🧪 Testing
-
-- **Total Tests**: 527 (100% pass rate) ✅
-  - Updated `test_calculations.py::test_solar_noon_clear_sky` to use explicit summer month (June) for consistent results with location-aware calculation
-  - Hemisphere correction tested with Oslo (59°N), Košice (48°N), Sydney (-33°S) locations
-  - Location-aware maximum tested across all climate zones (tropical/temperate/polar)
-  - Added comprehensive config_flow tests for forecast model selection
-  - Added tests for dynamic weight calculation in Combined model
-  - All existing tests updated and passing
-  - Coverage: ~98%
-
 ---
 
 ## [3.1.3] - 2025-12-12
 
-### ✨ Added - Snow & Frost Detection
+### ✨ Added
 
-- **Snow Risk Detection** ❄️ (2025-12-10)
-  - **NEW**: `get_snow_risk()` function in `calculations.py`
-  - **Weather Entity Override**: High/medium snow risk → `weather.local_weather_forecast_weather` condition = "snowy"
-  - Meteorologically accurate snow prediction based on:
-    - Temperature (≤ 4°C for any risk)
-    - Humidity (>70% indicates moisture for precipitation)
-    - Dewpoint spread (proximity to saturation)
-    - Precipitation probability (optional, improves accuracy)
-  - **Four risk levels**:
-    - `"high"`: Temperature ≤ 0°C, humidity > 80%, dewpoint spread < 2°C + precipitation probability > 60%
-    - `"medium"`: Temperature 0-2°C, humidity > 70%, dewpoint spread < 3°C + precipitation probability > 40%
-    - `"low"`: Temperature 2-4°C, humidity > 60% + precipitation probability > 50%
-    - `"none"`: Temperature > 4°C
-  - **New sensor attributes**: 
-    - `snow_risk` in `sensor.local_forecast_enhanced`
-    - `snow_risk` in `weather.local_weather_forecast_weather` attributes
-  - **Multilingual support**: Translations in 5 languages (DE, EN, GR, IT, SK)
-  - **Priority in weather condition**: Snow detection has priority 2 (after rain, same as fog)
+- **Snow Risk Detection** ❄️
+  - New `snow_risk` attribute with four levels: high, medium, low, none
+  - Weather entity automatically shows "snowy" condition when risk is high/medium
+  - Available in sensor.local_forecast_enhanced and weather entity
 
-### 🔧 Fixed - Extreme Atmospheric Conditions
+- **Frost Risk Detection** 🧊
+  - New `frost_risk` attribute with five levels including CRITICAL for black ice
+  - Available in sensor.local_forecast_enhanced and weather entity
+  - Critical black ice conditions logged with warning
 
-- **Zambretti Algorithm Robustness** (2025-12-11)
-  - **FIXED**: Negative z-numbers handling for extreme high pressure (>1080 hPa) with falling trend
-  - **FIXED**: Z-numbers >33 handling for extreme low pressure (<920 hPa) with rising trend
-  - **FIXED**: "Unmapped Zambretti number: 34" warning - clamping now happens BEFORE mapping
-  - **IMPROVED**: Clamping moved before `_map_zambretti_to_forecast()` call to prevent confusing warnings
-  - **CHANGED**: Unmapped number warnings changed to ERROR level (defensive fallback)
-  - **Added**: Automatic clamping of z-numbers to valid range (1-33)
-  - **Added**: Clear INFO logs when extreme conditions detected (z_original → z_clamped)
-  - **Example log:** "Clamping extreme case z=34 → z=33 (Stormy, Much Rain)"
-  - **Tested**: All geographic locations (-50m to 8000m elevation)
-  - **Tested**: All hemispheres and seasons
-  - **Tested**: >300 atmospheric condition combinations
-  - **Issue:** Reported by community user - extreme low pressure with rapid rise caused z=34
+### 🔧 Fixed
 
-- **Negretti-Zambra Algorithm Improvements** (2025-12-11)
-  - **FIXED**: Exceptional weather detection for extreme high pressure
-  - **ADDED**: Lower bound check (z_hp < bar_bottom)
-  - **IMPROVED**: DEBUG logs changed to WARNING for exceptional conditions
+- **Zambretti Algorithm** - Fixed handling of extreme pressure conditions
+- **Negretti-Zambra Algorithm** - Improved exceptional weather detection
 
 ### 🧪 Testing
 
-- **Added**: Comprehensive extreme conditions test suite (`test_extreme_conditions.py`)
-  - 20 new tests covering extreme pressures, elevations, and hemispheres
-  - Tests for pressure range: 900-1100 hPa
-  - Tests for all 16 wind directions
-  - Tests for elevations: -50m to 8000m
-  - Tests for all months (seasonal effects)
-  - Tests for all pressure trends (rising, steady, falling)
-
-- **Added**: Weather.py unit tests (`test_weather.py`)
-  - 39 tests for weather entity helper functions
-  - Beaufort scale (all 13 levels)
-  - Atmosphere stability analysis
-  - Weather condition mapping
-  - Night/day detection
-
-### 📊 Total Tests: 464 (100% pass rate)
-
-- All core functionality tested
-- All extreme conditions handled
-- No unmapped states possible
-
-### 🎨 UI/UX Improvements
-
-- **Integration Icon** 🏠☀️ (2025-12-11)
-  - **Added**: Custom icon for Home Assistant integration
-  - **Design**: House with sun, clouds, and weather symbols
-  - **Format**: PNG exports (256x256, 512x512)
-  - **Auto-detection**: Home Assistant automatically displays icon in Integrations page
-  - **Files**: `icon.png`, `icon@2x.png`
+- Added 476 comprehensive unit tests (100% pass rate)
+- Coverage: ~98%
 
 ---
 
 ## [3.1.2] - 2025-12-09
 
-### ✨ Added - Snow & Frost Detection (Extended)
-  - Critical warning for black ice (poľadovica) conditions
-  - Meteorologically accurate frost/ice prediction based on:
-    - Temperature (≤ 4°C for any risk)
-    - Dewpoint (below 0°C = freezing moisture)
-    - Wind speed (low wind favors frost formation)
-    - Humidity (high humidity + freezing = ice formation)
-  - **Five risk levels** (including CRITICAL for black ice):
-    - `"critical"`: **BLACK ICE WARNING** - Temperature -2 to 0°C, humidity > 90%, dewpoint spread < 1°C (wet surfaces will freeze!)
-    - `"high"`: Temperature < -2°C, dewpoint < 0°C, low wind (< 2 m/s) - heavy frost/ice formation expected
-    - `"medium"`: Temperature ≤ 0°C, dewpoint ≤ 2°C, moderate wind (< 3 m/s) - frost formation likely
-    - `"low"`: Temperature 0-2°C, dewpoint ≤ 0°C - near-freezing conditions, frost possible
-    - `"none"`: Temperature > 4°C - no frost risk
-  - **New sensor attributes**:
-    - `frost_risk` in `sensor.local_forecast_enhanced`
-    - `frost_risk` in `weather.local_weather_forecast_weather` attributes
-  - **Logger warning**: Critical black ice conditions logged with WARNING level
-  - **Note**: Frost/ice risk available in **attributes only** (does NOT override weather condition, unlike snow)
-  - **Multilingual support**: Translations in 5 languages (DE, EN, GR, IT, SK)
-  - Examples:
-    - `-1°C, 95% RH, dewpoint spread 0.8°C` → "KRITICKÉ: Poľadovica!" (SK) + ⚠️ WARNING log
-    - `-5°C, dewpoint -3°C, wind 1.5 m/s` → "Vysoké riziko námrazy" (SK)
+### ✨ Added
 
-- **Enhanced Sensor Attributes** (2025-12-10)
-  - `sensor.local_forecast_enhanced` now includes:
-    - `snow_risk`: Translated snow risk level (e.g., "Vysoké riziko snehu")
-    - `frost_risk`: Translated frost/ice risk level (e.g., "KRITICKÉ: Poľadovica!")
-  - `weather.local_weather_forecast_weather` now includes:
-    - `snow_risk`: Translated snow risk level + **condition override to "snowy"** when high/medium risk
-    - `frost_risk`: Translated frost/ice risk level (attribute only, no condition override)
-  - Both attributes automatically translated based on Home Assistant UI language
-  - Risk assessment only calculated when temperature ≤ 4°C (performance optimization)
+- Extended frost detection with critical black ice warning
+- Enhanced sensor attributes for snow and frost risk
+- Comprehensive test suite
 
-### 🧪 Added - Comprehensive Test Suite
+### 🔧 Fixed
 
-- **476 Unit Tests** across 13 test files (100% pass rate)
-  - **test_calculations.py** - 86 tests: Meteorological calculations (dewpoint, heat index, fog, snow, frost, UV)
-  - **test_config_flow.py** - 16 tests: Configuration flow and options flow
-  - **test_const.py** - 36 tests: Constants validation and consistency
-  - **test_extreme_conditions.py** - 18 tests: Extreme atmospheric conditions (900-1100 hPa, all elevations)
-  - **test_forecast_calculator.py** - 35 tests: Forecast calculation models
-  - **test_forecast_data.py** - 35 tests: Multilingual forecast data integrity
-  - **test_forecast_models.py** - 43 tests: Advanced forecast models (pressure, temperature)
-  - **test_language.py** - 45 tests: Multilingual support and translations
-  - **test_negretti_zambra.py** - 22 tests: Negretti-Zambra algorithm
-  - **test_sensor_change.py** - 13 tests: Pressure/Temperature change sensors
-  - **test_unit_conversion.py** - 57 tests: Unit conversion (pressure, temp, wind, precipitation)
-  - **test_weather.py** - 39 tests: Weather entity helper functions and logic
-  - **test_zambretti.py** - 31 tests: Zambretti algorithm (formulas, consistency, all z-numbers)
-  - Test framework: pytest 9.0.2 + pytest-homeassistant-custom-component
-  - Coverage: ~98% for critical functions
-  - All tests validate meteorological accuracy, edge cases, user workflows, configuration integrity, and multilingual data completeness
-  - See `tests/README_TESTS.md` for complete test documentation
+- Code cleanup in calculations.py
+- Enhanced debug logging
+- Removed unused constants
 
-### 🛠️ Fixed
-
-- **Code Cleanup in calculations.py** (2025-12-10)
-  - Removed orphaned unreachable code from old `calculate_solar_radiation_from_uv_index` function
-  - Removed duplicate `calculate_wind_chill` function definition
-  - Fixed type hints for `max()` operations (using `0.0` instead of `0` for float compatibility)
-  - All Python syntax errors resolved
-
-- **Enhanced Debug Logging in calculations.py** (2025-12-10)
-  - Added comprehensive DEBUG logging to all calculation functions:
-    - `calculate_dewpoint()` - Logs input T/RH and calculated dewpoint
-    - `calculate_heat_index()` - Logs when applicable and calculated heat index
-    - `calculate_wind_chill()` - Logs when applicable and calculated wind chill
-    - `calculate_apparent_temperature()` - Logs all contributing factors (humidity, wind, solar effects)
-    - `get_snow_risk()` - Logs all risk levels with meteorological conditions
-    - `get_frost_risk()` - Logs all risk levels including CRITICAL black ice warnings
-  - All debug messages use SI units (°C, m/s, %, hPa)
-  - All debug messages in English for consistency
-  - Format: `FunctionName: result - conditions` (e.g., `SnowRisk: HIGH - T=-2.0°C, RH=85.0%, spread=0.5°C, precip=70%`)
-  - Benefits:
-    - ✅ Easy troubleshooting of weather calculations
-    - ✅ Visibility into why certain conditions are detected
-    - ✅ Performance monitoring (see when functions are called)
-
-- **Enhanced Debug Logging in forecast_calculator.py** (2025-12-10)
-  - Added DEBUG logging to prediction models:
-    - `PressureModel.predict()` - Logs predicted pressure with change rate and damping
-    - `TemperatureModel.predict()` - Logs predicted temp with trend, diurnal, and solar components
-    - `RainProbabilityCalculator.calculate()` - Logs probability with Zambretti letter and pressure info
-  - Format: `ModelName: Xh → result (components)`
-  - Example: `TempModel: 6h → 22.3°C (current=20.0, trend=+1.0, diurnal=+0.8, solar=+0.5)`
-
-- **Removed Unused Constants in const.py** (2025-12-10)
-  - Removed `PRESSURE_SAMPLING_SIZE` (1890) - unused, actual limit is time-based (180 minutes)
-  - Removed `TEMPERATURE_SAMPLING_SIZE` (140) - unused, replaced with intelligent dual-limit system
-  - **New: Guaranteed Minimum Record Counts** 🔒
-    - Added `PRESSURE_MIN_RECORDS = 36` - Always keep at least 36 records
-    - Added `TEMPERATURE_MIN_RECORDS = 12` - Always keep at least 12 records
-  - **How the new dual-limit system works**:
-    - **Primary limit (time-based)**: Keep all records within time window (180 min / 60 min)
-    - **Secondary limit (count-based)**: If fewer than MIN_RECORDS, keep the newest MIN_RECORDS anyway
-    - **Result**: GUARANTEED minimum data even if sensor updates irregularly!
-  - **Examples**:
+---
     - Normal case (5-minute updates): 36 records in 180 minutes ✅
     - Irregular updates: Still keeps 36 newest records even if they span 4+ hours ✅
     - After restart: Restores full history (36/12 records) → immediate accurate forecast ✅

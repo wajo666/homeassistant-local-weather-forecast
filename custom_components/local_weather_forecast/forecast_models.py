@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from .forecast_calculator import ZambrettiForecaster
+    from .forecast_calculator import ZambrettiForecaster, TemperatureModel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -219,119 +219,6 @@ class PressureModel:
         return trend
 
 
-class TemperatureModel:
-    """Advanced temperature forecasting with diurnal cycle."""
-
-    def __init__(
-        self,
-        current_temp: float,
-        temp_change_1h: float,
-        current_time: datetime | None = None
-    ):
-        """Initialize temperature model.
-
-        Args:
-            current_temp: Current temperature (°C)
-            temp_change_1h: Temperature change over last 1 hour (°C)
-            current_time: Current datetime (default: now)
-        """
-        self.current = current_temp
-        self.change_1h = temp_change_1h
-        self.time = current_time or datetime.now(timezone.utc)
-
-    def predict(self, hours_ahead: int) -> float:
-        """Predict temperature N hours ahead using diurnal cycle model.
-
-        Combines:
-        1. Current trend (temp_change_1h)
-        2. Diurnal (daily) cycle - warmer during day, cooler at night
-        3. Realistic limits
-
-        Args:
-            hours_ahead: Number of hours to predict ahead
-
-        Returns:
-            Predicted temperature in °C
-        """
-        if hours_ahead <= 0:
-            return self.current
-
-        future_time = self.time + timedelta(hours=hours_ahead)
-
-        # Current hour of day (0-23)
-        current_hour = self.time.hour
-        future_hour = future_time.hour
-
-        # Diurnal cycle adjustment
-        # Peak at 14:00 (~+2°C), minimum at 04:00 (~-1.5°C)
-        diurnal_adjustment = self._calculate_diurnal_effect(
-            current_hour, future_hour
-        )
-
-        # Trend-based change (decay over time)
-        decay_factor = 0.75 ** hours_ahead  # 25% decay per hour (faster damping)
-        trend_change = self.change_1h * hours_ahead * decay_factor
-
-        # Combine effects
-        predicted_temp = self.current + trend_change + diurnal_adjustment
-
-        # Realistic limits: ±12°C change PER 24h (progressive for multi-day)
-        # For predictions > 24h, allow cumulative change but limit daily rate
-        max_change_per_day = 12.0
-        days_ahead = hours_ahead / 24.0
-        max_total_change = max_change_per_day * min(days_ahead, 3.0)  # Cap at 3 days
-
-        if abs(predicted_temp - self.current) > max_total_change:
-            if predicted_temp > self.current:
-                predicted_temp = self.current + max_total_change
-            else:
-                predicted_temp = self.current - max_total_change
-
-        result = round(predicted_temp, 1)
-
-        _LOGGER.debug(
-            f"TempModel: {hours_ahead}h → {result:.1f}°C "
-            f"(current={self.current:.1f}, trend={trend_change:+.1f}, diurnal={diurnal_adjustment:+.1f})"
-        )
-
-        return result
-
-    def _calculate_diurnal_effect(
-        self,
-        current_hour: int,
-        future_hour: int
-    ) -> float:
-        """Calculate diurnal (daily) temperature cycle effect.
-
-        Simple sinusoidal model:
-        - Peak at 14:00 (2 PM)
-        - Minimum at 04:00 (4 AM)
-        - Amplitude: ~2.0°C (winter/autumn typical)
-
-        Args:
-            current_hour: Current hour (0-23)
-            future_hour: Future hour (0-23)
-
-        Returns:
-            Temperature adjustment in °C
-        """
-        import math
-
-        # Sinusoidal cycle: peak at 14:00, minimum at 04:00
-        amplitude = 2.0  # °C (conservative for winter)
-        peak_hour = 14.0
-
-        # Current position in cycle
-        current_phase = (current_hour - peak_hour) * math.pi / 12.0
-        current_effect = amplitude * math.cos(current_phase)
-
-        # Future position in cycle
-        future_phase = (future_hour - peak_hour) * math.pi / 12.0
-        future_effect = amplitude * math.cos(future_phase)
-
-        # Net change
-        return future_effect - current_effect
-
 
 class HourlyForecastGenerator:
     """Generate hourly weather forecasts using advanced models."""
@@ -384,7 +271,7 @@ class HourlyForecastGenerator:
         )
 
         forecasts = []
-        current_time = self.temperature.time
+        current_time = datetime.now(timezone.utc)  # Use current time instead of model time
 
         for hour in range(0, hours_count + 1, interval_hours):
             forecast_time = current_time + timedelta(hours=hour)
@@ -691,7 +578,7 @@ class DailyForecastGenerator:
             return []
 
         daily_forecasts = []
-        current_time = self.hourly.temperature.time
+        current_time = datetime.now(timezone.utc)  # Use current time instead of model time
 
         for day in range(days_count):
             day_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)

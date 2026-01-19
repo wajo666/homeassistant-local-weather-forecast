@@ -37,6 +37,7 @@ from .const import (
     CONF_ELEVATION,
     CONF_ENABLE_WEATHER_ENTITY,
     CONF_FORECAST_MODEL,
+    CONF_HEMISPHERE,
     CONF_HUMIDITY_SENSOR,
     CONF_LATITUDE,
     CONF_PRESSURE_SENSOR,
@@ -1300,6 +1301,20 @@ class LocalWeatherForecastWeather(WeatherEntity):
             else:
                 _LOGGER.debug("☀️ No UV index sensor configured")
 
+            # Get location and hemisphere for temperature model
+            # Try to get latitude from config, fall back to Home Assistant's location
+            latitude = self._get_config(CONF_LATITUDE)
+            if latitude is None:
+                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
+
+            # Get longitude (not in CONF currently, use HA config)
+            longitude = self.hass.config.longitude if self.hass and self.hass.config.longitude else 21.25  # Default: Košice
+
+            # Get hemisphere from config
+            hemisphere = self._get_config(CONF_HEMISPHERE)
+            if hemisphere is None:
+                hemisphere = "north"  # Default
+
             # Create models
             pressure_model = PressureModel(pressure, pressure_change_3h)
             temp_model = TemperatureModel(
@@ -1308,20 +1323,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_radiation=solar_radiation,
                 cloud_cover=cloud_cover,
                 humidity=humidity,
-                hass=self.hass
+                hass=self.hass,
+                latitude=latitude,
+                longitude=longitude,
+                hemisphere=hemisphere
             )
 
             # Get user's selected forecast model
             forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
             _LOGGER.debug(f"📊 Using forecast model for daily forecast: {forecast_model}")
 
-            # Try to get latitude from config, fall back to Home Assistant's location, then to default
-            latitude = self._get_config(CONF_LATITUDE)
-            if latitude is None:
-                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
-                _LOGGER.debug(f"📍 Using latitude from Home Assistant: {latitude}°")
-            else:
-                _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
             # Get elevation from config, fall back to Home Assistant's elevation, then to default
             elevation = self._get_config(CONF_ELEVATION)
@@ -1486,6 +1497,20 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (ValueError, TypeError):
                         pass
 
+            # Get location and hemisphere for temperature model
+            # Try to get latitude from config, fall back to Home Assistant's location
+            latitude = self._get_config(CONF_LATITUDE)
+            if latitude is None:
+                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
+
+            # Get longitude (not in CONF currently, use HA config)
+            longitude = self.hass.config.longitude if self.hass and self.hass.config.longitude else 21.25  # Default: Košice
+
+            # Get hemisphere from config
+            hemisphere = self._get_config(CONF_HEMISPHERE)
+            if hemisphere is None:
+                hemisphere = "north"  # Default
+
             # Create models
             pressure_model = PressureModel(pressure, pressure_change_3h)
             temp_model = TemperatureModel(
@@ -1494,20 +1519,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_radiation=solar_radiation,
                 cloud_cover=cloud_cover,
                 humidity=humidity,
-                hass=self.hass
+                hass=self.hass,
+                latitude=latitude,
+                longitude=longitude,
+                hemisphere=hemisphere
             )
 
             # Get user's selected forecast model
             forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
             _LOGGER.debug(f"📊 Using forecast model for hourly forecast: {forecast_model}")
 
-            # Try to get latitude from config, fall back to Home Assistant's location, then to default
-            latitude = self._get_config(CONF_LATITUDE)
-            if latitude is None:
-                latitude = self.hass.config.latitude if self.hass and self.hass.config.latitude else DEFAULT_LATITUDE
-                _LOGGER.debug(f"📍 Using latitude from Home Assistant: {latitude}°")
-            else:
-                _LOGGER.debug(f"📍 Using latitude from config: {latitude}°")
 
             # Get elevation from config, fall back to Home Assistant's elevation, then to default
             elevation = self._get_config(CONF_ELEVATION)

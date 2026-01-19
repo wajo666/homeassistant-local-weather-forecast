@@ -144,65 +144,96 @@ class TemperatureModel:
     Combines:
     - Current temperature
     - Temperature trend (hourly change rate with exponential decay)
-    - Diurnal cycle (based on solar position from sun.sun entity)
+    - Solar-aware diurnal cycle (based on sun position with astral library)
     - Solar radiation warming (when sensor available)
     - Cloud cover reduction (when sensor available)
-    - Seasonal baseline adjustment
+    - Seasonal amplitude adjustments
+    - Hemisphere support
     """
 
     def __init__(
         self,
         current_temp: float,
         change_rate_1h: float,
-        diurnal_amplitude: float = 3.0,
+        diurnal_amplitude: float | None = None,
         trend_damping: float = 0.75,
         solar_radiation: float | None = None,
         cloud_cover: float | None = None,
         humidity: float | None = None,
-        hass: HomeAssistant | None = None
+        hass: HomeAssistant | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        hemisphere: str = "north"
     ):
         """Initialize temperature model.
 
         Args:
             current_temp: Current temperature in °C
             change_rate_1h: Temperature change rate per hour
-            diurnal_amplitude: Daily temperature swing amplitude (default ±3°C, winter/autumn typical)
-            trend_damping: Exponential decay factor for trend (0.75 = trend halves in ~3 hours, negligible after 12h)
+            diurnal_amplitude: Daily temperature swing amplitude (None = auto-calculate from season/sun)
+            trend_damping: Exponential decay factor for trend (0.75 = trend halves in ~3 hours)
             solar_radiation: Current solar radiation in W/m² (None = solar effect ignored)
             cloud_cover: Current cloud cover in % (None = estimated from humidity if available)
             humidity: Relative humidity in % (used to estimate cloud cover if sensor unavailable)
-            hass: Home Assistant instance for sun.sun entity access
+            hass: Home Assistant instance for location fallback
+            latitude: Station latitude (-90 to +90, None = use HA config)
+            longitude: Station longitude (-180 to +180, None = use HA config)
+            hemisphere: "north" or "south"
         """
         self.current_temp = current_temp
         self.change_rate_1h = change_rate_1h
-        self.diurnal_amplitude = diurnal_amplitude
         self.trend_damping = trend_damping
         self.current_hour = datetime.now(timezone.utc).hour
         self.solar_radiation = solar_radiation
         self.humidity = humidity
+        self.hemisphere = hemisphere
+
+        # Get location coordinates
+        if latitude is not None and longitude is not None:
+            self.latitude = latitude
+            self.longitude = longitude
+        elif hass is not None:
+            self.latitude = hass.config.latitude
+            self.longitude = hass.config.longitude
+        else:
+            # Fallback to Košice, Slovakia (example location)
+            self.latitude = 48.72
+            self.longitude = 21.25
+            _LOGGER.debug(
+                f"TempModel: No location specified, using fallback: "
+                f"{self.latitude}°N, {self.longitude}°E"
+            )
+
+        # Auto-calculate diurnal amplitude if not specified
+        if diurnal_amplitude is None:
+            current_month = datetime.now(timezone.utc).month
+            self.diurnal_amplitude = self._get_seasonal_amplitude(current_month)
+            _LOGGER.debug(
+                f"TempModel: Auto-calculated seasonal amplitude: {self.diurnal_amplitude}°C "
+                f"(month={current_month}, hemisphere={hemisphere})"
+            )
+        else:
+            self.diurnal_amplitude = diurnal_amplitude
+
         # Cloud cover estimation: If sensor not available, estimate from humidity
         if cloud_cover is not None:
             self.cloud_cover = cloud_cover
         elif humidity is not None:
-            # Estimate cloud cover from humidity (meteorologically justified):
-            # RH <50%: 0-20% clouds (clear/mostly clear)
-            # RH 50-70%: 20-50% clouds (partly cloudy)
-            # RH 70-85%: 50-80% clouds (mostly cloudy)
-            # RH >85%: 80-100% clouds (overcast/fog)
+            # ...existing code...
             if humidity < 50:
-                self.cloud_cover = humidity * 0.4  # Max 20% at 50% RH
+                self.cloud_cover = humidity * 0.4
             elif humidity < 70:
-                self.cloud_cover = 20 + (humidity - 50) * 1.5  # 20-50%
+                self.cloud_cover = 20 + (humidity - 50) * 1.5
             elif humidity < 85:
-                self.cloud_cover = 50 + (humidity - 70) * 2.0  # 50-80%
+                self.cloud_cover = 50 + (humidity - 70) * 2.0
             else:
-                self.cloud_cover = 80 + (humidity - 85) * 1.33  # 80-100%
+                self.cloud_cover = 80 + (humidity - 85) * 1.33
             _LOGGER.debug(
                 f"Cloud cover estimated from humidity: {self.cloud_cover:.0f}% "
                 f"(RH={humidity:.1f}%)"
             )
         else:
-            self.cloud_cover = 0.0  # No sensor, assume clear sky
+            self.cloud_cover = 0.0
         self.hass = hass
 
     def predict(self, hours_ahead: int) -> float:
@@ -301,6 +332,34 @@ class TemperatureModel:
         )
 
         return result
+
+    def _get_seasonal_amplitude(self, month: int) -> float:
+        """Get base diurnal amplitude for given month.
+
+        Accounts for hemisphere (seasons are reversed).
+
+        Args:
+            month: Month (1-12)
+
+        Returns:
+            Base amplitude in °C
+        """
+        # Adjust for hemisphere
+        if self.hemisphere == "south":
+            # Southern hemisphere: shift by 6 months
+            month = ((month + 5) % 12) + 1
+
+        # Seasonal amplitudes (northern hemisphere reference)
+        # Winter (Dec-Feb): Low sun, short days → small amplitude
+        # Summer (Jun-Aug): High sun, long days → large amplitude
+        if month in [12, 1, 2]:  # Winter
+            return 3.0
+        elif month in [3, 4, 5]:  # Spring
+            return 6.0
+        elif month in [6, 7, 8]:  # Summer
+            return 10.0
+        else:  # Autumn (9, 10, 11)
+            return 5.0
 
     def _get_sun_angle_factor(self, hour: int) -> float:
         """Calculate sun angle factor (0-1) for given hour.
