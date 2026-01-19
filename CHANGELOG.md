@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.8] - 2026-01-19
+
+### 🔧 Fixed
+
+- **Anticyclone Forecast Accuracy** 🌤️
+  - Fixed incorrect rain predictions in stable high-pressure conditions (anticyclones)
+  - Enhanced model now gives 90% priority to Negretti-Zambra when pressure change < 0.5 hPa
+  - Rain probability calculation now correctly reduces probability in anticyclones (>1030 hPa)
+  - Fixed issue where Zambretti would predict 30% rain chance even during stable sunny weather
+  - **Impact**: More accurate forecasts during stable weather periods ✅
+  - **Example**: Pressure 1038 hPa, change +1.3 hPa → now correctly shows 0-5% rain instead of 30%
+
+---
+
 ## [3.1.7] - 2026-01-19
 
 ### 🌍 Enhanced
@@ -18,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Example**: Košice (314m elevation) - Winter: 186 W/m², Summer: 949 W/m²
 
 ### 🔧 Fixed
+
 
 - **Precipitation Sensor Snow Icon** ❄️🌧️
   - Fixed false snow icon when temperature is cold but conditions don't support snowfall

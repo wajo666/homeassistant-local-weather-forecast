@@ -810,16 +810,19 @@ class RainProbabilityCalculator:
 
         # Adjust for absolute pressure level
         # Very low pressure = unstable, high rain likelihood
+        # High pressure = anticyclone = stable, dry weather
         if future_pressure < 990:
             base_prob = min(100, base_prob + 25)
         elif future_pressure < 1000:
             base_prob = min(100, base_prob + 15)
         elif future_pressure < 1010:
             base_prob = min(100, base_prob + 5)
-        elif future_pressure > 1030:
-            base_prob = max(0, base_prob - 15)  # Very high pressure = stable, dry
-        elif future_pressure > 1025:
-            base_prob = max(0, base_prob - 10)
+        elif future_pressure > 1035:  # Strong anticyclone
+            base_prob = max(0, base_prob - 25)  # Very dry
+        elif future_pressure > 1030:  # Anticyclone
+            base_prob = max(0, base_prob - 20)
+        elif future_pressure > 1025:  # High pressure
+            base_prob = max(0, base_prob - 15)
 
         # Adjust for pressure change (trend)
         pressure_change = future_pressure - current_pressure
@@ -831,13 +834,16 @@ class RainProbabilityCalculator:
             base_prob = min(100, base_prob + 15)
         elif pressure_change < -1:
             base_prob = min(100, base_prob + 5)
-        # Rapidly rising pressure = improving weather
+        # Stable pressure in anticyclone = very dry
         elif pressure_change > 5:
             base_prob = max(0, base_prob - 20)
         elif pressure_change > 3:
             base_prob = max(0, base_prob - 15)
         elif pressure_change > 1:
             base_prob = max(0, base_prob - 5)
+        # Very stable anticyclone (minimal change, high pressure)
+        elif abs(pressure_change) < 0.5 and future_pressure > 1030:
+            base_prob = max(0, base_prob - 15)  # Additional reduction for stable anticyclone
 
         # Clamp to 0-100
         result = max(0, min(100, base_prob))
@@ -973,20 +979,25 @@ class HourlyForecastGenerator:
             else:  # FORECAST_MODEL_ENHANCED - dynamic priority based on pressure change
                 if negretti_letter:
                     # Calculate dynamic weights based on pressure change rate
+                    # Anticyclone stability fix: Give MUCH more weight to Negretti in stable conditions
+                    # Zambretti is optimized for CHANGING pressure, not stable anticyclones
                     abs_change = abs(pressure_change)
 
                     if abs_change > 5:  # Large change → Zambretti 80%
                         zambretti_weight = 0.8
                         negretti_weight = 0.2
-                    elif abs_change > 3:  # Medium change → Zambretti 60%
-                        zambretti_weight = 0.6
-                        negretti_weight = 0.4
-                    elif abs_change > 1:  # Small change → Balanced
-                        zambretti_weight = 0.5
-                        negretti_weight = 0.5
-                    else:  # Stable → Negretti 80%
-                        zambretti_weight = 0.2
-                        negretti_weight = 0.8
+                    elif abs_change > 3:  # Medium change → Zambretti 65%
+                        zambretti_weight = 0.65
+                        negretti_weight = 0.35
+                    elif abs_change > 1.5:  # Small change → Zambretti 55%
+                        zambretti_weight = 0.55
+                        negretti_weight = 0.45
+                    elif abs_change > 0.5:  # Very small change → Negretti 70%
+                        zambretti_weight = 0.30
+                        negretti_weight = 0.70
+                    else:  # Stable/Anticyclone → Negretti 90%
+                        zambretti_weight = 0.10
+                        negretti_weight = 0.90
 
                     # Calculate weighted rain probabilities
                     zambretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)

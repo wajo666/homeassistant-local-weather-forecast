@@ -146,7 +146,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.7",
+            "sw_version": "3.1.8",
         }
 
     async def _wait_for_entity(
@@ -2041,15 +2041,17 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             # Calculate Zambretti weight (0.0 to 1.0)
             # Rapid changes → higher Zambretti weight (faster response)
             # Stable pressure → lower Zambretti weight (conservative Negretti)
+            # Anticyclone stability fix: Give MUCH more weight to Negretti in stable conditions
+            # Zambretti is optimized for CHANGING pressure, not stable anticyclones
             abs_change = abs(pressure_change)
             if abs_change >= 3.0:
                 zambretti_weight = 0.75  # Rapid change - trust Zambretti more
             elif abs_change >= 1.5:
                 zambretti_weight = 0.65  # Moderate change
             elif abs_change >= 0.5:
-                zambretti_weight = 0.55  # Small change
+                zambretti_weight = 0.45  # Small change
             else:
-                zambretti_weight = 0.40  # Stable - trust Negretti more
+                zambretti_weight = 0.10  # Stable/Anticyclone - trust Negretti 90%
 
             negretti_weight = 1.0 - zambretti_weight
 
