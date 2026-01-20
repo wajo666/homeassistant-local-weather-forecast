@@ -42,14 +42,14 @@
         "title": "Opzioni previsioni meteo locali",
         "description": "Aggiorna le impostazioni delle previsioni meteo locali.",
         "data": {
+          "pressure_sensor": "Sensore di pressione (obbligatorio)",
           "temperature_sensor": "Sensore di temperatura",
           "wind_direction_sensor": "Sensore direzione vento",
           "wind_speed_sensor": "Sensore velocità vento",
           "humidity_sensor": "Sensore di umidità (Avanzato)",
           "wind_gust_sensor": "Sensore raffiche di vento (Avanzato)",
           "rain_rate_sensor": "Sensore precipitazioni (5-minuti)",
-          "solar_radiation_sensor": "Sensore radiazione solare (W/m²)",
-          "uv_index_sensor": "Sensore indice UV (0-15)",
+          "solar_radiation_sensor": "Sensore radiazione solare (W/m² o lux)",
           "elevation": "Altitudine",
           "pressure_type": "Tipo di pressione",
           "hemisphere": "Emisfero",
@@ -57,11 +57,11 @@
           "enable_weather_entity": "Abilita entità meteo"
         },
         "data_description": {
+          "pressure_sensor": "Sensore di pressione barometrica (obbligatorio). Supporta hPa, mbar, inHg, mmHg - conversione automatica.",
           "humidity_sensor": "Sensore di umidità per rilevamento avanzato nebbia, calcolo punto di rugiada e probabilità di precipitazioni (opzionale)",
           "wind_gust_sensor": "Sensore raffiche per rilevamento stabilità atmosferica e allerte meteo (opzionale)",
           "rain_rate_sensor": "Sensore precipitazioni con device_class='precipitation' e unit='mm'. L'integrazione rileva automaticamente precipitazioni quando il valore del sensore > 0 (Netatmo: incrementi 0.101, 0.202... / Ecowitt WS90: simile). NON utilizzare sensori totali orari (opzionale)",
-          "solar_radiation_sensor": "Sensore radiazione solare in W/m² per temperatura percepita accurata. Se fornito sensore indice UV, la radiazione solare può essere calcolata automaticamente (opzionale)",
-          "uv_index_sensor": "Sensore indice UV (scala 0-15). Se fornito sensore radiazione solare, l'indice UV può essere calcolato automaticamente. Utilizzato per allerte protezione solare e temperatura apparente (opzionale)",
+          "solar_radiation_sensor": "Sensore radiazione solare (W/m² o lux - conversione automatica) per rilevamento accurato nuvolosità e temperatura percepita (opzionale)",
           "hemisphere": "Il tuo emisfero per adattamenti stagionali meteo. Rilevato automaticamente dalla posizione Home Assistant (latitudine >= 0 = Nord, < 0 = Sud).",
           "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato ~98% precisione), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
           "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"

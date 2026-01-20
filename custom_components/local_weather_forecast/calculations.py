@@ -592,8 +592,8 @@ def get_snow_risk(
         return result
 
     # LOW RISK: Near freezing, moderate conditions
-    # Temperature 2-4°C, humidity > 60%, precipitation > 50%
-    if temperature <= 4 and humidity > 60:
+    # Temperature 2-4°C (not colder!), humidity > 60%, precipitation > 50%
+    if 2 < temperature <= 4 and humidity > 60:
         if precipitation_prob is not None and precipitation_prob > 50:
             result = SNOW_RISK_LOW
             _LOGGER.debug(f"SnowRisk: LOW - T={temperature:.1f}°C (2-4°C), RH={humidity:.1f}%, precip={precipitation_prob}% (>50%)")

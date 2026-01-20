@@ -16,7 +16,6 @@ CONF_PRESSURE_TYPE: Final = "pressure_type"
 CONF_HUMIDITY_SENSOR: Final = "humidity_sensor"
 
 CONF_SOLAR_RADIATION_SENSOR: Final = "solar_radiation_sensor"
-CONF_UV_INDEX_SENSOR: Final = "uv_index_sensor"
 CONF_VISIBILITY_SENSOR: Final = "visibility_sensor"
 CONF_WIND_GUST_SENSOR: Final = "wind_gust_sensor"
 CONF_RAIN_RATE_SENSOR: Final = "rain_rate_sensor"

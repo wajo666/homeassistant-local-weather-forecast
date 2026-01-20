@@ -114,8 +114,6 @@ pytest tests/test_const.py tests/test_forecast_data.py -v
 - `calculate_rain_probability_enhanced()` - Enhanced rain probability (6 tests)
 - `interpolate_forecast()` - Forecast interpolation (4 tests)
 - `calculate_visibility_from_humidity()` - Visibility estimation (5 tests)
-- `calculate_uv_index_from_solar_radiation()` - UV index calculation (6 tests)
-- `calculate_solar_radiation_from_uv_index()` - Reverse UV calculation (5 tests)
 - `get_snow_risk()` - ❄️ Snow probability assessment (6 tests)
 - `get_frost_risk()` - 🧊 Frost/black ice warning (6 tests)
 - `get_uv_protection_level()` - UV protection recommendations (6 tests)

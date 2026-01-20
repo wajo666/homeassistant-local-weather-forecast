@@ -482,8 +482,7 @@ All sensors + Extended:
   - Humidity sensor             ← Enables fog detection, enhanced rain %, automatic dew point calculation
   - Wind Gust sensor            ← Enables atmospheric stability analysis (gust ratio)
   - Rain Rate sensor            ← Enables real-time rain override (100% probability + weather condition → "rainy" when rain > 0.1 mm/h)
-  - Solar Radiation sensor (W/m²) ← Enables real-time cloud cover detection (PRIORITY 2.5) and solar warming in "feels like" temperature
-    **OR** UV Index sensor (0-15) ← Alternative for solar warming (pick one, not both)
+  - Solar Radiation sensor (W/m² or lux) ← Enables real-time cloud cover detection (PRIORITY 3) and solar warming in "feels like" temperature
 ```
 
 > **Note:** Dew point is **calculated automatically** from temperature and humidity - no external sensor needed.
@@ -499,12 +498,7 @@ All sensors + Extended:
 | **Humidity** | ⚠️ Optional | **Enables:** Fog risk levels, enhanced rain %, automatic dew point calculation | ⚠️ Fog/dew features disabled |
 | **Wind Gust** | ⚠️ Optional | **Enables:** Stability detection (calm/unstable/very unstable atmosphere) | ⚠️ Stability analysis skipped |
 | **Rain Rate** | ⚠️ Optional | **Enables:** Real-time override (100% probability + weather condition → "rainy" when actively raining) | ⚠️ Uses calculated % only |
-| **Solar Radiation** | ⚠️ Optional | **Enables:** Real-time cloud cover detection during daytime (PRIORITY 2.5 - overrides forecast model cloudiness) | ⚠️ Uses forecast model only |
-| **Solar Radiation OR UV Index** | ⚠️ Optional | **Enables:** Solar warming effect in "feels like" temperature (uses W/m² or converts UV index) | ⚠️ Ignores solar heating |
-
-> **Solar sensors:** You only need **one** of these:
-> - **Solar Radiation sensor** (W/m²) - Direct measurement, more accurate
-> - **UV Index sensor** (0-15) - Converted to W/m² using standard formula (W/m² ≈ UV Index × 25)
+| **Solar Radiation** | ⚠️ Optional | **Enables:** Real-time cloud cover detection during daytime (PRIORITY 3 - overrides forecast model cloudiness), supports W/m² or lux | ⚠️ Uses forecast model only |
 
 **Summary:**
 - **Minimum Setup**: Pressure only → ~88% accuracy (basic Zambretti forecast)

@@ -479,7 +479,6 @@ class ZambrettiForecaster:
         self,
         hass: HomeAssistant | None = None,
         latitude: float = 50.0,
-        uv_index: float | None = None,
         solar_radiation: float | None = None
     ):
         """Initialize Zambretti forecaster.
@@ -487,12 +486,10 @@ class ZambrettiForecaster:
         Args:
             hass: Home Assistant instance for sun entity access
             latitude: Location latitude for seasonal adjustment
-            uv_index: Current UV index (0-11+) for cloud cover correction
             solar_radiation: Current solar radiation in W/m² for cloud cover correction
         """
         self.hass = hass
         self.latitude = latitude
-        self.uv_index = uv_index
         self.solar_radiation = solar_radiation
 
     def forecast_hour(
@@ -583,67 +580,10 @@ class ZambrettiForecaster:
         hour = forecast_time.hour
         is_daytime = 6 <= hour <= 18
 
-        if is_daytime and self.uv_index is not None:
-            # Expected UV index at solar noon for clear sky (varies by latitude and season)
-            # For 48°N in December: ~1.5-2.0, June: ~7-8
-            # Simple approximation: expected_uv ≈ 8 * sin(sun_elevation)
-
-            # Get sun angle factor (0-1)
-            sun_factor = self._get_sun_angle_factor_for_condition(hour)
-
-            # Expected clear-sky UV at this latitude and time
-            # Seasonal factor: 0.3 winter, 1.0 summer
-            month = forecast_time.month
-            seasonal_factor = 0.5 + 0.5 * math.cos((month - 6) * math.pi / 6)  # Peak in June
-
-            # Maximum UV for this location and season
-            max_uv = 10.0 * seasonal_factor  # e.g., 5.0 in Dec, 10.0 in Jun at 48°N
-            expected_clear_sky_uv = max_uv * sun_factor
-
-            if expected_clear_sky_uv > 1.0:  # Only meaningful during significant sunlight
-                # Calculate cloud cover from UV index
-                # UV ratio: actual/expected (1.0 = clear, 0.5 = 50% clouds, 0.2 = overcast)
-                uv_ratio = self.uv_index / expected_clear_sky_uv
-                cloud_cover_percent = max(0.0, min(100.0, (1.0 - uv_ratio) * 100))
-
-                _LOGGER.debug(
-                    f"UV cloud correction: UV={self.uv_index:.1f}, "
-                    f"expected={expected_clear_sky_uv:.1f}, "
-                    f"ratio={uv_ratio:.2f}, clouds={cloud_cover_percent:.0f}%"
-                )
-
-                # SUNNY/CLEAR → CLOUDY correction (UV much lower than expected)
-                if condition in ("sunny", "clear-night") and cloud_cover_percent > 70:
-                    _LOGGER.debug(
-                        f"UV correction: {condition} → cloudy "
-                        f"(UV too low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
-                    )
-                    condition = "cloudy"
-                elif condition in ("sunny", "clear-night") and cloud_cover_percent > 40:
-                    _LOGGER.debug(
-                        f"UV correction: {condition} → partlycloudy "
-                        f"(UV low: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
-                    )
-                    condition = "partlycloudy"
-
-                # CLOUDY → PARTLYCLOUDY correction (UV higher than expected for clouds)
-                elif condition == "cloudy" and cloud_cover_percent < 30:
-                    _LOGGER.debug(
-                        f"UV correction: cloudy → partlycloudy "
-                        f"(UV high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
-                    )
-                    condition = "partlycloudy"
-                elif condition == "cloudy" and cloud_cover_percent < 10:
-                    _LOGGER.debug(
-                        f"UV correction: cloudy → sunny "
-                        f"(UV very high: {self.uv_index:.1f}/{expected_clear_sky_uv:.1f})"
-                    )
-                    condition = "sunny"
-
-        # SOLAR RADIATION CLOUD COVER CORRECTION (alternative/additional to UV)
+        # SOLAR RADIATION CLOUD COVER CORRECTION
         # Solar radiation scale: 0-1000+ W/m²
         # Clear sky at solar noon: ~800-1000 W/m² (varies by season)
-        if is_daytime and self.solar_radiation is not None and self.uv_index is None:
+        if is_daytime and self.solar_radiation is not None:
             # Use solar radiation if UV index not available
             sun_factor = self._get_sun_angle_factor_for_condition(hour)
 
@@ -1126,6 +1066,16 @@ class HourlyForecastGenerator:
                 )
                 condition = "clear-night"
 
+            # SNOW CONVERSION for forecasts
+            # Convert rainy/pouring to snowy when temperature is at or below freezing
+            # This ensures winter precipitation displays correctly
+            if future_temp <= 2.0 and condition in ("rainy", "pouring"):
+                _LOGGER.debug(
+                    f"Hourly forecast snow conversion: {condition} → snowy "
+                    f"(temp={future_temp:.1f}°C ≤ 2°C, time={future_time.strftime('%H:%M')})"
+                )
+                condition = "snowy"
+
             # Calculate rain probability from selected model (Zambretti/Negretti/Enhanced)
             # NOTE: Rain override is NOT applied to forecasts - only to current weather display
             # Forecasts always use model predictions, regardless of current rain
@@ -1307,6 +1257,18 @@ class DailyForecastGenerator:
                 for f in day_hours
             ]
             daily_rain_prob = round(sum(rain_probs) / len(rain_probs))
+
+            # SNOW CONVERSION for daily forecasts
+            # Convert rainy/pouring to snowy when daily average temperature is at or below freezing
+            # Use average of high and low for decision
+            daily_avg_temp = (daily_temp_max + daily_temp_min) / 2.0
+            if daily_avg_temp <= 2.0 and daily_condition in ("rainy", "pouring"):
+                _LOGGER.debug(
+                    f"Daily forecast snow conversion: {daily_condition} → snowy "
+                    f"(avg_temp={daily_avg_temp:.1f}°C ≤ 2°C, high={daily_temp_max:.1f}, low={daily_temp_min:.1f}, "
+                    f"day={day_time.strftime('%Y-%m-%d')})"
+                )
+                daily_condition = "snowy"
 
             # Create daily forecast
             forecast: Forecast = {

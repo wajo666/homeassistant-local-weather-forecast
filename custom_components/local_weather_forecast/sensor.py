@@ -31,6 +31,7 @@ from .const import (
     CONF_PRESSURE_TYPE,
     CONF_PRESSURE_SENSOR,
     CONF_RAIN_RATE_SENSOR,
+    CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_GUST_SENSOR,
@@ -146,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.8",
+            "sw_version": "3.1.9",
         }
 
     async def _wait_for_entity(
@@ -333,6 +334,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
         # Initial update
         await self.async_update()
+        self.async_write_ha_state()
 
     @callback
     async def _handle_sensor_update(self, event):
@@ -422,7 +424,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         self._state = titles[lang_index]
 
         # Calculate short-term temperature forecast
-        temp_short = self._calculate_temp_short_forecast(temperature)
+        temp_short = await self._calculate_temp_short_forecast(temperature)
 
         # Keep original list/array formats for full compatibility with original YAML code
         self._attributes = {
@@ -437,14 +439,20 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             "forecast_temp_short": temp_short,  # List: [predicted_temp, interval_index] or string if unavailable
         }
 
-    def _calculate_temp_short_forecast(self, current_temp: float) -> list | str:
-        """Calculate short-term temperature forecast.
+    async def _calculate_temp_short_forecast(self, current_temp: float) -> list | str:
+        """Calculate short-term temperature forecast using advanced TemperatureModel.
 
-        Uses temperature change and forecast interval times to predict temperature.
+        Combines:
+        - Temperature trend (from sensor.local_forecast_temperaturechange)
+        - Diurnal cycle (solar position based on sun.sun entity)
+        - Solar radiation warming (if sensor configured)
+        - Cloud cover reduction (if sensor configured or estimated from humidity)
+        - Hemisphere and seasonal adjustments
+
         Returns: [predicted_temp, interval_index] where interval: 0=first_time, 1=second_time, -1=unavailable
         """
         # Get temperature change sensor
-        temp_change_sensor = self.hass.states.get("sensor.local_forecast_temperaturechange")  # Match original YAML entity_id
+        temp_change_sensor = self.hass.states.get("sensor.local_forecast_temperaturechange")
         if not temp_change_sensor or temp_change_sensor.state in ("unknown", "unavailable"):
             _LOGGER.debug(
                 f"Temperature change sensor not available: {temp_change_sensor.state if temp_change_sensor else 'not found'}"
@@ -458,7 +466,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             return ["unavailable", -1]
 
         # Get Zambretti detail sensor for timing information
-        zambretti_detail = self.hass.states.get("sensor.local_forecast_zambretti_detail")  # Match original YAML entity_id
+        zambretti_detail = self.hass.states.get("sensor.local_forecast_zambretti_detail")
         if not zambretti_detail or zambretti_detail.state in ("unknown", "unavailable"):
             _LOGGER.debug(
                 f"Zambretti detail sensor not available: {zambretti_detail.state if zambretti_detail else 'not found'}"
@@ -468,6 +476,46 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         attrs = zambretti_detail.attributes
         _LOGGER.debug(f"Zambretti detail attributes: {attrs}")
 
+        # Get optional sensors for enhanced temperature modeling
+        config = self.config_entry
+
+        # Solar radiation (if configured)
+        solar_radiation = None
+        solar_sensor_id = config.options.get(CONF_SOLAR_RADIATION_SENSOR) or config.data.get(CONF_SOLAR_RADIATION_SENSOR)
+        if solar_sensor_id:
+            solar_radiation = await self._get_sensor_value(
+                solar_sensor_id, None, use_history=False, sensor_type="solar_radiation"
+            )
+
+        # Humidity (for cloud cover estimation if no direct sensor)
+        humidity = None
+        humidity_sensor_id = config.options.get(CONF_HUMIDITY_SENSOR) or config.data.get(CONF_HUMIDITY_SENSOR)
+        if humidity_sensor_id:
+            humidity = await self._get_sensor_value(
+                humidity_sensor_id, None, use_history=False, sensor_type="humidity"
+            )
+
+        # Get location and hemisphere
+        elevation = config.data.get(CONF_ELEVATION, DEFAULT_ELEVATION)
+        hemisphere = config.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
+        latitude = self.hass.config.latitude
+        longitude = self.hass.config.longitude
+
+        # Import TemperatureModel
+        from .forecast_calculator import TemperatureModel
+
+        # Create temperature model with all available data
+        temp_model = TemperatureModel(
+            current_temp=current_temp,
+            change_rate_1h=temp_change,
+            solar_radiation=solar_radiation,
+            humidity=humidity,
+            hass=self.hass,
+            latitude=latitude,
+            longitude=longitude,
+            hemisphere=hemisphere
+        )
+
         # Try to get first_time
         first_time = attrs.get("first_time")
         if first_time and isinstance(first_time, list) and len(first_time) > 1:
@@ -476,12 +524,14 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"first_time minutes: {minutes_to_first}")
 
                 if minutes_to_first > 0:
-                    # Calculate temperature at first interval
-                    # temp_change is per hour, so convert minutes to hours
-                    predicted_temp = (temp_change / 60 * minutes_to_first) + current_temp
+                    # Use advanced model to predict temperature
+                    hours_to_first = minutes_to_first / 60.0
+                    predicted_temp = temp_model.predict(int(round(hours_to_first)))
                     _LOGGER.debug(
-                        f"Calculated temp forecast using first_time: {predicted_temp:.1f}°C "
-                        f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_first})"
+                        f"Advanced temp forecast using first_time: {predicted_temp:.1f}°C "
+                        f"(current: {current_temp:.1f}, hours: {hours_to_first:.1f}, "
+                        f"solar: {solar_radiation if solar_radiation else 'N/A'} W/m², "
+                        f"humidity: {humidity if humidity else 'N/A'}%)"
                     )
                     return [round(predicted_temp, 1), 0]
                 else:
@@ -500,11 +550,14 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"second_time minutes: {minutes_to_second}")
 
                 if minutes_to_second > 0:
-                    # Calculate temperature at second interval
-                    predicted_temp = (temp_change / 60 * minutes_to_second) + current_temp
+                    # Use advanced model to predict temperature
+                    hours_to_second = minutes_to_second / 60.0
+                    predicted_temp = temp_model.predict(int(round(hours_to_second)))
                     _LOGGER.debug(
-                        f"Calculated temp forecast using second_time: {predicted_temp:.1f}°C "
-                        f"(current: {current_temp}, change/hr: {temp_change}, minutes: {minutes_to_second})"
+                        f"Advanced temp forecast using second_time: {predicted_temp:.1f}°C "
+                        f"(current: {current_temp:.1f}, hours: {hours_to_second:.1f}, "
+                        f"solar: {solar_radiation if solar_radiation else 'N/A'} W/m², "
+                        f"humidity: {humidity if humidity else 'N/A'}%)"
                     )
                     return [round(predicted_temp, 1), 1]
                 else:
@@ -2404,9 +2457,8 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             probability = 95
             confidence = "very_high"
 
-        # Dynamic icon based on temperature and snow conditions
-        # Get temperature and snow risk to determine if precipitation would be rain or snow
-        # IMPORTANT: Must be consistent with weather entity snow detection logic!
+        # Dynamic icon based on temperature and probability
+        # Simple meteorological logic: if cold enough, precipitation will be snow
         temp_sensor_id = self.config_entry.options.get(CONF_TEMPERATURE_SENSOR) or self.config_entry.data.get(CONF_TEMPERATURE_SENSOR)
         temperature = None
         if temp_sensor_id:
@@ -2431,13 +2483,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             except (AttributeError, KeyError, TypeError):
                 pass
 
-        # Determine icon based on temperature, conditions AND snow risk
-        # CONSISTENCY: Use same logic as weather entity (weather.py lines 447-477)
-        #
-        # Snow detection requires BOTH:
-        # 1. Cold temperature (≤ 2°C)
-        # 2. HIGH snow risk from enhanced sensor OR very high probability (≥ 60%)
-        #
+        # Determine icon based on temperature and probability
         # This prevents showing snow icon when conditions are just "cold" but not "snowy"
         # Example: -5°C, 75% humidity, spread 3.8°C, snow_risk=low → RAIN icon (not snow)
 

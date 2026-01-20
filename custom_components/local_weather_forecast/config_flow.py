@@ -23,7 +23,6 @@ from .const import (
     CONF_RAIN_RATE_SENSOR,
     CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
-    CONF_UV_INDEX_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
@@ -510,22 +509,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     _LOGGER.error("Error validating solar radiation sensor %s: %s", solar_radiation_sensor, e)
                     errors[CONF_SOLAR_RADIATION_SENSOR] = "sensor_validation_error"
 
-            if uv_index_sensor := user_input.get(CONF_UV_INDEX_SENSOR):
-                try:
-                    _LOGGER.debug("Validating optional UV index sensor: %s", uv_index_sensor)
-                    uv_index_state = self.hass.states.get(uv_index_sensor)
-                    if uv_index_sensor and not uv_index_state:
-                        _LOGGER.error("UV index sensor not found: %s", uv_index_sensor)
-                        errors[CONF_UV_INDEX_SENSOR] = "sensor_not_found"
-                    else:
-                        _LOGGER.debug("UV index sensor found: %s (state=%s, unit=%s)",
-                                    uv_index_sensor,
-                                    uv_index_state.state if uv_index_state else None,
-                                    uv_index_state.attributes.get("unit_of_measurement") if uv_index_state else None)
-                except Exception as e:
-                    _LOGGER.error("Error validating UV index sensor %s: %s", uv_index_sensor, e)
-                    errors[CONF_UV_INDEX_SENSOR] = "sensor_validation_error"
-
 
             elevation = user_input.get(CONF_ELEVATION, DEFAULT_ELEVATION)
             _LOGGER.debug("Validating elevation: %s", elevation)
@@ -544,7 +527,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     CONF_WIND_GUST_SENSOR,
                     CONF_RAIN_RATE_SENSOR,
                     CONF_SOLAR_RADIATION_SENSOR,
-                    CONF_UV_INDEX_SENSOR,
                 ]
                 for key in optional_sensors:
                     # Convert empty strings to None, ensure key exists even if not provided
@@ -664,17 +646,6 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     selector.EntitySelectorConfig(
                         domain="sensor",
                         device_class=["irradiance", "illuminance"],  # Support both W/m² and lux sensors
-                        multiple=False,
-                    )
-                ),
-                vol.Optional(
-                    CONF_UV_INDEX_SENSOR,
-                    description={"suggested_value": current_config.get(CONF_UV_INDEX_SENSOR)}
-                    if current_config.get(CONF_UV_INDEX_SENSOR)
-                    else None,
-                ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="sensor",
                         multiple=False,
                     )
                 ),
