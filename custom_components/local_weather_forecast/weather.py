@@ -781,6 +781,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # They will override current_condition_from_pressure if configured.
             forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
 
+            # Initialize condition variable (will be set by forecast or fallback logic)
+            condition = None
+
             # Determine which sensor to use based on forecast model
             if forecast_model == FORECAST_MODEL_ENHANCED:
                 # Enhanced uses sensor.local_forecast_enhanced (dynamic weighting based on pressure change)
@@ -920,8 +923,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 f"Solar has priority over pressure estimate. "
                                 f"Forecast '{forecast_text}' is for 6-12h future."
                             )
+                    elif current_condition_from_pressure is not None:
+                        # We have current condition from pressure (PRIORITY 4) - use it!
+                        # Forecast model predicts FUTURE (6-12h ahead), not current state
+                        condition = current_condition_from_pressure
+                        _LOGGER.debug(
+                            f"Weather: Using PRIORITY 4 pressure condition - "
+                            f"condition={condition} (current state from pressure). "
+                            f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
+                        )
                     else:
-                        # No solar or no current condition - use forecast model
+                        # No solar AND no current condition - use forecast model as last fallback
                         from .forecast_models import map_forecast_to_condition
                         condition = map_forecast_to_condition(
                             forecast_text=forecast_text,
@@ -932,7 +944,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                         _LOGGER.debug(
                             f"Weather: Mapped forecast → condition {condition} "
-                            f"(using forecast because no solar/current condition available)"
+                            f"(using forecast as LAST FALLBACK - no solar or pressure data available)"
                         )
 
                     # FOG is handled in PRIORITY 2 with scientific model (WMO/NOAA/MetOffice)
@@ -948,64 +960,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     # - Will naturally show CLOUDY/PARTLYCLOUDY instead of FOG
 
                     # HUMIDITY-BASED CLOUD COVER CORRECTION
-                    # Balance humidity observations with forecast confidence
-                    # Don't override strong "settled fine" forecasts unless humidity is extreme
-                    humidity = self.humidity
-                    if humidity is not None:
-                        _LOGGER.debug(f"Weather: Current humidity={humidity}%, forecast_num={forecast_num}")
-
-                        # Check if it's night - humidity has bigger impact at night
-                        # (condensation, dew, night clouds are more visible with high humidity)
-                        is_night = self._is_night()
-
-                        # EXTREME humidity (>90%) = definitely overcast
-                        # Only override Fine weather (forecast_num ≤ 3) if humidity is truly extreme (>92%)
-                        if humidity > 92 and condition in (
-                            ATTR_CONDITION_PARTLYCLOUDY,
-                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                        ):
-                            _LOGGER.debug(
-                                f"Weather: Humidity correction (extreme): {condition} → cloudy "
-                                f"(RH={humidity:.1f}% > 92%)"
-                            )
-                            condition = ATTR_CONDITION_CLOUDY
-
-                        # Very high humidity (85-92%) = mostly cloudy
-                        # BUT respect "Fine weather" forecasts (forecast_num ≤ 3)
-                        # These are strong forecasts that shouldn't be overridden by humidity alone
-                        elif humidity > 85 and condition in (
-                            ATTR_CONDITION_PARTLYCLOUDY,
-                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                        ) and (forecast_num is None or forecast_num > 3):
-                            _LOGGER.debug(
-                                f"Weather: Humidity correction (very high): {condition} → cloudy "
-                                f"(RH={humidity:.1f}% > 85%, forecast_num={forecast_num})"
-                            )
-                            condition = ATTR_CONDITION_CLOUDY
-
-                        # High humidity (80-85% at night, 75-85% during day) = haze/partial cloud
-                        # At night, lower threshold because condensation and night clouds are more visible
-                        # NIGHT SPECIAL CASE: At night with 80%+ humidity, ALWAYS downgrade to partlycloudy
-                        # (night clouds are visible with street lights, moon reflection, etc.)
-                        # Only downgrade sunny/clear-night (not if already partlycloudy)
-                        if is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
-                            _LOGGER.debug(
-                                f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
-                                f"(RH={humidity:.1f}% > 80% at night, visible clouds likely)"
-                            )
-                            condition = ATTR_CONDITION_PARTLYCLOUDY
-                        elif humidity > 75 and condition in (
-                            ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                        ) and (forecast_num is None or forecast_num > 5):
-                            _LOGGER.debug(
-                                f"Weather: Humidity correction (day haze): {condition} → partlycloudy "
-                                f"(RH={humidity:.1f}% > 75%, forecast_num={forecast_num})"
-                            )
-                            condition = ATTR_CONDITION_PARTLYCLOUDY
-                            # Note: partlycloudy works for both day and night (HA shows correct icon automatically)
-
-                    # Note: We don't convert partlycloudy to clear-night at night
-                    # Home Assistant automatically shows the correct night icon for partlycloudy
+                    # ⚠️ NOTE: This section moved OUTSIDE forecast block in v3.1.9
+                    # to apply universally to ALL conditions (solar, pressure, forecast)
+                    # See end of condition determination for universal humidity corrections
 
                     # SOLAR CLOUDINESS OVERRIDE (INTELLIGENT)
                     # Solar radiation measures CURRENT cloudiness, forecast predicts FUTURE
@@ -1070,9 +1027,24 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             condition = solar_cloudiness
 
 
-                    # SNOW CONDITION CONVERSION FROM FORECAST
-                    # If forecast says "rainy" but conditions are freezing, convert to "snowy"
-                    # This handles the case where forecast predicts precipitation but temperature is below freezing
+                    # SNOW CONDITION CONVERSION
+                    # Convert RAINY to SNOWY when temperature is freezing
+                    # This applies to:
+                    # - Forecast predictions (PRIORITY 5)
+                    # - Solar + Pressure combinations (PRIORITY 3 + 4)
+                    #
+                    # Do NOT convert if condition is from:
+                    # - PRIORITY 1 (rain sensor) - actual measurement (converts at source)
+                    # - PRIORITY 2 (fog/mist) - actual measurement (not precipitation)
+                    #
+                    # Detect source:
+                    # - used_forecast = True: PRIORITY 5 (forecast model)
+                    # - used_forecast = False + solar_cloudiness: PRIORITY 3 (solar + pressure combination)
+                    # - used_forecast = False + no solar: PRIORITY 4 (pressure only)
+                    used_forecast = (solar_cloudiness is None and current_condition_from_pressure is None)
+
+                    # If condition is "rainy" but conditions are freezing, convert to "snowy"
+                    # This handles BOTH forecast predictions AND solar+pressure combinations
                     if condition == ATTR_CONDITION_RAINY:
                         temp = self.native_temperature
                         if temp is not None and temp <= 2:
@@ -1112,9 +1084,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 reason = f"freezing temp + high rain_prob={rain_prob}%"
 
                             if should_convert:
+                                source = "forecast" if used_forecast else "solar+pressure"
                                 _LOGGER.debug(
-                                    f"Weather: Forecast conversion: rainy → snowy "
-                                    f"(temp={temp:.1f}°C, {reason})"
+                                    f"Weather: Snow conversion: rainy → snowy "
+                                    f"(source={source}, temp={temp:.1f}°C, {reason})"
                                 )
                                 condition = ATTR_CONDITION_SNOWY
                             else:
@@ -1124,53 +1097,138 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     f"conditions not met for snow conversion)"
                                 )
 
-                    return condition
+                    # Don't return yet - apply universal humidity corrections first
+                    # (see end of method)
                 except (AttributeError, KeyError, TypeError) as e:
                     _LOGGER.debug(f"Weather: Error reading forecast sensor: {e}")
+                    # Set condition to None to trigger fallback
+                    condition = None
 
             # Forecast sensor not available - use current condition from pressure if available
-            if current_condition_from_pressure is not None:
+            if condition is None and current_condition_from_pressure is not None:
                 _LOGGER.debug(
                     f"Weather: Forecast sensors unavailable, using current condition from pressure: "
                     f"{current_condition_from_pressure} (CURRENT state based on pressure NOW)"
                 )
-                return current_condition_from_pressure
+                condition = current_condition_from_pressure
 
             # PRIORITY 6: Fallback based on pressure
-            pressure = self.native_pressure
-            if pressure:
-                if pressure < 1000:
-                    # Low pressure indicates precipitation
-                    # Check if conditions are freezing - convert rainy to snowy
-                    temp = self.native_temperature
-                    if temp is not None and temp <= 2:
-                        _LOGGER.debug(
-                            f"Weather: Fallback to snowy (pressure={pressure}, temp={temp:.1f}°C ≤2°C)"
-                        )
-                        return ATTR_CONDITION_SNOWY
+            if condition is None:
+                pressure = self.native_pressure
+                if pressure:
+                    if pressure < 1000:
+                        # Low pressure indicates precipitation
+                        # Check if conditions are freezing - convert rainy to snowy
+                        temp = self.native_temperature
+                        if temp is not None and temp <= 2:
+                            _LOGGER.debug(
+                                f"Weather: Fallback to snowy (pressure={pressure}, temp={temp:.1f}°C ≤2°C)"
+                            )
+                            condition = ATTR_CONDITION_SNOWY
+                        else:
+                            _LOGGER.debug(f"Weather: Fallback to rainy (pressure={pressure})")
+                            condition = ATTR_CONDITION_RAINY
+                    elif pressure < 1013:
+                        _LOGGER.debug(f"Weather: Fallback to cloudy (pressure={pressure})")
+                        condition = ATTR_CONDITION_CLOUDY
+                    elif pressure < 1020:
+                        # Medium pressure = partly cloudy
+                        # Keep partlycloudy for both day and night (HA shows correct icon)
+                        _LOGGER.debug(f"Weather: Fallback to partlycloudy (pressure={pressure})")
+                        condition = ATTR_CONDITION_PARTLYCLOUDY
                     else:
-                        _LOGGER.debug(f"Weather: Fallback to rainy (pressure={pressure})")
-                        return ATTR_CONDITION_RAINY
-                elif pressure < 1013:
-                    _LOGGER.debug(f"Weather: Fallback to cloudy (pressure={pressure})")
-                    return ATTR_CONDITION_CLOUDY
-                elif pressure < 1020:
-                    # Medium pressure = partly cloudy
-                    # Keep partlycloudy for both day and night (HA shows correct icon)
-                    _LOGGER.debug(f"Weather: Fallback to partlycloudy (pressure={pressure})")
-                    return ATTR_CONDITION_PARTLYCLOUDY
-                else:
-                    # High pressure = clear skies
-                    if self._is_night():
-                        _LOGGER.debug(f"Weather: Fallback to clear night (pressure={pressure})")
-                        return ATTR_CONDITION_CLEAR_NIGHT
-                    _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
-                    return ATTR_CONDITION_SUNNY
+                        # High pressure = clear skies
+                        if self._is_night():
+                            _LOGGER.debug(f"Weather: Fallback to clear night (pressure={pressure})")
+                            condition = ATTR_CONDITION_CLEAR_NIGHT
+                        else:
+                            _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
+                            condition = ATTR_CONDITION_SUNNY
 
-            # Final fallback - partlycloudy is safer than assuming clear-night
-            # (better to show partial clouds than miss actual clouds)
-            _LOGGER.debug(f"Weather: Final fallback to partlycloudy (no forecast/pressure data)")
-            return ATTR_CONDITION_PARTLYCLOUDY
+            # Final fallback
+            if condition is None:
+                _LOGGER.debug(f"Weather: Final fallback to partlycloudy (no forecast/pressure data)")
+                condition = ATTR_CONDITION_PARTLYCLOUDY
+
+            # ========================================================================
+            # UNIVERSAL HUMIDITY-BASED CLOUD COVER CORRECTIONS
+            # Applied to ALL conditions regardless of source (solar, pressure, forecast)
+            # ========================================================================
+            humidity = self.humidity
+            if humidity is not None:
+                # Get forecast_num if available (for Fine weather forecast detection)
+                forecast_num = None
+                try:
+                    forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
+                    if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+                        forecast_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
+                    elif forecast_model == FORECAST_MODEL_NEGRETTI:
+                        forecast_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
+                    else:
+                        forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+
+                    if forecast_sensor and forecast_sensor.state not in ("unknown", "unavailable", None):
+                        attrs = forecast_sensor.attributes or {}
+                        forecast_num = attrs.get("forecast_number", None)
+                except:
+                    pass  # forecast_num stays None
+
+                _LOGGER.debug(f"Weather: Universal humidity correction check - humidity={humidity}%, forecast_num={forecast_num}, condition={condition}")
+
+                # Check if it's night - humidity has bigger impact at night
+                # (condensation, dew, night clouds are more visible with high humidity)
+                is_night = self._is_night()
+
+                # EXTREME humidity (>92%) = definitely overcast
+                # Only override Fine weather (forecast_num ≤ 3) if humidity is truly extreme (>92%)
+                if humidity > 92 and condition in (
+                    ATTR_CONDITION_PARTLYCLOUDY,
+                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
+                ):
+                    _LOGGER.debug(
+                        f"Weather: Humidity correction (extreme): {condition} → cloudy "
+                        f"(RH={humidity:.1f}% > 92%)"
+                    )
+                    condition = ATTR_CONDITION_CLOUDY
+
+                # Very high humidity (85-92%) = mostly cloudy
+                # BUT respect "Fine weather" forecasts (forecast_num ≤ 3)
+                # These are strong forecasts that shouldn't be overridden by humidity alone
+                elif humidity > 85 and condition in (
+                    ATTR_CONDITION_PARTLYCLOUDY,
+                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
+                ) and (forecast_num is None or forecast_num > 3):
+                    _LOGGER.debug(
+                        f"Weather: Humidity correction (very high): {condition} → cloudy "
+                        f"(RH={humidity:.1f}% > 85%, forecast_num={forecast_num})"
+                    )
+                    condition = ATTR_CONDITION_CLOUDY
+
+                # High humidity (80% at night, 75% during day) = haze/partial cloud
+                # At night, lower threshold because condensation and night clouds are more visible
+                # NIGHT SPECIAL CASE: At night with 80%+ humidity, ALWAYS downgrade to partlycloudy
+                # (night clouds are visible with street lights, moon reflection, etc.)
+                # Only downgrade sunny/clear-night (not if already partlycloudy)
+                elif is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
+                    _LOGGER.debug(
+                        f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
+                        f"(RH={humidity:.1f}% > 80% at night, visible clouds likely)"
+                    )
+                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                elif humidity > 75 and condition in (
+                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
+                ) and (forecast_num is None or forecast_num > 5):
+                    _LOGGER.debug(
+                        f"Weather: Humidity correction (day haze): {condition} → partlycloudy "
+                        f"(RH={humidity:.1f}% > 75%, forecast_num={forecast_num})"
+                    )
+                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                    # Note: partlycloudy works for both day and night (HA shows correct icon automatically)
+
+            # Note: We don't convert partlycloudy to clear-night at night
+            # Home Assistant automatically shows the correct night icon for partlycloudy
+
+            return condition
         except Exception as e:
             _LOGGER.error(f"Error determining weather condition: {e}", exc_info=True)
             # Partlycloudy is safe fallback for both day and night (HA shows correct icon)
