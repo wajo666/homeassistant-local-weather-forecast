@@ -2129,9 +2129,22 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
             negretti_weight = 1.0 - zambretti_weight
 
+            # Log weighting decision with reason
+            if current_pressure > 1030:
+                reason = f"anticyclone (P={current_pressure:.1f} hPa)"
+            elif abs_change >= 3.0:
+                reason = f"rapid pressure change"
+            elif abs_change >= 1.5:
+                reason = f"moderate pressure change"
+            elif abs_change >= 0.5:
+                reason = f"small pressure change"
+            else:
+                reason = f"stable pressure"
+
             _LOGGER.debug(
-                f"Enhanced: Dynamic weighting - pressure_change={pressure_change:.2f} hPa, "
-                f"zambretti_weight={zambretti_weight:.2f}, negretti_weight={negretti_weight:.2f}"
+                f"Enhanced: 📊 MODEL WEIGHTING - pressure_change={pressure_change:.2f} hPa, "
+                f"current_pressure={current_pressure:.1f} hPa → {reason} → "
+                f"Zambretti={zambretti_weight:.0%}, Negretti={negretti_weight:.0%}"
             )
 
             # Use weighted combination - prefer the one with higher weight
@@ -2142,15 +2155,21 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             if abs(zambretti_num - negretti_num) <= 1:
                 # They agree - use Zambretti text (more detailed)
                 base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
-                _LOGGER.debug(f"Enhanced: Consensus detected, using Zambretti: {base_text}")
+                _LOGGER.debug(
+                    f"Enhanced: ✅ CONSENSUS (forecasts agree: Z={zambretti_num}, N={negretti_num}) → using Zambretti text: '{base_text}'"
+                )
             elif zambretti_weight >= 0.6:
                 # Strong pressure change - trust Zambretti
                 base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
-                _LOGGER.debug(f"Enhanced: Rapid pressure change, using Zambretti: {base_text}")
+                _LOGGER.debug(
+                    f"Enhanced: ⚡ HIGH WEIGHT (Zambretti={zambretti_weight:.0%} ≥ 60%) → using Zambretti: '{base_text}' (Z={zambretti_num}, N={negretti_num})"
+                )
             else:
                 # Stable conditions - trust Negretti
                 base_text = negretti[0] if len(negretti) > 0 else "Unknown"
-                _LOGGER.debug(f"Enhanced: Stable pressure, using Negretti: {base_text}")
+                _LOGGER.debug(
+                    f"Enhanced: 🛡️ STABLE CONDITIONS (Negretti={negretti_weight:.0%} > 40%) → using Negretti: '{base_text}' (Z={zambretti_num}, N={negretti_num})"
+                )
 
         if adjustment_details:
             enhanced_text = f"{base_text}. {', '.join(adjustment_details)}"

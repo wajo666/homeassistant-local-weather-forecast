@@ -1179,51 +1179,72 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # (condensation, dew, night clouds are more visible with high humidity)
                 is_night = self._is_night()
 
-                # EXTREME humidity (>92%) = definitely overcast
-                # Only override Fine weather (forecast_num ≤ 3) if humidity is truly extreme (>92%)
-                if humidity > 92 and condition in (
+                # ========================================================================
+                # HUMIDITY-BASED CLOUDINESS CORRECTIONS (WMO/NOAA meteorological standards)
+                # ========================================================================
+                # Based on scientific research:
+                # - RH > 95% → Near saturation, clouds/fog very likely (critical)
+                # - RH 90-95% → High probability of clouds (condensation level)
+                # - RH 85-90% → Moderate cloud probability (visible moisture)
+                # - RH 80-85% → Haze/partial clouds possible
+                # - RH < 80% → Low cloud formation probability
+                #
+                # Special considerations:
+                # - Night: Lower thresholds (clouds more visible, condensation)
+                # - Fine weather forecasts (num ≤ 3): Stronger evidence needed
+                # ========================================================================
+
+                # LEVEL 1: EXTREME humidity (>95%) = definitely cloudy/overcast
+                # Near saturation - clouds WILL form regardless of forecast
+                if humidity > 95 and condition in (
                     ATTR_CONDITION_PARTLYCLOUDY,
                     ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
                 ):
                     _LOGGER.debug(
-                        f"Weather: Humidity correction (extreme): {condition} → cloudy "
-                        f"(RH={humidity:.1f}% > 92%)"
+                        f"Weather: Humidity correction (CRITICAL): {condition} → cloudy "
+                        f"(RH={humidity:.1f}% > 95% - near saturation, clouds inevitable)"
                     )
                     condition = ATTR_CONDITION_CLOUDY
 
-                # Very high humidity (85-92%) = mostly cloudy
+                # LEVEL 2: Very high humidity (90-95%) = mostly cloudy
                 # BUT respect "Fine weather" forecasts (forecast_num ≤ 3)
-                # These are strong forecasts that shouldn't be overridden by humidity alone
-                elif humidity > 85 and condition in (
+                # These are strong stable forecasts that need stronger evidence
+                elif humidity > 90 and condition in (
                     ATTR_CONDITION_PARTLYCLOUDY,
                     ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
                 ) and (forecast_num is None or forecast_num > 3):
                     _LOGGER.debug(
                         f"Weather: Humidity correction (very high): {condition} → cloudy "
-                        f"(RH={humidity:.1f}% > 85%, forecast_num={forecast_num})"
+                        f"(RH={humidity:.1f}% > 90% - high condensation, forecast_num={forecast_num})"
                     )
                     condition = ATTR_CONDITION_CLOUDY
 
-                # High humidity (80% at night, 75% during day) = haze/partial cloud
-                # At night, lower threshold because condensation and night clouds are more visible
-                # NIGHT SPECIAL CASE: At night with 80%+ humidity, ALWAYS downgrade to partlycloudy
-                # (night clouds are visible with street lights, moon reflection, etc.)
-                # Only downgrade sunny/clear-night (not if already partlycloudy)
-                elif is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
-                    _LOGGER.debug(
-                        f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
-                        f"(RH={humidity:.1f}% > 80% at night, visible clouds likely)"
-                    )
-                    condition = ATTR_CONDITION_PARTLYCLOUDY
-                elif humidity > 75 and condition in (
+                # LEVEL 3: High humidity (85-90%) = partial clouds likely
+                # Respect both Fine (≤3) and Fair (≤5) forecasts
+                elif humidity > 85 and condition in (
                     ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
                 ) and (forecast_num is None or forecast_num > 5):
                     _LOGGER.debug(
-                        f"Weather: Humidity correction (day haze): {condition} → partlycloudy "
-                        f"(RH={humidity:.1f}% > 75%, forecast_num={forecast_num})"
+                        f"Weather: Humidity correction (high): {condition} → partlycloudy "
+                        f"(RH={humidity:.1f}% > 85% - visible moisture, forecast_num={forecast_num})"
                     )
                     condition = ATTR_CONDITION_PARTLYCLOUDY
-                    # Note: partlycloudy works for both day and night (HA shows correct icon automatically)
+
+                # LEVEL 4: Night special case (80-85%) = partial clouds more visible at night
+                # At night, lower threshold because:
+                # - Condensation forms easier (cooler air)
+                # - Night clouds more visible (street lights, moon reflection)
+                # - Dew formation indicates high moisture
+                elif is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
+                    _LOGGER.debug(
+                        f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
+                        f"(RH={humidity:.1f}% > 80% at night - condensation/dew, night clouds visible)"
+                    )
+                    condition = ATTR_CONDITION_PARTLYCLOUDY
+
+                # Note: We don't add day correction at 75% - that's too aggressive
+                # 75% RH is moderate humidity, not necessarily clouds
+                # Only at 80%+ (or 85%+ for day sunny conditions) do we correct
 
             # Note: We don't convert partlycloudy to clear-night at night
             # Home Assistant automatically shows the correct night icon for partlycloudy

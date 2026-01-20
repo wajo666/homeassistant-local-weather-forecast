@@ -997,6 +997,20 @@ class HourlyForecastGenerator:
                         zambretti_weight = 0.10
                         negretti_weight = 0.90
 
+                    # Determine reason for logging
+                    if future_pressure > 1030:
+                        reason = f"anticyclone (P={future_pressure:.1f})"
+                    elif abs_change > 5:
+                        reason = "rapid change"
+                    elif abs_change > 3:
+                        reason = "moderate change"
+                    elif abs_change > 1.5:
+                        reason = "small change"
+                    elif abs_change > 0.5:
+                        reason = "very small change"
+                    else:
+                        reason = "stable"
+
                     # Calculate weighted rain probabilities
                     zambretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)
                     negretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(negretti_letter, 50)
@@ -1012,10 +1026,10 @@ class HourlyForecastGenerator:
                         forecast_num = negretti_num
 
                     _LOGGER.debug(
-                        f"Combined forecast: ΔP={pressure_change:+.1f}hPa → "
-                        f"weights Z:{zambretti_weight:.0%}/N:{negretti_weight:.0%} → "
+                        f"📊 FORECAST WEIGHTING: ΔP={pressure_change:+.1f}hPa ({reason}) → "
+                        f"Z:{zambretti_weight:.0%}/N:{negretti_weight:.0%} → "
                         f"Z:{zambretti_letter}({zambretti_rain}%) + N:{negretti_letter}({negretti_rain}%) = "
-                        f"{forecast_letter}({combined_rain:.0f}%)"
+                        f"✅ {forecast_letter}({combined_rain:.0f}%)"
                     )
                 else:
                     # Fallback to Zambretti if Negretti unavailable
