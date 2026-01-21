@@ -682,13 +682,15 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         )
                     else:
                         # WMO: 8 oktas (OVC - overcast)
-                        # VERY LOW CONFIDENCE: Heavy overcast (≥ 87.5%)
-                        # Too cloudy - defer completely to forecast for rain/snow determination
+                        # Overcast = still CLOUDY (87.5-100% cloud cover)
+                        # Solar still shows cloudiness accurately - trust it!
+                        # Rain sensor or pressure will determine if it's rainy/snowy
+                        solar_cloudiness = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
-                            f"Weather: Solar VERY LOW CONFIDENCE → overcast (OVC) "
-                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas), deferring to forecast"
+                            f"Weather: Solar OVERCAST (OVC) → cloudy "
+                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas). "
+                            f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
                         )
-                        solar_cloudiness = None  # Don't override
 
                     # If we have solar cloudiness determination, check rain sensor
                     if solar_cloudiness is not None:
