@@ -82,9 +82,11 @@ The integration uses a **smart priority system** to determine current weather. T
 ┌─────────────────────────────────────────────────────────┐
 │ PRIORITY 3: Solar Radiation (Daytime Only)              │
 │ Measures real cloudiness from sunlight ✅               │
-│ • Clear sky (>75% sun) → "sunny" ☀️                    │
-│ • Partly cloudy (35-75%) → "partly cloudy" ⛅           │
-│ • Cloudy (<35%) → "cloudy" ☁️                          │
+│ WMO Standards (oktas - eighths of sky):                 │
+│ • Clear sky (<25% = 0-2 oktas) → "sunny" ☀️            │
+│ • Scattered (25-50% = 3-4 oktas) → "partly cloudy" ⛅   │
+│ • Broken (50-87.5% = 5-7 oktas) → "cloudy" ☁️          │
+│ • Overcast (≥87.5% = 8 oktas) → defer to forecast      │
 └─────────────────────────────────────────────────────────┘
                         ↓ (if night or no solar)
 ┌─────────────────────────────────────────────────────────┐
@@ -112,7 +114,7 @@ The integration uses a **smart priority system** to determine current weather. T
 ```
 ✅ No rain sensor → Skip Priority 1
 ✅ Humidity 60%, spread 5°C → No fog, skip Priority 2
-✅ Solar: 900 W/m² (max 1100) → 82% sunlight → "sunny" ☀️
+✅ Solar: 900 W/m² (max 1100) → 18% clouds → "sunny" ☀️ (WMO: 0-2 oktas)
 Result: SUNNY (from Priority 3)
 ```
 
@@ -136,8 +138,7 @@ Result: CLEAR-NIGHT
 ```
 ✅ No rain sensor → Skip Priority 1
 ✅ Humidity 82%, spread 2.1°C → No fog (spread too large)
-✅ Solar: 300 W/m² (max 1000) → 30% sunlight → "partly cloudy"
-✅ Humidity >70% → Upgrade to "cloudy"
+✅ Solar: 300 W/m² (max 1000) → 70% clouds → "cloudy" ☁️ (WMO: 5-7 oktas)
 ✅ Temp -5°C + Forecast shows rain → Convert to "snowy" ❄️
 Result: SNOWY
 ```
