@@ -1265,6 +1265,10 @@ class DailyForecastGenerator:
             else:
                 daily_condition = day_hours[len(day_hours) // 2]["condition"]
 
+            # Convert clear-night to sunny for daily forecasts (daily forecasts are always daytime)
+            if daily_condition == "clear-night":
+                daily_condition = "sunny"
+
             # Average rain probability
             rain_probs = [
                 f.get("precipitation_probability", 0)

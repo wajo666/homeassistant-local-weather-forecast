@@ -373,6 +373,11 @@ class TestHourlyForecastGenerator:
 
     def test_night_detection_daytime(self):
         """Test that daytime forecasts are marked as daytime."""
+        # Mock sun entity to be above horizon (daytime)
+        mock_sun = Mock()
+        mock_sun.state = "above_horizon"
+        self.mock_hass.states.get.return_value = mock_sun
+
         # Create generator with daytime (12:00)
         now_day = datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc)
         temp_model_day = TemperatureModel(5.0, 0.0)
