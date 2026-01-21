@@ -1783,7 +1783,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             elif forecast_model == FORECAST_MODEL_NEGRETTI:
                 # Negretti-Zambra: Conservative slide-rule method
                 # Note: We still use Zambretti class but with Negretti-optimized parameters
-                from .negretti_zambra import calculate_forecast as negretti_calc
+                from .negretti_zambra import calculate_negretti_zambra_forecast as negretti_calc
                 zambretti = ZambrettiForecaster(
                     hass=self.hass,
                     latitude=latitude,
