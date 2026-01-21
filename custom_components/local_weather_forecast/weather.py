@@ -650,33 +650,43 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     # Store solar-determined cloudiness for later use
                     solar_cloudiness = None
 
-                    if cloud_percent < 15:
-                        # HIGH CONFIDENCE: Clear skies (< 15% clouds)
+                    # WMO (World Meteorological Organization) Cloud Coverage Standards:
+                    # Based on oktas (eighths of sky covered):
+                    # - 0-2 oktas (0-25%): FEW clouds → SUNNY/CLEAR
+                    # - 3-4 oktas (25-50%): SCT (scattered) → PARTLY CLOUDY
+                    # - 5-7 oktas (50-87.5%): BKN (broken) → CLOUDY
+                    # - 8 oktas (87.5-100%): OVC (overcast) → OVERCAST
+                    #
+                    # These thresholds align with international aviation (METAR) and meteorological standards.
+
+                    if cloud_percent < 25:
+                        # WMO: 0-2 oktas (FEW clouds)
                         solar_cloudiness = ATTR_CONDITION_SUNNY
                         _LOGGER.debug(
-                            f"Weather: Solar HIGH CONFIDENCE → clear skies "
-                            f"(cloud_cover={cloud_percent:.0f}%)"
+                            f"Weather: Solar HIGH CONFIDENCE → clear skies (FEW clouds) "
+                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 0-2 oktas)"
                         )
                     elif cloud_percent < 50:
-                        # MEDIUM CONFIDENCE: Scattered clouds (15-50%)
+                        # WMO: 3-4 oktas (SCT - scattered clouds)
                         solar_cloudiness = ATTR_CONDITION_PARTLYCLOUDY
                         _LOGGER.debug(
-                            f"Weather: Solar MEDIUM CONFIDENCE → scattered clouds "
-                            f"(cloud_cover={cloud_percent:.0f}%)"
+                            f"Weather: Solar MEDIUM CONFIDENCE → scattered clouds (SCT) "
+                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 3-4 oktas)"
                         )
-                    elif cloud_percent < 75:
-                        # LOW CONFIDENCE: Mostly cloudy (50-75%)
+                    elif cloud_percent < 87.5:
+                        # WMO: 5-7 oktas (BKN - broken clouds)
                         solar_cloudiness = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
-                            f"Weather: Solar LOW CONFIDENCE → mostly cloudy "
-                            f"(cloud_cover={cloud_percent:.0f}%)"
+                            f"Weather: Solar LOW CONFIDENCE → mostly cloudy (BKN) "
+                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 5-7 oktas)"
                         )
                     else:
-                        # VERY LOW CONFIDENCE: Heavy overcast (≥ 75%)
+                        # WMO: 8 oktas (OVC - overcast)
+                        # VERY LOW CONFIDENCE: Heavy overcast (≥ 87.5%)
                         # Too cloudy - defer completely to forecast for rain/snow determination
                         _LOGGER.debug(
-                            f"Weather: Solar VERY LOW CONFIDENCE → heavy overcast "
-                            f"(cloud_cover={cloud_percent:.0f}%), deferring to forecast"
+                            f"Weather: Solar VERY LOW CONFIDENCE → overcast (OVC) "
+                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas), deferring to forecast"
                         )
                         solar_cloudiness = None  # Don't override
 
