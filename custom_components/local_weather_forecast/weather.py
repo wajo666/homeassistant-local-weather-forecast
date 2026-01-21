@@ -926,12 +926,55 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     elif current_condition_from_pressure is not None:
                         # We have current condition from pressure (PRIORITY 4) - use it!
                         # Forecast model predicts FUTURE (6-12h ahead), not current state
-                        condition = current_condition_from_pressure
-                        _LOGGER.debug(
-                            f"Weather: Using PRIORITY 4 pressure condition - "
-                            f"condition={condition} (current state from pressure). "
-                            f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
-                        )
+
+                        # ENHANCED LOGIC: If pressure says "rainy" but rain sensor shows no precipitation,
+                        # downgrade to "cloudy" (pressure is predicting future, not current state)
+                        # This prevents false "rainy" display when it's only cloudy
+
+                        if current_condition_from_pressure == ATTR_CONDITION_RAINY:
+                            # Check if we have rain sensor data
+                            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+                            current_rain = 0.0
+                            has_rain_sensor = False
+
+                            if rain_rate_sensor_id:
+                                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
+                                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
+                                    has_rain_sensor = True
+                                    try:
+                                        current_rain = float(rain_sensor.state)
+                                    except (ValueError, TypeError):
+                                        pass
+
+                            # If we have rain sensor and it shows NO precipitation,
+                            # but pressure says "rainy", downgrade to "cloudy"
+                            # (Pressure predicts future, rain sensor shows current reality)
+                            if has_rain_sensor and current_rain <= 0.01:
+                                condition = ATTR_CONDITION_CLOUDY
+                                _LOGGER.debug(
+                                    f"Weather: Pressure says RAINY (pressure < 1000 hPa) BUT rain sensor shows "
+                                    f"no precipitation ({current_rain:.3f} mm/h). "
+                                    f"Downgrading to CLOUDY (pressure predicts future, rain sensor shows current). "
+                                    f"Without solar sensor, trusting rain sensor over pressure estimate."
+                                )
+                            else:
+                                # No rain sensor or sensor shows rain - trust pressure
+                                condition = current_condition_from_pressure
+                                rain_str = f"{current_rain:.3f}" if has_rain_sensor else "N/A"
+                                _LOGGER.debug(
+                                    f"Weather: Using PRIORITY 4 pressure condition - "
+                                    f"condition={condition} (current state from pressure), "
+                                    f"rain_sensor={rain_str} mm/h. "
+                                    f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
+                                )
+                        else:
+                            # Not rainy - use pressure condition as-is
+                            condition = current_condition_from_pressure
+                            _LOGGER.debug(
+                                f"Weather: Using PRIORITY 4 pressure condition - "
+                                f"condition={condition} (current state from pressure). "
+                                f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
+                            )
                     else:
                         # No solar AND no current condition - use forecast model as last fallback
                         from .forecast_models import map_forecast_to_condition
