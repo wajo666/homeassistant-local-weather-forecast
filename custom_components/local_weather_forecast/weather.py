@@ -629,13 +629,15 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 )
 
                 if theoretical_max > 50:  # Only during significant daylight
-                    # Calculate cloud cover percentage from solar radiation
-                    cloud_ratio = solar_radiation / theoretical_max if theoretical_max > 0 else 0
-                    cloud_percent = max(0, min(100, (1 - cloud_ratio) * 100))
+                    # Calculate sky transparency ratio (how much sunlight reaches ground)
+                    # This ratio is independent of time/position - compares actual vs expected
+                    sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
+                    cloud_percent = max(0, min(100, (1 - sky_transparency) * 100))
 
                     _LOGGER.debug(
-                        f"Weather: Solar radiation cloud detection - "
-                        f"measured={solar_radiation:.0f} W/m², theoretical={theoretical_max:.0f} W/m², "
+                        f"Weather: Solar radiation analysis - "
+                        f"measured={solar_radiation:.0f} W/m², theoretical_max={theoretical_max:.0f} W/m², "
+                        f"sky_transparency={sky_transparency:.2f} ({sky_transparency*100:.0f}% of expected), "
                         f"cloud_cover={cloud_percent:.0f}%"
                     )
 
@@ -652,43 +654,46 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                     # WMO (World Meteorological Organization) Cloud Coverage Standards:
                     # Based on oktas (eighths of sky covered):
-                    # - 0-2 oktas (0-25%): FEW clouds → SUNNY/CLEAR
-                    # - 3-4 oktas (25-50%): SCT (scattered) → PARTLY CLOUDY
-                    # - 5-7 oktas (50-87.5%): BKN (broken) → CLOUDY
-                    # - 8 oktas (87.5-100%): OVC (overcast) → OVERCAST
+                    # - 0-2 oktas (0-25% clouds): FEW clouds → SUNNY/CLEAR (>75% transparency)
+                    # - 3-4 oktas (25-50% clouds): SCT (scattered) → PARTLY CLOUDY (50-75% transparency)
+                    # - 5-7 oktas (50-87.5% clouds): BKN (broken) → CLOUDY (12.5-50% transparency)
+                    # - 8 oktas (87.5-100% clouds): OVC (overcast) → OVERCAST (<12.5% transparency)
+                    #
+                    # IMPORTANT: Thresholds based on sky_transparency (how much light reaches ground)
+                    # NOT on absolute W/m² values which vary with sun position!
                     #
                     # These thresholds align with international aviation (METAR) and meteorological standards.
 
-                    if cloud_percent < 25:
-                        # WMO: 0-2 oktas (FEW clouds)
+                    if sky_transparency >= 0.75:
+                        # WMO: 0-2 oktas (FEW clouds) - sky allows >75% of expected sunlight
                         solar_cloudiness = ATTR_CONDITION_SUNNY
                         _LOGGER.debug(
                             f"Weather: Solar HIGH CONFIDENCE → clear skies (FEW clouds) "
-                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 0-2 oktas)"
+                            f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 0-2 oktas)"
                         )
-                    elif cloud_percent < 50:
-                        # WMO: 3-4 oktas (SCT - scattered clouds)
+                    elif sky_transparency >= 0.50:
+                        # WMO: 3-4 oktas (SCT - scattered clouds) - sky allows 50-75% of expected sunlight
                         solar_cloudiness = ATTR_CONDITION_PARTLYCLOUDY
                         _LOGGER.debug(
                             f"Weather: Solar MEDIUM CONFIDENCE → scattered clouds (SCT) "
-                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 3-4 oktas)"
+                            f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 3-4 oktas)"
                         )
-                    elif cloud_percent < 87.5:
-                        # WMO: 5-7 oktas (BKN - broken clouds)
+                    elif sky_transparency >= 0.125:
+                        # WMO: 5-7 oktas (BKN - broken clouds) - sky allows 12.5-50% of expected sunlight
                         solar_cloudiness = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
                             f"Weather: Solar LOW CONFIDENCE → mostly cloudy (BKN) "
-                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 5-7 oktas)"
+                            f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 5-7 oktas)"
                         )
                     else:
-                        # WMO: 8 oktas (OVC - overcast)
+                        # WMO: 8 oktas (OVC - overcast) - sky allows <12.5% of expected sunlight
                         # Overcast = still CLOUDY (87.5-100% cloud cover)
                         # Solar still shows cloudiness accurately - trust it!
                         # Rain sensor or pressure will determine if it's rainy/snowy
                         solar_cloudiness = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
                             f"Weather: Solar OVERCAST (OVC) → cloudy "
-                            f"(cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas). "
+                            f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas). "
                             f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
                         )
 

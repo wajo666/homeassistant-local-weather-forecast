@@ -43,7 +43,7 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 - ⚠️ **Humidity Sensor** - For fog detection and moisture confirmation (+10%)
 
 ### Optional (Enhanced Features)
-- ☀️ **Solar Radiation Sensor** - Real-time cloud detection (+15%)
+- ☀️ **Solar Radiation Sensor** (W/m² or lux) - Real-time cloud detection (+15%)
 - 🌧️ **Rain Sensor** - Definitive precipitation detection (+25%)
 - 💨 **Wind Speed + Direction** - Better forecast adjustments (+3%)
 - 💨 **Wind Gust** - Atmospheric stability detection (+3%)
@@ -58,7 +58,7 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 | **Rain Rate** | mm/h, in/h | 2.5 mm/h, 0.1 in/h |
 | **Solar Radiation** | W/m², lux | 850 W/m², 50000 lux |
 
-💡 **Don't worry about units!** The integration automatically converts everything.
+💡 **Don't worry about units!** The integration automatically converts everything (including lux → W/m²).
 
 ---
 
