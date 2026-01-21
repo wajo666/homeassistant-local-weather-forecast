@@ -117,104 +117,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Added
 
 - **Forecast Model Selection** 🎯
-  - Choose between three forecast algorithms:
-    - **Combined (Dynamic)**: Smart adaptive weighting (~98% accuracy) - **Default**
-    - **Zambretti**: Faster response to changes (~94% accuracy)
-    - **Negretti & Zambra**: More stable predictions (~92% accuracy)
-  - Configurable in setup and can be changed anytime
-  - Applies to current condition, hourly, and daily forecasts
+  - Choose between three algorithms: Enhanced Dynamic (98%), Zambretti (94%), Negretti-Zambra (92%)
+  - Change anytime via Settings → Configure
 
 - **Location-Aware Solar Radiation** 🌍
-  - Dynamic calculation based on latitude and season
-  - Tropical: max 1300 W/m², Temperate: 1200 W/m², Polar: 800 W/m²
-  - Southern hemisphere automatic season inversion
-  - 20-30% more accurate in tropical/polar regions
+  - Automatic latitude/season adjustments
+  - Southern hemisphere support
 
-- **Hemisphere Configuration**
-  - Auto-detection from Home Assistant location
-  - Manual override available
-  - Accurate seasonal adjustments for Southern hemisphere
-
-- **Pressure Sensor Change in Options**
-  - Can now change pressure sensor after initial setup
-  - Edit via Settings → Integrations → Configure
+- **Pressure Sensor in Options**
+  - Can change pressure sensor after setup
 
 ### 🔧 Fixed
 
-- **Solar Radiation - Southern Hemisphere**
-  - Fixed incorrect cloudiness detection in Southern hemisphere
-  - Sydney (December): Now correctly expects 1150 W/m² (was 500 W/m²)
-
-- **Fog & Humidity Corrections**
-  - Fixed overly aggressive downgrades overriding "fine weather" forecasts
-  - System now respects forecast confidence
-
-- **Snow Risk Calculation**
-  - Fixed false HIGH risk when high humidity but no precipitation
-  - Snow risk now requires precipitation probability
-
-- **Weather Entity Snow Detection**
-  - Fixed incorrect "pouring" (rain) when snowing
-
-### ⚠️ Breaking Changes
-
-- **Risk Attributes - Automation-Friendly**
-  - `fog_risk`, `snow_risk`, `frost_risk` now contain RAW English values: `"none"`, `"low"`, `"medium"`, `"high"`, `"critical"`
-  - `fog_risk_text`, `snow_risk_text`, `frost_risk_text` contain translated text for UI
-  - Update automations to use RAW values for language-independent operation
-
-
-### 🧪 Testing
-
-- Added 476 comprehensive unit tests (100% pass rate)
-- Coverage: ~98%
-
-
-### ✨ Added
-
-- Extended frost detection with critical black ice warning
-- Enhanced sensor attributes for snow and frost risk
-- Comprehensive test suite
-
-### 🔧 Fixed
-
-- Code cleanup in calculations.py
-- Enhanced debug logging
-- Removed unused constants
+- **Solar Radiation** - Southern hemisphere cloudiness detection
+- **Fog & Humidity** - Overly aggressive corrections
+- **Snow Risk** - False high risk with low precipitation
+- **Weather Entity** - Incorrect "pouring" when snowing
 
 ---
-    - Normal case (5-minute updates): 36 records in 180 minutes ✅
-    - Irregular updates: Still keeps 36 newest records even if they span 4+ hours ✅
-    - After restart: Restores full history (36/12 records) → immediate accurate forecast ✅
-  - **Recovery after restart**: 
-    - With 36 pressure records: **Excellent** accuracy, immediate forecast ⭐⭐⭐⭐⭐
-    - With 12 temperature records: **Excellent** accuracy, immediate forecast ⭐⭐⭐⭐⭐
-    - Minimum 2 records: Still works, but less precise ⭐⭐⭐
-  - **Updated sensor logic**:
-    - `PressureChange`: Uses time window OR minimum 36 records (whichever gives more data)
-    - `TemperatureChange`: Uses time window OR minimum 12 records (whichever gives more data)
-
-### 📝 Language Support
-
-- **New Translation Functions** (2025-12-10)
-  - `get_snow_risk_text()` - Translates snow risk levels
-  - `get_frost_risk_text()` - Translates frost/ice risk levels
-  - Format: [German, English, Greek, Italian, Slovak]
-
-### 📄 Documentation
-
-- **Enhanced Documentation** (2025-12-10)
-  - Updated Troubleshooting section in `README.md`
-  - **Problem addressed**: External sensors (outside this integration) that combine data from multiple sources with different update frequencies
-  - **Solutions provided**:
-    1. Quick fix using `statistics` platform with `sampling_size`
-    2. Template sensor with `state_class: measurement`
-    3. Python script with custom dual-limit logic
-  - **Use case example**: East temperature (5-min updates) + West temperature (15-min updates) = Combined sensor with large time gaps
-  - **Result**: Guaranteed minimum records even for slow-updating external sensors
-
----
-
-
-
 
