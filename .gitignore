@@ -35,6 +35,7 @@ env/
 
 # Home Assistant
 *.log
+log.txt
 *.db
 *.db-shm
 *.db-wal
@@ -47,6 +48,7 @@ env/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+test_*.py  # Ignore test files in root (should be in tests/ folder)
 
 # Development/Internal files - DO NOT COMMIT
 *SUMMARY*.md
