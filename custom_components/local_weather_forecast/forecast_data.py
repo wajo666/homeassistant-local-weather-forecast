@@ -4,6 +4,7 @@
 CONDITIONS = [
     ("stürmisch", "Stormy", "θυελλώδης", "Tempestoso", "búrlivý"),
     ("regnerisch", "Rainy", "Βροχερός", "Piovoso", "daždivý"),
+    ("bewölkt", "Cloudy", "Συννεφιασμένος", "Nuvoloso", "zamračené"),  # NEW: Distinct cloudy condition
     ("wechselhaft", "Mixed", "Μεταβλητός", "Variabile", "premenlivý"),
     ("sonnig", "Sunny", "Ηλιόλουστος", "Soleggiato", "slnečný"),
     ("sehr trocken", "Extra Dry", "Πολύ ξηρός", "Molto Secco", "veľmi sucho"),

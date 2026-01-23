@@ -147,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.9",
+            "sw_version": "3.1.10",
         }
 
     async def _wait_for_entity(
@@ -395,7 +395,8 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             use_history=False
         )
 
-        # Calculate current conditions
+        # Calculate current conditions based on pressure
+        # This is kept in sensor for reference/debugging, but NOT used in weather.py priority chain
         current_condition = self._get_current_condition(p0, lang_index)
 
         # Calculate Zambretti forecast
@@ -432,9 +433,9 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             "temperature": round(temperature, 1),
             "p0": round(p0, 1),
             "wind_direction": wind_data,  # List: [wind_fak, dir, dir_text, speed_fak]
-            "forecast_short_term": current_condition,  # List: [condition, pressure_system]
-            "forecast_zambretti": zambretti_forecast,  # List: [text, number, letter]
-            "forecast_neg_zam": neg_zam_forecast,  # List: [text, number, letter]
+            "forecast_short_term": current_condition,  # List: [condition, pressure_system] - kept for reference, not used in weather.py
+            "forecast_zambretti": zambretti_forecast,  # ✅ SIMPLIFIED: [text, code]
+            "forecast_neg_zam": neg_zam_forecast,  # ✅ SIMPLIFIED: [text, code]
             "forecast_pressure_trend": pressure_trend,  # List: [text, index]
             "forecast_temp_short": temp_short,  # List: [predicted_temp, interval_index] or string if unavailable
         }
@@ -637,21 +638,37 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         return "N"
 
     def _get_current_condition(self, p0: float, lang_index: int) -> list:
-        """Get current weather condition based on pressure."""
+        """Get current weather condition based on pressure.
+
+        Pressure ranges based on WMO meteorological standards:
+        - < 980 hPa: Stormy (deep cyclone, storms)
+        - 980-1008 hPa: Rainy (low pressure, precipitation likely)
+        - 1008-1015 hPa: Cloudy (slightly reduced pressure, cloudy)
+        - 1015-1023 hPa: Mixed/Partly cloudy (normal pressure, variable cloudiness)
+        - ≥ 1023 hPa: Sunny (high/very high pressure, clear)
+
+        Note: 1013.25 hPa = standard atmospheric pressure at sea level
+
+        NOTE: This is kept in sensor.py for reference/debugging (forecast_short_term attribute).
+        However, weather.py does NOT use it in priority chain - it uses forecast models instead.
+
+        Condition indices:
+        0 = Stormy, 1 = Rainy, 2 = Cloudy, 3 = Mixed, 4 = Sunny, 5 = Extra Dry
+        """
         if p0 < 980:
             condition_idx = 0  # Stormy
             pressure_idx = 0  # Low
-        elif 980 <= p0 < 1000:
+        elif 980 <= p0 < 1008:
             condition_idx = 1  # Rainy
             pressure_idx = 0  # Low
-        elif 1000 <= p0 < 1020:
-            condition_idx = 2  # Mixed
+        elif 1008 <= p0 < 1015:
+            condition_idx = 2  # Cloudy
             pressure_idx = 1  # Normal
-        elif 1020 <= p0 < 1040:
-            condition_idx = 3  # Sunny
-            pressure_idx = 2  # High
-        else:  # p0 >= 1040
-            condition_idx = 4  # Extra Dry
+        elif 1015 <= p0 < 1023:
+            condition_idx = 3  # Mixed/Partly cloudy
+            pressure_idx = 1  # Normal
+        else:  # p0 >= 1023
+            condition_idx = 4  # Sunny
             pressure_idx = 2  # High
 
         return [
@@ -1905,26 +1922,26 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
 
         if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
+            # ✅ SIMPLIFIED: Format is now [text, code]
             zambretti = [
                 zambretti_sensor.state,
-                zambretti_sensor.attributes.get("forecast_number", 0),
-                zambretti_sensor.attributes.get("letter_code", "A")
+                zambretti_sensor.attributes.get("forecast_number", 0)
             ]
-            _LOGGER.debug(f"Enhanced: Zambretti from detail sensor - {zambretti[0]} (#{zambretti[1]}, letter={zambretti[2]})")
+            _LOGGER.debug(f"Enhanced: Zambretti from detail sensor - {zambretti[0]} (code={zambretti[1]})")
         else:
             _LOGGER.debug("Enhanced: Zambretti detail sensor unavailable, using defaults")
-            zambretti = ["Unknown", 0, "A"]
+            zambretti = ["Unknown", 0]
 
         if negretti_sensor and negretti_sensor.state not in ("unknown", "unavailable"):
+            # ✅ SIMPLIFIED: Format is now [text, code]
             negretti = [
                 negretti_sensor.state,
-                negretti_sensor.attributes.get("forecast_number", 0),
-                negretti_sensor.attributes.get("letter_code", "A")
+                negretti_sensor.attributes.get("forecast_number", 0)
             ]
-            _LOGGER.debug(f"Enhanced: Negretti from detail sensor - {negretti[0]} (#{negretti[1]}, letter={negretti[2]})")
+            _LOGGER.debug(f"Enhanced: Negretti from detail sensor - {negretti[0]} (code={negretti[1]})")
         else:
             _LOGGER.debug("Enhanced: Negretti detail sensor unavailable, using defaults")
-            negretti = ["Unknown", 0, "A"]
+            negretti = ["Unknown", 0]
 
         # Get sensor values from weather entity first for consistency
         # Weather entity handles dewpoint sensor priority: uses sensor if exists, else calculates
@@ -2068,36 +2085,34 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Build enhanced forecast text
         # Select base forecast based on model configuration
         from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
+        from .combined_model import (
+            calculate_combined_forecast,
+            get_combined_forecast_text
+        )
 
-        # Initialize zambretti_weight (will be set in Enhanced mode)
-        zambretti_weight = 0.5  # Default to balanced if not in Enhanced mode
+        # Initialize weights for export
+        zambretti_weight = 0.5
+        negretti_weight = 0.5
+        consensus = False
 
         if forecast_model == FORECAST_MODEL_ZAMBRETTI:
             # Use Zambretti exclusively
             base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
-            _LOGGER.debug(f"Enhanced: Using Zambretti forecast: {base_text}")
+            export_forecast_num = zambretti[1] if len(zambretti) > 1 else 0
+            zambretti_weight = 1.0
+            negretti_weight = 0.0
+            _LOGGER.debug(f"Enhanced: Using Zambretti exclusively: {base_text}")
+
         elif forecast_model == FORECAST_MODEL_NEGRETTI:
             # Use Negretti & Zambra exclusively
             base_text = negretti[0] if len(negretti) > 0 else "Unknown"
-            _LOGGER.debug(f"Enhanced: Using Negretti forecast: {base_text}")
+            export_forecast_num = negretti[1] if len(negretti) > 1 else 0
+            zambretti_weight = 0.0
+            negretti_weight = 1.0
+            _LOGGER.debug(f"Enhanced: Using Negretti exclusively: {base_text}")
+
         else:
-            # FORECAST_MODEL_ENHANCED - Use dynamic weighting based on pressure trend
-            # Calculate weight based on pressure change (from PressureChange sensor)
-            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
-            pressure_change = 0.0
-            if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
-                try:
-                    pressure_change = float(pressure_change_sensor.state)
-                except (ValueError, TypeError):
-                    pass
-
-            # Calculate Zambretti weight (0.0 to 1.0)
-            # Rapid changes → higher Zambretti weight (faster response)
-            # Stable pressure → lower Zambretti weight (conservative Negretti)
-            # Anticyclone stability fix: Give MUCH more weight to Negretti in stable conditions
-            # Zambretti is optimized for CHANGING pressure, not stable anticyclones
-            abs_change = abs(pressure_change)
-
+            # FORECAST_MODEL_ENHANCED - Use combined_model.py
             # Get current pressure for anticyclone detection
             current_pressure = 1013.25  # Default
             pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
@@ -2107,70 +2122,39 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 except (ValueError, TypeError):
                     pass
 
-            # SPECIAL CASE: High pressure (anticyclone) - ALWAYS trust Negretti more
-            # Zambretti STEADY formula has bugs at high pressure (gives wrong z-numbers)
-            if current_pressure > 1030:
-                # Anticyclone detected - trust Negretti 85%+ regardless of change rate
-                if abs_change >= 3.0:
-                    zambretti_weight = 0.30  # Even moderate changes in anticyclone
-                elif abs_change >= 1.5:
-                    zambretti_weight = 0.20  # Small change in anticyclone
-                else:
-                    zambretti_weight = 0.10  # Stable anticyclone - trust Negretti 90%
-            # Normal pressure range - use standard weighting
-            elif abs_change >= 3.0:
-                zambretti_weight = 0.75  # Rapid change - trust Zambretti more
-            elif abs_change >= 1.5:
-                zambretti_weight = 0.65  # Moderate change
-            elif abs_change >= 0.5:
-                zambretti_weight = 0.45  # Small change
-            else:
-                zambretti_weight = 0.10  # Stable - trust Negretti 90%
+            # Get pressure change
+            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+            pressure_change = 0.0
+            if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    pressure_change = float(pressure_change_sensor.state)
+                except (ValueError, TypeError):
+                    pass
 
-            negretti_weight = 1.0 - zambretti_weight
-
-            # Log weighting decision with reason
-            if current_pressure > 1030:
-                reason = f"anticyclone (P={current_pressure:.1f} hPa)"
-            elif abs_change >= 3.0:
-                reason = f"rapid pressure change"
-            elif abs_change >= 1.5:
-                reason = f"moderate pressure change"
-            elif abs_change >= 0.5:
-                reason = f"small pressure change"
-            else:
-                reason = f"stable pressure"
-
-            _LOGGER.debug(
-                f"Enhanced: 📊 MODEL WEIGHTING - pressure_change={pressure_change:.2f} hPa, "
-                f"current_pressure={current_pressure:.1f} hPa → {reason} → "
-                f"Zambretti={zambretti_weight:.0%}, Negretti={negretti_weight:.0%}"
+            # ✅ USE COMBINED MODEL MODULE (✅ SIMPLIFIED - no letter!)
+            (
+                export_forecast_num,
+                zambretti_weight,
+                negretti_weight,
+                consensus
+            ) = calculate_combined_forecast(
+                zambretti_result=zambretti,
+                negretti_result=negretti,
+                current_pressure=current_pressure,
+                pressure_change=pressure_change,
+                source="EnhancedSensor"
             )
 
-            # Use weighted combination - prefer the one with higher weight
-            # But if they agree (consensus), use either
-            zambretti_num = zambretti[1] if len(zambretti) > 1 else 0
-            negretti_num = negretti[1] if len(negretti) > 1 else 0
+            # Get forecast text from selected model
+            base_text = get_combined_forecast_text(
+                zambretti_result=zambretti,
+                negretti_result=negretti,
+                forecast_number=export_forecast_num,
+                zambretti_weight=zambretti_weight,
+                lang_index=get_language_index(self.hass)
+            )
 
-            if abs(zambretti_num - negretti_num) <= 1:
-                # They agree - use Zambretti text (more detailed)
-                base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
-                _LOGGER.debug(
-                    f"Enhanced: ✅ CONSENSUS (forecasts agree: Z={zambretti_num}, N={negretti_num}) → using Zambretti text: '{base_text}'"
-                )
-            elif zambretti_weight >= 0.6:
-                # Strong pressure change - trust Zambretti
-                base_text = zambretti[0] if len(zambretti) > 0 else "Unknown"
-                _LOGGER.debug(
-                    f"Enhanced: ⚡ HIGH WEIGHT (Zambretti={zambretti_weight:.0%} ≥ 60%) → using Zambretti: '{base_text}' (Z={zambretti_num}, N={negretti_num})"
-                )
-            else:
-                # Stable conditions - trust Negretti
-                base_text = negretti[0] if len(negretti) > 0 else "Unknown"
-                _LOGGER.debug(
-                    f"Enhanced: 🛡️ STABLE CONDITIONS (Negretti={negretti_weight:.0%} > 40%) → using Negretti: '{base_text}' (Z={zambretti_num}, N={negretti_num})"
-                )
-
+        # Add adjustments to forecast text
         if adjustment_details:
             enhanced_text = f"{base_text}. {', '.join(adjustment_details)}"
         else:
@@ -2179,7 +2163,6 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Calculate confidence
         zambretti_num = zambretti[1] if len(zambretti) > 1 else 0
         negretti_num = negretti[1] if len(negretti) > 1 else 0
-        consensus = abs(zambretti_num - negretti_num) <= 1
 
         # Confidence depends on model selection
         if forecast_model == FORECAST_MODEL_ENHANCED:
@@ -2238,29 +2221,13 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         self._state = enhanced_text
         _LOGGER.debug(f"Enhanced: Setting state to: {enhanced_text}")
 
-        # Determine which forecast number and letter to export for weather entity
-        # Weather entity expects "forecast_number" and "letter_code" attributes
-        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
-            export_forecast_num = zambretti_num
-            export_letter_code = zambretti[2] if len(zambretti) > 2 else "A"
-        elif forecast_model == FORECAST_MODEL_NEGRETTI:
-            export_forecast_num = negretti_num
-            export_letter_code = negretti[2] if len(negretti) > 2 else "A"
-        else:  # FORECAST_MODEL_ENHANCED
-            # Enhanced mode: use the model that was actually selected (consensus logic)
-            # zambretti_weight was calculated in the Enhanced block above
-            if consensus or zambretti_weight >= 0.6:
-                export_forecast_num = zambretti_num
-                export_letter_code = zambretti[2] if len(zambretti) > 2 else "A"
-            else:
-                export_forecast_num = negretti_num
-                export_letter_code = negretti[2] if len(negretti) > 2 else "A"
-        
+        # ✅ SIMPLIFIED: No more letter_code export - only forecast_number!
+        # export_forecast_num is already set above based on model selection
+
         self._attributes = {
-            "forecast_model": forecast_model,  # NEW: Show which model is being used
+            "forecast_model": forecast_model,  # Show which model is being used
             "base_forecast": base_text,
-            "forecast_number": export_forecast_num,  # For weather entity compatibility
-            "letter_code": export_letter_code,       # For weather entity compatibility
+            "forecast_number": export_forecast_num,  # For weather entity (CODE only!)
             "zambretti_number": zambretti_num,       # Keep originals for reference
             "negretti_number": negretti_num,         # Keep originals for reference
             "adjustments": adjustments,

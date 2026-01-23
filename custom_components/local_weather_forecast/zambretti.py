@@ -1,8 +1,13 @@
-"""Zambretti forecast algorithm."""
+"""Zambretti forecast algorithm.
+
+✅ INTEGRATED WITH UNIFIED SYSTEM:
+- Uses forecast_mapping.get_forecast_text() for text retrieval
+- Internal codes (0-25) are universal for all models
+- No duplicate text storage needed
+"""
 from datetime import datetime
 import logging
 
-from .forecast_data import FORECAST_TEXTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -139,28 +144,37 @@ def calculate_zambretti_forecast(
 
     # Now z is guaranteed to be in range 1-33, safe to map
     forecast_type = _map_zambretti_to_forecast(z)
+
+    # Calculate letter code for display purposes
     letter_code = _map_zambretti_to_letter(z)
 
     if forecast_type is not None:
-        forecast_text = FORECAST_TEXTS[forecast_type][lang_index]
+        # ✅ USE UNIFIED SYSTEM: Get text from forecast_mapping
+        from .forecast_mapping import get_forecast_text
+        forecast_text = get_forecast_text(
+            forecast_num=forecast_type,
+            lang_index=lang_index
+        )
 
         # Add note for extreme conditions
         if extreme_condition:
             _LOGGER.debug(
                 f"Zambretti: RESULT (EXTREME) - z={z} (original={z_original:.1f}), "
-                f"condition={extreme_condition}, forecast_number={forecast_type}, "
-                f"letter_code={letter_code}, text='{forecast_text}'"
+                f"condition={extreme_condition}, forecast_code={forecast_type}, "
+                f"letter={letter_code} (display only), text='{forecast_text}'"
             )
         else:
             _LOGGER.debug(
-                f"Zambretti: RESULT - z={z}, forecast_number={forecast_type}, "
-                f"letter_code={letter_code}, text='{forecast_text}'"
+                f"Zambretti: RESULT - z={z}, forecast_code={forecast_type}, "
+                f"letter={letter_code} (display only), text='{forecast_text}'"
             )
     else:
         forecast_text = "Unknown"
         forecast_type = 0
+        letter_code = "A"
         _LOGGER.warning(f"Zambretti: Failed to map z={z} to forecast, using Unknown")
 
+    # Return [text, code, letter] - forecast_calculator expects 3 items
     return [forecast_text, forecast_type, letter_code]
 
 

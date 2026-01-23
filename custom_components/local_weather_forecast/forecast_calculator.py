@@ -18,12 +18,12 @@ from typing import TypedDict
 from homeassistant.core import HomeAssistant
 
 from .const import (
-    ZAMBRETTI_TO_CONDITION,
     FORECAST_MODEL_ZAMBRETTI,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ENHANCED,
 )
 from .zambretti import calculate_zambretti_forecast
+from .forecast_mapping import map_forecast_to_condition, ZAMBRETTI_LETTER_TO_CODE
 
 
 class Forecast(TypedDict, total=False):
@@ -55,7 +55,7 @@ class PressureModel:
     def __init__(
         self,
         current_pressure: float,
-        change_rate_3h: float,
+        pressure_change_3h: float,
         smoothing_factor: float = 0.3,
         damping_factor: float = 0.95
     ):
@@ -63,15 +63,20 @@ class PressureModel:
 
         Args:
             current_pressure: Current pressure in hPa
-            change_rate_3h: Pressure change over last 3 hours in hPa
+            pressure_change_3h: Pressure change over last 3 hours in hPa
             smoothing_factor: Exponential smoothing (0-1, higher = more responsive)
             damping_factor: Rate decay factor (0-1, closer to 1 = slower decay)
         """
         self.current_pressure = current_pressure
-        self.change_rate_3h = change_rate_3h
-        self.change_rate_1h = change_rate_3h / 3.0  # Convert to hourly rate
+        self.change_rate_3h = pressure_change_3h
+        self.change_rate_1h = pressure_change_3h / 3.0  # Convert to hourly rate
         self.smoothing_factor = smoothing_factor
         self.damping_factor = damping_factor
+
+        # Backwards compatibility aliases for old tests
+        self.current = current_pressure
+        self.change_3h = pressure_change_3h
+        self.change_per_hour = pressure_change_3h / 3.0
 
     def predict(self, hours_ahead: int) -> float:
         """Predict pressure N hours ahead.
@@ -567,7 +572,13 @@ class ZambrettiForecaster:
         Returns:
             HA weather condition string
         """
-        condition = ZAMBRETTI_TO_CONDITION.get(letter_code, "partlycloudy")
+        # Use new unified mapping system
+        is_night = self._is_night(forecast_time)
+        condition = map_forecast_to_condition(
+            forecast_letter=letter_code,
+            is_night_func=lambda: is_night,
+            source="ZambrettiForecaster"
+        )
 
         _LOGGER.debug(
             f"Zambretti condition mapping: letter={letter_code} → "
@@ -959,77 +970,44 @@ class HourlyForecastGenerator:
                 forecast_letter = negretti_letter
                 forecast_num = negretti_num
                 _LOGGER.debug(f"Using Negretti-Zambra forecast: {negretti_letter}")
-            else:  # FORECAST_MODEL_ENHANCED - dynamic priority based on pressure change
+            else:  # FORECAST_MODEL_ENHANCED - use combined_model.py
                 if negretti_letter:
-                    # Calculate dynamic weights based on pressure change rate
-                    # Anticyclone stability fix: Give MUCH more weight to Negretti in stable conditions
-                    # Zambretti is optimized for CHANGING pressure, not stable anticyclones
-                    abs_change = abs(pressure_change)
+                    # ✅ USE COMBINED MODEL MODULE (✅ SIMPLIFIED)
+                    from .combined_model import (
+                        calculate_combined_forecast,
+                        calculate_combined_rain_probability
+                    )
 
-                    # SPECIAL CASE: High pressure (anticyclone) - ALWAYS trust Negretti more
-                    # Zambretti STEADY formula has bugs at high pressure (gives wrong z-numbers)
-                    # Example: 1037.8 hPa → z=9 → "Very Unsettled" (WRONG!)
-                    if future_pressure > 1030:
-                        # Anticyclone detected - trust Negretti 85%+ regardless of change rate
-                        if abs_change > 5:
-                            zambretti_weight = 0.40  # Even rapid changes in anticyclone
-                            negretti_weight = 0.60
-                        elif abs_change > 3:
-                            zambretti_weight = 0.30  # Medium change in anticyclone
-                            negretti_weight = 0.70
-                        else:
-                            zambretti_weight = 0.10  # Stable anticyclone
-                            negretti_weight = 0.90
-                    # Normal pressure range - use standard weighting
-                    elif abs_change > 5:  # Large change → Zambretti 80%
-                        zambretti_weight = 0.8
-                        negretti_weight = 0.2
-                    elif abs_change > 3:  # Medium change → Zambretti 65%
-                        zambretti_weight = 0.65
-                        negretti_weight = 0.35
-                    elif abs_change > 1.5:  # Small change → Zambretti 55%
-                        zambretti_weight = 0.55
-                        negretti_weight = 0.45
-                    elif abs_change > 0.5:  # Very small change → Negretti 70%
-                        zambretti_weight = 0.30
-                        negretti_weight = 0.70
-                    else:  # Stable → Negretti 90%
-                        zambretti_weight = 0.10
-                        negretti_weight = 0.90
+                    (
+                        forecast_num,
+                        zambretti_weight,
+                        negretti_weight,
+                        consensus
+                    ) = calculate_combined_forecast(
+                        zambretti_result=["", zambretti_num],  # ✅ SIMPLIFIED: [text, code]
+                        negretti_result=["", negretti_num],    # ✅ SIMPLIFIED: [text, code]
+                        current_pressure=future_pressure,
+                        pressure_change=pressure_change,
+                        source="HourlyForecast"
+                    )
 
-                    # Determine reason for logging
-                    if future_pressure > 1030:
-                        reason = f"anticyclone (P={future_pressure:.1f})"
-                    elif abs_change > 5:
-                        reason = "rapid change"
-                    elif abs_change > 3:
-                        reason = "moderate change"
-                    elif abs_change > 1.5:
-                        reason = "small change"
-                    elif abs_change > 0.5:
-                        reason = "very small change"
-                    else:
-                        reason = "stable"
+                    # forecast_letter determined from code for rain probability
+                    from .forecast_mapping import ZAMBRETTI_LETTER_TO_CODE
+                    # Reverse lookup: code → letter (for rain probability calculation)
+                    forecast_letter = None
+                    for letter, code in ZAMBRETTI_LETTER_TO_CODE.items():
+                        if code == forecast_num:
+                            forecast_letter = letter
+                            break
+                    if not forecast_letter:
+                        forecast_letter = "A"  # Fallback
 
-                    # Calculate weighted rain probabilities
-                    zambretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)
-                    negretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(negretti_letter, 50)
-
-                    combined_rain = (zambretti_rain * zambretti_weight) + (negretti_rain * negretti_weight)
-
-                    # Select forecast letter based on which model has higher weight
-                    if zambretti_weight >= negretti_weight:
-                        forecast_letter = zambretti_letter
-                        forecast_num = zambretti_num
-                    else:
-                        forecast_letter = negretti_letter
-                        forecast_num = negretti_num
-
-                    _LOGGER.debug(
-                        f"📊 FORECAST WEIGHTING: ΔP={pressure_change:+.1f}hPa ({reason}) → "
-                        f"Z:{zambretti_weight:.0%}/N:{negretti_weight:.0%} → "
-                        f"Z:{zambretti_letter}({zambretti_rain}%) + N:{negretti_letter}({negretti_rain}%) = "
-                        f"✅ {forecast_letter}({combined_rain:.0f}%)"
+                    # Calculate combined rain probability
+                    combined_rain = calculate_combined_rain_probability(
+                        zambretti_letter=zambretti_letter,
+                        negretti_letter=negretti_letter,
+                        zambretti_weight=zambretti_weight,
+                        negretti_weight=negretti_weight
                     )
                 else:
                     # Fallback to Zambretti if Negretti unavailable

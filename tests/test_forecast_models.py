@@ -1,16 +1,19 @@
-"""Tests for forecast_models.py module."""
+"""Tests for forecast_models.py module (condition mapping only).
+
+Note: PressureModel, HourlyForecastGenerator, DailyForecastGenerator
+are now in forecast_calculator.py and tested in test_forecast_calculator.py
+"""
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import pytest
 
-from custom_components.local_weather_forecast.forecast_models import (
-    DailyForecastGenerator,
-    HourlyForecastGenerator,
-    PressureModel,
-)
+# Import from forecast_calculator (where the classes actually live)
 from custom_components.local_weather_forecast.forecast_calculator import (
+    PressureModel,
     TemperatureModel,
+    HourlyForecastGenerator,
+    DailyForecastGenerator,
 )
 
 

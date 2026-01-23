@@ -30,7 +30,7 @@ class TestPressureModel:
 
     def test_predict_no_change(self):
         """Test pressure prediction with zero change rate."""
-        model = PressureModel(current_pressure=1013.25, change_rate_3h=0.0)
+        model = PressureModel(current_pressure=1013.25, pressure_change_3h=0.0)
 
         assert model.predict(0) == 1013.25
         assert model.predict(1) == pytest.approx(1013.25, abs=0.1)
@@ -38,7 +38,7 @@ class TestPressureModel:
 
     def test_predict_rising_pressure(self):
         """Test pressure prediction with rising trend."""
-        model = PressureModel(current_pressure=1010.0, change_rate_3h=3.0)  # +1 hPa/h
+        model = PressureModel(current_pressure=1010.0, pressure_change_3h=3.0)  # +1 hPa/h
 
         # After 1 hour: should increase but capped by max_change limiter
         # max_change = 20.0 * (1/24) ≈ 0.833 hPa for 1 hour
@@ -51,7 +51,7 @@ class TestPressureModel:
 
     def test_predict_falling_pressure(self):
         """Test pressure prediction with falling trend."""
-        model = PressureModel(current_pressure=1020.0, change_rate_3h=-6.0)  # -2 hPa/h
+        model = PressureModel(current_pressure=1020.0, pressure_change_3h=-6.0)  # -2 hPa/h
 
         # After 1 hour: should decrease but capped by max_change limiter
         # max_change = 20.0 * (1/24) ≈ 0.833 hPa for 1 hour
@@ -65,7 +65,7 @@ class TestPressureModel:
 
     def test_predict_clamping_low(self):
         """Test pressure clamping at lower bound."""
-        model = PressureModel(current_pressure=955.0, change_rate_3h=-30.0)  # Extreme drop
+        model = PressureModel(current_pressure=955.0, pressure_change_3h=-30.0)  # Extreme drop
 
         # Should not go below 910 hPa
         result = model.predict(24)
@@ -73,7 +73,7 @@ class TestPressureModel:
 
     def test_predict_clamping_high(self):
         """Test pressure clamping at upper bound."""
-        model = PressureModel(current_pressure=1045.0, change_rate_3h=30.0)  # Extreme rise
+        model = PressureModel(current_pressure=1045.0, pressure_change_3h=30.0)  # Extreme rise
 
         # Should not go above 1085 hPa
         result = model.predict(24)
@@ -82,26 +82,26 @@ class TestPressureModel:
     def test_get_trend_rising(self):
         """Test trend detection for rising pressure."""
         # Need larger change rate to overcome damping effect for "rising" trend
-        model = PressureModel(current_pressure=1010.0, change_rate_3h=9.0)
+        model = PressureModel(current_pressure=1010.0, pressure_change_3h=9.0)
 
         assert model.get_trend(3) == "rising"
 
     def test_get_trend_falling(self):
         """Test trend detection for falling pressure."""
         # Need larger change rate to overcome damping effect for "falling" trend
-        model = PressureModel(current_pressure=1020.0, change_rate_3h=-9.0)
+        model = PressureModel(current_pressure=1020.0, pressure_change_3h=-9.0)
 
         assert model.get_trend(3) == "falling"
 
     def test_get_trend_steady(self):
         """Test trend detection for steady pressure."""
-        model = PressureModel(current_pressure=1013.0, change_rate_3h=0.5)
+        model = PressureModel(current_pressure=1013.0, pressure_change_3h=0.5)
 
         assert model.get_trend(3) == "steady"
 
     def test_damping_factor_effect(self):
         """Test that damping factor reduces change rate over time."""
-        model = PressureModel(current_pressure=1010.0, change_rate_3h=9.0, damping_factor=0.8)
+        model = PressureModel(current_pressure=1010.0, pressure_change_3h=9.0, damping_factor=0.8)
 
         # Calculate total change over periods
         predicted_3h = model.predict(3)

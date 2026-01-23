@@ -157,10 +157,9 @@ class TestCalculateZambrettiForecast:
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
         assert isinstance(result[0], str)  # forecast_text
-        assert isinstance(result[1], int)  # forecast_number
-        assert isinstance(result[2], str)  # letter_code
+        assert isinstance(result[1], int)  # forecast_number/code
 
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_rising_pressure_summer(self, mock_datetime):
@@ -176,7 +175,7 @@ class TestCalculateZambrettiForecast:
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
         assert isinstance(result[0], str)
         assert isinstance(result[1], int)
         assert isinstance(result[2], str)
@@ -195,7 +194,7 @@ class TestCalculateZambrettiForecast:
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
 
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_steady_pressure_summer(self, mock_datetime):
@@ -211,7 +210,7 @@ class TestCalculateZambrettiForecast:
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
 
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_wind_correction_applied(self, mock_datetime):
@@ -341,7 +340,8 @@ class TestCalculateZambrettiForecast:
 
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
-        letter_code = result[2]
+        # Extract letter_code from result
+        text, num, letter_code = result
         assert isinstance(letter_code, str)
         assert len(letter_code) == 1
         assert letter_code.isalpha()
@@ -362,7 +362,7 @@ class TestCalculateZambrettiForecast:
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
         assert isinstance(result[0], str)
         assert len(result[0]) > 0
         assert isinstance(result[1], int)
@@ -462,7 +462,7 @@ class TestConsistency:
             result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
 
             assert isinstance(result, list)
-            assert len(result) == 3
+            assert len(result) == 3  # Returns: [text, code, letter]
             assert isinstance(result[0], str)
             assert isinstance(result[1], int)
             assert isinstance(result[2], str)
@@ -594,7 +594,7 @@ class TestSeasonalIconMapping:
             mock_datetime.now.return_value = datetime(2025, month, 15, 12, 0)
 
             result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-            text, num, letter = result
+            text, num, letter = result  # Has 3 values
 
             # Map to condition (daytime)
             condition = map_forecast_to_condition(
@@ -625,7 +625,7 @@ class TestSeasonalIconMapping:
         lang_index = 1
 
         result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-        text, num, letter = result
+        text, num, letter = result  # Has 3 values
 
         # Should be fair weather
         assert num <= 5, f"High pressure rising should be fair weather, got z={num}"
@@ -707,7 +707,7 @@ def test_winter_adjustment_high_pressure_steady(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # z = 144 - 0.13*1034 = 10 (no winter adjustment for high pressure)
     # z=10 should NOT map to #23 "Very Unsettled"
@@ -732,7 +732,7 @@ def test_winter_adjustment_normal_pressure_steady(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # z = 144 - 0.13*1015 = 12
     # Winter adjustment should apply: z = 11
@@ -764,7 +764,7 @@ def test_winter_adjustment_very_low_pressure_steady(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Very low pressure should give stormy forecast regardless of season
     # z = 144 - 0.13*960 = 19 (no winter adjustment for very low pressure)
@@ -798,7 +798,7 @@ def test_summer_adjustment_low_pressure_rising(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # z = 185 - 0.16*965 = 31 (no summer adjustment for very low pressure)
     # Should not give overly optimistic forecast during storm recovery
@@ -829,7 +829,7 @@ def test_summer_adjustment_high_pressure_rising(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # z = 185 - 0.16*1035 = 19 (no summer adjustment for high pressure)
     # Should give fine weather forecast
@@ -852,7 +852,7 @@ def test_summer_adjustment_moderate_pressure_rising(mock_datetime):
     lang_index = 1  # English
 
     result = calculate_zambretti_forecast(p0, pressure_change, wind_data, lang_index)
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # z = 185 - 0.16*1010 = 23
     # Summer adjustment should apply: z = 24

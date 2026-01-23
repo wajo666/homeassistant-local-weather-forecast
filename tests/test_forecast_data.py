@@ -19,8 +19,8 @@ class TestMultilingualDataStructure:
 
     def test_all_tuples_have_5_languages(self):
         """Test that all multilingual tuples have exactly 5 languages (de, en, gr, it, sk)."""
-        # CONDITIONS
-        assert len(CONDITIONS) == 5
+        # CONDITIONS - now 6 (added Cloudy)
+        assert len(CONDITIONS) == 6, f"Expected 6 CONDITIONS (Stormy, Rainy, Cloudy, Mixed, Sunny, Extra Dry), got {len(CONDITIONS)}"
         for condition in CONDITIONS:
             assert len(condition) == 5, f"Condition {condition[1]} has {len(condition)} languages, expected 5"
 
@@ -112,8 +112,8 @@ class TestConditionsData:
     """Test weather conditions data."""
 
     def test_conditions_count(self):
-        """Test that we have exactly 5 conditions."""
-        assert len(CONDITIONS) == 5
+        """Test that we have exactly 6 conditions (added Cloudy)."""
+        assert len(CONDITIONS) == 6, f"Expected 6 CONDITIONS (Stormy, Rainy, Cloudy, Mixed, Sunny, Extra Dry), got {len(CONDITIONS)}"
 
     def test_conditions_are_unique(self):
         """Test that all conditions are unique (English version)."""

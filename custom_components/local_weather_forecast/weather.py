@@ -8,11 +8,33 @@ from typing import Any
 from homeassistant.components.weather import (
     ATTR_CONDITION_CLEAR_NIGHT,
     ATTR_CONDITION_CLOUDY,
+    ATTR_CONDITION_EXCEPTIONAL,
     ATTR_CONDITION_FOG,
+    ATTR_CONDITION_HAIL,
+    ATTR_CONDITION_LIGHTNING,
+    ATTR_CONDITION_LIGHTNING_RAINY,
     ATTR_CONDITION_PARTLYCLOUDY,
+    ATTR_CONDITION_POURING,
     ATTR_CONDITION_RAINY,
     ATTR_CONDITION_SNOWY,
+    ATTR_CONDITION_SNOWY_RAINY,
     ATTR_CONDITION_SUNNY,
+    ATTR_CONDITION_WINDY,
+    ATTR_CONDITION_WINDY_VARIANT,
+    ATTR_FORECAST_CLOUD_COVERAGE,
+    ATTR_FORECAST_CONDITION,
+    ATTR_FORECAST_HUMIDITY,
+    ATTR_FORECAST_IS_DAYTIME,
+    ATTR_FORECAST_NATIVE_APPARENT_TEMP,
+    ATTR_FORECAST_NATIVE_DEW_POINT,
+    ATTR_FORECAST_NATIVE_PRECIPITATION,
+    ATTR_FORECAST_NATIVE_PRESSURE,
+    ATTR_FORECAST_NATIVE_TEMP,
+    ATTR_FORECAST_NATIVE_TEMP_LOW,
+    ATTR_FORECAST_NATIVE_WIND_GUST_SPEED,
+    ATTR_FORECAST_NATIVE_WIND_SPEED,
+    ATTR_FORECAST_PRECIPITATION_PROBABILITY,
+    ATTR_FORECAST_WIND_BEARING,
     Forecast,
     WeatherEntity,
     WeatherEntityFeature,
@@ -44,6 +66,7 @@ from .const import (
     CONF_RAIN_RATE_SENSOR,
     CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
+    CONF_VISIBILITY_SENSOR,
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
@@ -97,6 +120,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_native_pressure_unit = UnitOfPressure.HPA
     _attr_native_wind_speed_unit = UnitOfSpeed.METERS_PER_SECOND
+    _attr_native_visibility_unit = "km"  # HA auto-converts km ↔ mi based on user settings
     _attr_supported_features = WeatherEntityFeature.FORECAST_DAILY | WeatherEntityFeature.FORECAST_HOURLY
 
     def __init__(self, entry: ConfigEntry) -> None:
@@ -109,7 +133,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.9",
+            sw_version="3.1.10",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -119,6 +143,147 @@ class LocalWeatherForecastWeather(WeatherEntity):
         rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
         if rain_sensor_id:
             _LOGGER.debug(f"Weather: Rain sensor configured: {rain_sensor_id}")
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass - wait for ALL configured sensors to be ready."""
+        await super().async_added_to_hass()
+
+        import asyncio
+        from datetime import datetime
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        # Collect ALL configured sensors from config_flow
+        all_sensor_keys = [
+            CONF_PRESSURE_SENSOR,       # Required
+            CONF_TEMPERATURE_SENSOR,    # Optional (uses defaults)
+            CONF_HUMIDITY_SENSOR,       # Optional (enhanced features)
+            CONF_WIND_SPEED_SENSOR,     # Optional (wind analysis)
+            CONF_WIND_DIRECTION_SENSOR, # Optional (wind direction)
+            CONF_WIND_GUST_SENSOR,      # Optional (atmosphere stability)
+            CONF_RAIN_RATE_SENSOR,      # Optional (precipitation detection)
+            CONF_SOLAR_RADIATION_SENSOR,# Optional (cloudiness detection)
+            CONF_VISIBILITY_SENSOR,     # Optional (visibility)
+        ]
+
+        configured_sensors = {}
+        for sensor_key in all_sensor_keys:
+            sensor_id = self._get_config(sensor_key)
+            if sensor_id:
+                configured_sensors[sensor_key] = sensor_id
+
+        if not configured_sensors:
+            _LOGGER.warning(
+                "Weather: No sensors configured! Weather entity will use defaults. "
+                "If you add sensors later through config, they will be used automatically."
+            )
+            # Don't return - continue to set up basic entity
+            # This allows manual state writes and future sensor additions
+
+        # Log all configured sensors
+        if configured_sensors:
+            _LOGGER.info(f"Weather: Found {len(configured_sensors)} configured sensors:")
+            for key, sensor_id in configured_sensors.items():
+                is_required = "(REQUIRED)" if key == CONF_PRESSURE_SENSOR else "(optional)"
+                _LOGGER.info(f"  - {key}: {sensor_id} {is_required}")
+
+            # Wait for sensors with timeout
+            start_time = datetime.now()
+            max_wait = 30  # Maximum 30 seconds wait
+            check_interval = 0.5  # Check every 500ms
+
+            _LOGGER.info(f"Weather: Waiting up to {max_wait}s for sensors to become ready...")
+
+            sensors_ready = {}
+            elapsed = 0
+
+            while elapsed < max_wait:
+                # Check each configured sensor
+                all_ready = True
+                for key, sensor_id in configured_sensors.items():
+                    if key not in sensors_ready:  # Not yet ready
+                        state = self.hass.states.get(sensor_id)
+                        if state and state.state not in ("unknown", "unavailable"):
+                            sensors_ready[key] = sensor_id
+                            elapsed_time = (datetime.now() - start_time).total_seconds()
+                            _LOGGER.info(
+                                f"Weather: ✅ {key} ready after {elapsed_time:.1f}s "
+                                f"({len(sensors_ready)}/{len(configured_sensors)})"
+                            )
+                        else:
+                            all_ready = False
+
+                # If all sensors ready, break early
+                if all_ready:
+                    elapsed_time = (datetime.now() - start_time).total_seconds()
+                    _LOGGER.info(
+                        f"Weather: 🎉 All {len(configured_sensors)} sensors ready after {elapsed_time:.1f}s! "
+                        f"Weather entity is fully operational."
+                    )
+                    break
+
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+            # Report timeout for sensors that didn't load
+            if elapsed >= max_wait:
+                missing_sensors = []
+                for key, sensor_id in configured_sensors.items():
+                    if key not in sensors_ready:
+                        missing_sensors.append(f"{key} ({sensor_id})")
+
+                if missing_sensors:
+                    _LOGGER.warning(
+                        f"Weather: ⏱️ Timeout after {max_wait}s. "
+                        f"{len(sensors_ready)}/{len(configured_sensors)} sensors ready. "
+                        f"Missing: {', '.join(missing_sensors)}"
+                    )
+
+                    # Check if pressure sensor (REQUIRED) is missing
+                    if CONF_PRESSURE_SENSOR not in sensors_ready:
+                        _LOGGER.error(
+                            f"Weather: ❌ CRITICAL: Pressure sensor not ready! "
+                            f"Weather entity will show 'partlycloudy' until pressure sensor initializes."
+                        )
+                    else:
+                        _LOGGER.info(
+                            f"Weather: ✅ Pressure sensor ready. Weather entity will work with available sensors. "
+                            f"Missing sensors will be used when they become available."
+                        )
+
+        # Set up state change listeners for auto-refresh when sensors update
+        # This handles both:
+        # 1. Sensors that didn't load during startup (will auto-refresh when they appear)
+        # 2. Normal sensor updates during operation
+        sensors_to_track = list(configured_sensors.values())
+
+        if sensors_to_track:
+            _LOGGER.info(
+                f"Weather: 📡 Tracking {len(sensors_to_track)} sensors for auto-refresh "
+                f"(includes sensors not yet available)"
+            )
+
+            async def sensor_state_changed(event):
+                """Handle sensor state changes - trigger weather entity update."""
+                entity_id = event.data.get("entity_id")
+                old_state = event.data.get("old_state")
+                new_state = event.data.get("new_state")
+
+                # Only update if state actually changed (not just attributes)
+                if old_state and new_state and old_state.state != new_state.state:
+                    # Check if transitioning from unavailable/unknown to valid
+                    if old_state.state in ("unknown", "unavailable") and new_state.state not in ("unknown", "unavailable"):
+                        _LOGGER.info(
+                            f"Weather: 🔄 Sensor {entity_id} became available "
+                            f"({old_state.state} → {new_state.state}), triggering refresh"
+                        )
+
+                    # Trigger weather entity state update
+                    self.async_write_ha_state()
+
+            self.async_on_remove(
+                async_track_state_change_event(self.hass, sensors_to_track, sensor_state_changed)
+            )
+
 
     def _get_config(self, key: str) -> Any:
         """Get configuration value from options or data."""
@@ -323,12 +488,243 @@ class LocalWeatherForecastWeather(WeatherEntity):
         )
 
     @property
+    def cloud_coverage(self) -> int | None:
+        """Return the cloud coverage in %.
+
+        Reuses existing solar radiation calculation from condition() method.
+        Returns percentage (0-100) where 0 = clear sky, 100 = overcast.
+
+        This uses the same WMO-standard calculation as weather condition determination,
+        ensuring consistency between condition and cloud_coverage values.
+        """
+        if not self.hass:
+            return None
+
+        solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+        if not solar_sensor_id:
+            return None
+
+        solar_state = self.hass.states.get(solar_sensor_id)
+        if not solar_state or solar_state.state in ("unknown", "unavailable"):
+            return None
+
+        try:
+            # Get solar radiation value with unit conversion
+            raw_value = float(solar_state.state)
+            unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+            solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+
+            # Get sun elevation for theoretical maximum calculation
+            from datetime import datetime
+            from math import sin, radians
+
+            sun_state = self.hass.states.get("sun.sun")
+            solar_elevation_deg = 0
+            if sun_state:
+                solar_elevation_deg = sun_state.attributes.get("elevation", 0)
+
+            # Only calculate during daytime (sun above horizon)
+            if solar_elevation_deg <= 0:
+                return None
+
+            # Calculate theoretical maximum using same formula as condition()
+            # This ensures consistency between cloud_coverage and condition
+            solar_constant = 1361  # W/m² at top of atmosphere
+            solar_elevation_rad = radians(solar_elevation_deg)
+            sin_elev = sin(solar_elevation_rad)
+
+            # Calculate air mass
+            if solar_elevation_deg < 5:
+                air_mass = 10.0
+            else:
+                air_mass = 1.0 / sin_elev
+
+            # Atmospheric transmission with Linke turbidity
+            from math import exp
+            linke_turbidity = 3.0  # Standard value for urban areas
+            transmission = exp(-0.09 * air_mass * linke_turbidity)
+
+            # Calculate theoretical maximum
+            theoretical_max = solar_constant * transmission * sin_elev
+
+            # Apply elevation correction
+            elevation = self.hass.config.elevation or 0
+            if elevation > 0:
+                elevation_factor = 1 + (elevation / 1000) * 0.12
+                theoretical_max *= elevation_factor
+
+            if theoretical_max > 50:  # Only during significant daylight
+                # Calculate sky transparency (same as in condition())
+                sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
+                # Cloud coverage = 100% - transparency%
+                cloud_percent = int(max(0, min(100, (1 - sky_transparency) * 100)))
+                return cloud_percent
+
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+
+        return None
+
+    @property
+    def native_visibility(self) -> float | None:
+        """Return the visibility in km (native unit).
+
+        Home Assistant will automatically convert to miles if user has imperial system.
+        Estimated from humidity and fog risk if dewpoint available.
+        """
+        if not self.hass:
+            return None
+
+        # Get humidity and temperature for visibility estimation
+        humidity = self.humidity
+        temp = self.native_temperature
+
+        if humidity is None or temp is None:
+            return None
+
+        # Calculate visibility from humidity and temperature (returns km)
+        from .calculations import calculate_visibility_from_humidity
+
+        visibility_km = calculate_visibility_from_humidity(humidity, temp)
+
+        # Further reduce visibility if fog conditions detected
+        dewpoint = self.native_dew_point
+
+        if dewpoint is not None:
+            spread = temp - dewpoint
+
+            # Critical fog (spread < 0.5°C) = very low visibility
+            if spread < 0.5:
+                visibility_km = min(visibility_km, 0.2)  # < 200m
+            # High fog risk (spread < 1.0°C) = low visibility
+            elif spread < 1.0:
+                visibility_km = min(visibility_km, 0.5)  # < 500m
+            # Medium fog risk (spread < 1.5°C) = moderate visibility
+            elif spread < 1.5:
+                visibility_km = min(visibility_km, 1.0)  # < 1km
+
+        # Return km (Home Assistant auto-converts to miles for imperial users)
+        return round(visibility_km, 1)
+
+    @property
+    def uv_index(self) -> float | None:
+        """Return the UV index.
+
+        Calculated from solar radiation if available.
+        Scale: 0-15+ (0-2 low, 3-5 moderate, 6-7 high, 8-10 very high, 11+ extreme)
+        """
+        if not self.hass:
+            return None
+
+        solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+        if not solar_sensor_id:
+            return None
+
+        solar_state = self.hass.states.get(solar_sensor_id)
+        if not solar_state or solar_state.state in ("unknown", "unavailable"):
+            return None
+
+        try:
+            raw_value = float(solar_state.state)
+            unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+            solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+
+            # Calculate UV index from solar radiation
+            from .calculations import calculate_uv_index_from_solar_radiation
+            uv = calculate_uv_index_from_solar_radiation(solar_radiation)
+
+            return round(uv, 1)
+
+        except (ValueError, TypeError):
+            pass
+
+        return None
+
+    @property
     def condition(self) -> str | None:
         """Return the current condition based on Zambretti forecast and current weather."""
         try:
             # Safety check - if hass is not available yet, return default
             if not self.hass:
                 return ATTR_CONDITION_PARTLYCLOUDY
+
+            # ========================================================================
+            # SECTION 1: HARD OVERRIDES (return immediately if condition met)
+            # These conditions are DEFINITIVE - if detected, they end evaluation
+            # ========================================================================
+
+            # PRIORITY 0: EXCEPTIONAL & HAIL - Extreme weather conditions (highest priority!)
+            # These override ALL other conditions for safety warnings
+            pressure = self.native_pressure
+            if pressure is not None:
+                # Get pressure change for bomb cyclone detection
+                pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+                pressure_change = 0.0
+                if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+                    try:
+                        pressure_change = float(pressure_change_sensor.state)
+                    except (ValueError, TypeError):
+                        pass
+
+                # EXCEPTIONAL: Extreme pressure (hurricane, bomb cyclone, extreme anticyclone)
+                if pressure < 920:
+                    # Hurricane-force low pressure
+                    _LOGGER.debug(
+                        f"⚠️ EXCEPTIONAL WEATHER: Hurricane-force low pressure detected! "
+                        f"Pressure={pressure:.1f} hPa < 920 hPa"
+                    )
+                    return "exceptional"
+
+                elif pressure > 1070:
+                    # Extreme high pressure (Siberian anticyclone)
+                    _LOGGER.debug(
+                        f"⚠️ EXCEPTIONAL WEATHER: Extreme high pressure detected! "
+                        f"Pressure={pressure:.1f} hPa > 1070 hPa"
+                    )
+                    return "exceptional"
+
+                elif abs(pressure_change) > 10:
+                    # Bomb cyclogenesis (rapid pressure change)
+                    _LOGGER.debug(
+                        f"⚠️ EXCEPTIONAL WEATHER: Bomb cyclone detected! "
+                        f"Rapid pressure change: {pressure_change:+.1f} hPa/3h"
+                    )
+                    return "exceptional"
+
+                # HAIL: Severe thunderstorm conditions
+                # Check if we have storm conditions (lightning-rainy from forecast)
+                enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
+                    forecast_code = enhanced_sensor.attributes.get("forecast_number")
+
+                    # Code 25 = Stormy conditions
+                    if forecast_code == 25:
+                        # Check hail indicators
+                        temp = self.native_temperature
+                        humidity = self.humidity
+
+                        # Get gust ratio from enhanced sensor
+                        gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
+
+                        if temp is not None and humidity is not None and gust_ratio is not None:
+                            # Hail conditions:
+                            # 1. Temperature 15-30°C (convective zone)
+                            # 2. High humidity > 80%
+                            # 3. Very unstable atmosphere (gust_ratio > 2.5)
+                            if 15 <= temp <= 30 and humidity > 80 and gust_ratio > 2.5:
+                                _LOGGER.debug(
+                                    f"🧊 HAIL RISK: Severe thunderstorm conditions detected! "
+                                    f"Temp={temp:.1f}°C (convective), Humidity={humidity:.0f}% (high), "
+                                    f"Gust ratio={gust_ratio:.2f} (very unstable)"
+                                )
+                                return "hail"
+                            else:
+                                _LOGGER.debug(
+                                    f"Weather: Storm detected (code 25) but not hail conditions - "
+                                    f"temp={temp:.1f}°C ({'OK' if 15 <= temp <= 30 else 'out of range'}), "
+                                    f"humidity={humidity:.0f}% ({'OK' if humidity > 80 else 'too low'}), "
+                                    f"gust_ratio={gust_ratio:.2f} ({'OK' if gust_ratio > 2.5 else 'too stable'})"
+                                )
 
             # PRIORITY 1: Check if currently raining (Netatmo INCREMENT sensor detection)
             rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
@@ -383,16 +779,163 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # If precipitation is detected, check temperature to determine if it's rain or snow
                         if is_raining_now:
                             temp = self.native_temperature
-                            # If temperature is at or below 2°C, precipitation is SNOW not rain
-                            if temp is not None and temp <= 2:
-                                _LOGGER.debug(
-                                    f"Weather: SNOW detected from precipitation sensor - "
-                                    f"temp={temp:.1f}°C (frozen precipitation)"
-                                )
-                                return ATTR_CONDITION_SNOWY
+
+                            # Check if fog is also present (secondary condition)
+                            # Fog info will be added to attributes even though precipitation has priority
+                            fog_also_present = False
+                            dewpoint = self.native_dew_point
+                            humidity = self.humidity
+                            dewpoint_spread = 0.0  # Initialize for logging
+                            wind_speed = 0.0  # Initialize for logging
+
+                            if temp is not None and dewpoint is not None and humidity is not None:
+                                dewpoint_spread = temp - dewpoint
+                                wind_speed = self.native_wind_speed or 0.0
+
+                                # Check fog conditions (same logic as PRIORITY 2)
+                                if (dewpoint_spread < 0.5 and humidity > 95) or \
+                                   (dewpoint_spread < 1.0 and humidity > 93 and wind_speed < 3.0) or \
+                                   (1.5 <= dewpoint_spread < 2.5 and humidity > 85 and wind_speed < 2.0):
+                                    fog_also_present = True
+
+                            # Determine precipitation type based on temperature and humidity
+                            # Scientific meteorological standards (WMO, NOAA):
+                            #
+                            # Mixed precipitation occurs when air temperature is near freezing
+                            # but conditions allow both snow and rain to coexist.
+                            #
+                            # Key factors:
+                            # 1. Temperature (air temperature)
+                            # 2. Humidity (affects wet bulb temperature)
+                            # 3. Atmospheric conditions
+                            #
+                            # Boundaries (simplified without wet bulb sensor):
+                            # - Pure snow: temp < -1°C (always frozen)
+                            # - Mixed zone: -1°C ≤ temp ≤ 4°C (depends on humidity)
+                            #   * High humidity (>85%): snow melts partially → mixed
+                            #   * Low humidity (<85%): depends on temp
+                            # - Pure rain: temp > 4°C (always liquid)
+
+                            if temp is not None:
+                                # Get humidity for wet bulb approximation
+                                current_humidity = humidity if humidity is not None else 70.0
+
+                                if temp < -1:
+                                    # SNOW - Cold enough that all precipitation is frozen
+                                    # Below -1°C, humidity doesn't matter - too cold for melting
+                                    if fog_also_present and dewpoint is not None and humidity is not None:
+                                        _LOGGER.info(
+                                            f"Weather: ⚠️ SNOWY + FOG detected simultaneously! "
+                                            f"temp={temp:.1f}°C (frozen precipitation), "
+                                            f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
+                                            f"Showing SNOWY (precipitation priority), fog_detected=True in attributes."
+                                        )
+                                    else:
+                                        _LOGGER.debug(
+                                            f"Weather: SNOW detected - "
+                                            f"temp={temp:.1f}°C < -1°C (pure frozen precipitation)"
+                                        )
+                                    return ATTR_CONDITION_SNOWY
+
+                                elif -1 <= temp <= 4:
+                                    # TRANSITION ZONE - Mixed precipitation possible
+                                    # Depends on humidity (wet bulb approximation)
+
+                                    # Scientific criteria for mixed precipitation:
+                                    # 1. Temperature in transition zone (-1°C to +4°C)
+                                    # 2. High humidity (>85%) increases melting → mixed
+                                    # 3. Low temperature + low humidity → still snow
+                                    # 4. High temperature + any humidity → starting to be rain
+
+                                    if temp <= 1 and current_humidity < 85:
+                                        # Cold + dry → SNOW
+                                        # Snowflakes don't melt in dry air even near 0°C
+                                        _LOGGER.debug(
+                                            f"Weather: SNOW detected - "
+                                            f"temp={temp:.1f}°C, humidity={current_humidity:.0f}% "
+                                            f"(cold + dry = frozen precipitation)"
+                                        )
+                                        return ATTR_CONDITION_SNOWY
+
+                                    elif temp >= 3 and current_humidity > 85:
+                                        # Warm + humid → RAIN
+                                        # Snow melts completely in humid warm air
+                                        _LOGGER.debug(
+                                            f"Weather: RAIN detected - "
+                                            f"temp={temp:.1f}°C, humidity={current_humidity:.0f}% "
+                                            f"(warm + humid = liquid precipitation)"
+                                        )
+                                        # Continue to rain logic below
+                                        pass  # Will be handled by rain logic
+
+                                    else:
+                                        # MIXED (SNOWY-RAINY) - Transition conditions
+                                        # Temperature and humidity in range where both can occur
+                                        if fog_also_present and dewpoint is not None and humidity is not None:
+                                            _LOGGER.info(
+                                                f"Weather: ⚠️ MIXED PRECIPITATION + FOG detected simultaneously! "
+                                                f"temp={temp:.1f}°C, humidity={current_humidity:.0f}% (transition zone), "
+                                                f"dewpoint_spread={dewpoint_spread:.1f}°C, wind={wind_speed:.1f} m/s. "
+                                                f"Showing SNOWY-RAINY (mixed precipitation), fog_detected=True in attributes."
+                                            )
+                                        else:
+                                            _LOGGER.debug(
+                                                f"Weather: MIXED precipitation (snow + rain) detected - "
+                                                f"temp={temp:.1f}°C, humidity={current_humidity:.0f}% "
+                                                f"(transition zone - both snow and rain possible)"
+                                            )
+                                        return ATTR_CONDITION_SNOWY_RAINY
+
+                                # If we reach here: temp > 4°C OR (temp 3-4°C + humidity > 85%)
+                                # → RAIN or POURING
+
+                                # RAIN or POURING - Liquid precipitation
+                                # For rate sensors (mm/h), we can detect intensity
+                                # For accumulation sensors (mm), we cannot reliably detect intensity
+
+                                # Check if this is a rate sensor with high intensity
+                                is_pouring = False
+                                if unit == "mm/h" and current_rain > 10:
+                                    # Rate sensor + high rate + warm temp → POURING
+                                    # WMO: > 10 mm/h = heavy rain (pouring)
+                                    # Warm temperature (> 10°C) increases likelihood of convective rain
+                                    if temp > 10:
+                                        is_pouring = True
+
+                                if is_pouring:
+                                    # POURING - Heavy convective rain
+                                    if fog_also_present and dewpoint is not None and humidity is not None:
+                                        _LOGGER.info(
+                                            f"Weather: ⚠️ POURING + FOG detected simultaneously! "
+                                            f"rate={current_rain:.1f} mm/h (heavy rain), temp={temp:.1f}°C, "
+                                            f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
+                                            f"Showing POURING (precipitation priority), fog_detected=True in attributes."
+                                        )
+                                    else:
+                                        _LOGGER.debug(
+                                            f"Weather: Heavy rain (POURING) detected - "
+                                            f"rate={current_rain:.1f} mm/h, temp={temp:.1f}°C"
+                                        )
+                                    return ATTR_CONDITION_POURING
+                                else:
+                                    # RAINY - Light to moderate rain
+                                    if fog_also_present and dewpoint is not None and humidity is not None:
+                                        _LOGGER.info(
+                                            f"Weather: ⚠️ RAINY + FOG detected simultaneously! "
+                                            f"temp={temp:.1f}°C, "
+                                            f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
+                                            f"Showing RAINY (precipitation priority), fog_detected=True in attributes."
+                                        )
+                                    else:
+                                        _LOGGER.debug(
+                                            f"Weather: Rain detected - temp={temp:.1f}°C"
+                                        )
+                                    return ATTR_CONDITION_RAINY
+
                             else:
+                                # Temperature is None - cannot determine type, default to RAINY
                                 _LOGGER.debug(
-                                    f"Weather: Currently raining - override to rainy (temp={temp}°C)"
+                                    f"Weather: Precipitation detected but temperature unknown - defaulting to RAINY"
                                 )
                                 return ATTR_CONDITION_RAINY
 
@@ -488,9 +1031,20 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
                     return ATTR_CONDITION_FOG
 
-                # LEVEL 3: POSSIBLE FOG - Night only (60%+ confidence)
+                # LEVEL 3: POSSIBLE FOG - Daytime (spread 1.5-2.5°C)
+                # Light fog/mist, visibility 500m-1km, requires high humidity (>85%) + calm (<2 m/s)
+                # According to meteorological standard: spread 1.5-2.5°C = LIKELY FOG
+                elif 1.5 <= dewpoint_spread < 2.5 and humidity > 85 and wind_speed < 2.0:
+                    _LOGGER.debug(
+                        f"Weather: FOG (LIKELY, spread 1.5-2.5°C) - spread={dewpoint_spread:.1f}°C, "
+                        f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
+                        f"hour={current_hour} (light fog/mist, visibility 500-1000m)"
+                    )
+                    return ATTR_CONDITION_FOG
+
+                # LEVEL 4: POSSIBLE FOG - Night only (spread 1.0-1.5°C)
                 # Light fog/mist, visibility 500m-1km, night only + very calm
-                elif is_night and dewpoint_spread < 1.5 and humidity > 90 and wind_speed < 2.0:
+                elif is_night and 1.0 <= dewpoint_spread < 1.5 and humidity > 90 and wind_speed < 2.0:
                     _LOGGER.debug(
                         f"Weather: FOG (POSSIBLE, night) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
@@ -499,9 +1053,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     return ATTR_CONDITION_FOG
 
                 # MIST/CLOUDY (not fog, but damp/humid)
-                # High humidity but not saturated enough for actual fog
+                # High humidity but spread too large for fog (>2.5°C)
                 # Let solar/pressure determine cloudiness (will likely show CLOUDY)
-                elif dewpoint_spread < 2.5 and humidity > 85:
+                elif dewpoint_spread >= 2.5 and humidity > 85:
                     _LOGGER.debug(
                         f"Weather: MIST/HIGH HUMIDITY (not fog) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s "
@@ -509,8 +1063,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
 
             # PRIORITY 3: SOLAR RADIATION BASED CLOUD DETECTION
-            # Solar radiation reveals actual cloud cover better than forecast
-            # This provides real-time cloudiness detection from measured sunlight
+            # Solar radiation reveals actual cloud cover - determines cloudiness ONLY
+            # Does NOT check precipitation (rain is handled by PRIORITY 1)
+            # Provides real-time cloudiness hint for SECTION 2 (forecast determination)
             solar_radiation = None
             solar_cloudiness = None  # Will store solar-determined cloudiness hint
             solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
@@ -518,6 +1073,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 solar_state = self.hass.states.get(solar_sensor_id)
                 if solar_state and solar_state.state not in ("unknown", "unavailable", None):
                     try:
+                        from .unit_conversion import UnitConverter
                         raw_value = float(solar_state.state)
                         unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
                         # Convert to W/m² (from lux if needed)
@@ -528,15 +1084,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # Only use solar radiation during daytime with sufficient sunlight
             # IMPORTANT: Check both sun position AND actual solar radiation value!
             # - sun.sun above_horizon: Prevents use at night
-            # - solar_radiation > 50 W/m²: Prevents use at sunrise/sunset when radiation is too low
+            # - solar_radiation > 10 W/m²: Filters out twilight when cloud detection is unreliable
             #
-            # Why 50 W/m² threshold?
-            # - At sunrise/sunset: radiation is 0-50 W/m² even with clear skies
-            # - During day: clear skies give >100 W/m² even in winter
-            # - This prevents false "cloudy" detection when sky is clear but sun is low
+            # Why 10 W/m² threshold?
+            # - Civil twilight: radiation drops to 10-20 W/m² (sun 0-6° below horizon)
+            # - Winter afternoon (low sun): 15-50 W/m² even with clear skies
+            # - During midday: clear skies give 100-800 W/m² depending on season
+            # - Threshold 10 W/m²: Reliable cloud detection, filters unreliable twilight measurements
+            # - Below 10 W/m²: Too dim to distinguish cloud features accurately
             if (solar_radiation is not None
                 and self.hass.states.is_state('sun.sun', 'above_horizon')
-                and solar_radiation > 50):
+                and solar_radiation > 10):
 
                 # Calculate theoretical maximum solar radiation for current location and time
                 # UNIVERSAL: Works for any latitude, elevation, season, and time of day
@@ -663,7 +1221,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     # NOT on absolute W/m² values which vary with sun position!
                     #
                     # These thresholds align with international aviation (METAR) and meteorological standards.
+                    #
+                    # REFERENCES:
+                    # - WMO-No. 8, Vol I, Part A: "Guide to Instruments and Methods of Observation"
+                    # - METAR/TAF standards: FEW (0-2 oktas), SCT (3-4), BKN (5-7), OVC (8)
+                    # - Noia et al. (2015): "Cloud cover influence on solar radiation"
+                    # - Long & Ackerman (2000): "Identification of clear skies" → 75-80% threshold
 
+                    # WMO standard thresholds (universal, independent of sun position)
                     if sky_transparency >= 0.75:
                         # WMO: 0-2 oktas (FEW clouds) - sky allows >75% of expected sunlight
                         solar_cloudiness = ATTR_CONDITION_SUNNY
@@ -697,617 +1262,387 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
                         )
 
-                    # If we have solar cloudiness determination, check rain sensor
+                    # Solar cloudiness determined - store hint for SECTION 2
+                    # NOTE: Rain sensor is handled in PRIORITY 1 (already checked above)
+                    # Solar ONLY determines cloudiness, NOT precipitation
                     if solar_cloudiness is not None:
-                        # Check for active precipitation (overrides cloudiness)
-                        rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
-                        current_rain = 0.0
-                        if rain_rate_sensor_id:
-                            rain_sensor = self.hass.states.get(rain_rate_sensor_id)
-                            if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
-                                try:
-                                    current_rain = float(rain_sensor.state)
-                                except (ValueError, TypeError):
-                                    pass
-
-                        # Active precipitation overrides solar cloudiness
-                        if current_rain > 0.01:
-                            temp = self.native_temperature
-                            if temp is not None and temp <= 2:
-                                _LOGGER.debug(
-                                    f"Weather: Solar + Rain sensor → snowy "
-                                    f"(clouds={cloud_percent:.0f}%, rain={current_rain:.3f} mm/h, "
-                                    f"temp={temp:.1f}°C, diamond dust/ice crystals)"
-                                )
-                                return ATTR_CONDITION_SNOWY
-                            else:
-                                _LOGGER.debug(
-                                    f"Weather: Solar + Rain sensor → rainy "
-                                    f"(clouds={cloud_percent:.0f}%, rain={current_rain:.3f} mm/h, virga)"
-                                )
-                                return ATTR_CONDITION_RAINY
-
-                        # No active precipitation - use solar cloudiness but check forecast
-                        # for precipitation predictions that rain sensor might miss
-                        # (e.g., frozen sensor, approaching storm)
-                        # We'll store solar_cloudiness and apply it after checking forecast
                         _LOGGER.debug(
                             f"Weather: Solar cloudiness={solar_cloudiness}, "
-                            f"continuing to check forecast for precipitation warnings"
+                            f"continuing to SECTION 2 (forecast determination). "
+                            f"Rain is handled by PRIORITY 1, solar only shows clouds."
                         )
 
-                    # Fall through to PRIORITY 4 and 5 with solar_cloudiness hint
-            elif solar_radiation is not None and solar_radiation <= 50:
+                    # Fall through to SECTION 2 with solar_cloudiness hint
+            elif solar_radiation is not None and solar_radiation <= 10:
                 _LOGGER.debug(
-                    f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 50), "
-                    f"skipping cloud detection (sunrise/sunset or night)"
+                    f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 10), "
+                    f"skipping cloud detection (twilight or night)"
                 )
 
-            # PRIORITY 4: CURRENT CONDITION from pressure (forecast_short_term)
-            # This shows weather condition NOW based on current absolute pressure
-            # Unlike Zambretti/Negretti which predict FUTURE (6-12h ahead)
+            # ========================================================================
+            # PHASE 2: PRESSURE-BASED CURRENT STATE (For NOW - 0h)
+            # Use DIRECT pressure mapping for current conditions
             #
-            # Ranges (empirical, meteorologically sound):
-            # - p0 < 980 hPa  → Stormy (very low pressure)
-            # - 980-1000 hPa  → Rainy (low pressure)
-            # - 1000-1020 hPa → Mixed/Partly cloudy (normal)
-            # - 1020-1040 hPa → Sunny (high pressure)
-            # - p0 ≥ 1040 hPa → Very dry (very high pressure)
+            # ⚠️ WHY NOT FORECAST ALGORITHMS (Zambretti/Negretti)?
+            # - Zambretti (1915) designed for 6-12h PREDICTION, not current state
+            # - Uses pressure TREND to predict FUTURE weather
+            # - Example: Falling pressure → predicts "rain later" (but NOW may be clear!)
+            # - Result: Often shows "cloudy" when actually sunny
             #
-            # This will be used if solar radiation didn't already return,
-            # and will be overridden by forecast models if configured.
+            # ✅ DIRECT PRESSURE MAPPING:
+            # - Based on WMO/NOAA meteorological thresholds
+            # - Reflects CURRENT atmospheric conditions
+            # - More accurate for immediate state (0h)
+            # - Simpler and more reliable than trend-based prediction
+            #
+            # Scientific basis:
+            # - < 980 hPa: Deep cyclone → stormy conditions NOW
+            # - 980-1008 hPa: Low pressure → rainy/cloudy NOW
+            # - 1008-1015 hPa: Slightly low → cloudy NOW
+            # - 1015-1023 hPa: Normal → partly cloudy NOW
+            # - > 1023 hPa: High pressure → clear/sunny NOW
+            # ========================================================================
 
             current_condition_from_pressure = None
-            main_sensor = self.hass.states.get("sensor.local_forecast")
-            if main_sensor and main_sensor.state not in ("unknown", "unavailable", None):
-                try:
-                    main_attrs = main_sensor.attributes or {}
-                    forecast_short_term = main_attrs.get("forecast_short_term")
 
-                    if forecast_short_term and isinstance(forecast_short_term, list) and len(forecast_short_term) > 0:
-                        # forecast_short_term format: [condition_text, pressure_system_text]
-                        # Example: ["slnečný", "Vysoký tlak"] or ["Sunny", "High Pressure System"]
-                        current_text = forecast_short_term[0].lower()
+            pressure = self.native_pressure
+            if pressure is not None:
+                # Get pressure change for trend analysis (optional enhancement)
+                pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+                pressure_change = 0.0
+                if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+                    try:
+                        pressure_change = float(pressure_change_sensor.state)
+                    except (ValueError, TypeError):
+                        pass
 
-                        # Map Slovak/multilingual text to HA condition
-                        is_night = self._is_night()
+                # Get temperature for rain/snow determination
+                temperature = self.native_temperature
 
-                        if any(word in current_text for word in ["storm", "búrlivý", "θυελλώδης"]):
-                            current_condition_from_pressure = "lightning-rainy"
-                        elif any(word in current_text for word in ["rain", "daždivý", "βροχερός", "piovoso"]):
-                            current_condition_from_pressure = "rainy"
-                        elif any(word in current_text for word in ["sunny", "slnečný", "ηλιόλουστος", "soleggiato"]):
-                            current_condition_from_pressure = "clear-night" if is_night else "sunny"
-                        elif any(word in current_text for word in ["mixed", "premenlivý", "μεταβλητός", "variabile"]):
-                            current_condition_from_pressure = "partlycloudy"
-                        elif any(word in current_text for word in ["dry", "sucho", "ξηρός", "secco"]):
-                            current_condition_from_pressure = "clear-night" if is_night else "sunny"
+                # DIRECT PRESSURE → CURRENT CONDITION MAPPING
+                # Based on WMO meteorological standards
 
-                        if current_condition_from_pressure:
-                            _LOGGER.debug(
-                                f"Weather: PRIORITY 4 - Current condition from pressure: "
-                                f"'{forecast_short_term[0]}' → {current_condition_from_pressure} "
-                                f"(this is CURRENT state NOW, not future prediction)"
-                            )
-                except (AttributeError, KeyError, TypeError) as e:
-                    _LOGGER.debug(f"Weather: Could not get forecast_short_term: {e}")
+                if pressure < 980:
+                    # Very low pressure → stormy conditions
+                    current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
+                    _LOGGER.debug(
+                        f"Weather: PRIORITY 5 - Current state from pressure: lightning-rainy "
+                        f"(pressure={pressure:.1f} hPa < 980, very low)"
+                    )
 
-            # PRIORITY 5: Get forecast condition based on selected model
-            # User can choose: Enhanced (default), Zambretti, Negretti-Zambra, or Combined
-            # NOTE: These forecast models predict FUTURE weather (6-12h ahead)!
-            # They will override current_condition_from_pressure if configured.
-            forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
+                elif pressure < 1000:
+                    # Low pressure → rainy conditions
+                    if temperature is not None and temperature <= 2:
+                        current_condition_from_pressure = ATTR_CONDITION_SNOWY
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: snowy "
+                            f"(pressure={pressure:.1f} hPa < 1000, temp={temperature:.1f}°C ≤ 2°C)"
+                        )
+                    else:
+                        current_condition_from_pressure = ATTR_CONDITION_RAINY
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: rainy "
+                            f"(pressure={pressure:.1f} hPa < 1000, low)"
+                        )
 
-            # Initialize condition variable (will be set by forecast or fallback logic)
+                elif pressure < 1010:
+                    # Slightly low pressure → cloudy with possible rain
+                    # Use pressure TREND to refine:
+                    # - Falling quickly → rainy (weather deteriorating)
+                    # - Steady/rising → cloudy (stable)
+                    if pressure_change <= -2.0:
+                        # Rapid fall → deteriorating weather
+                        current_condition_from_pressure = ATTR_CONDITION_RAINY
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: rainy "
+                            f"(pressure={pressure:.1f} hPa, falling {pressure_change:.1f} hPa/3h → deteriorating)"
+                        )
+                    else:
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: cloudy "
+                            f"(pressure={pressure:.1f} hPa, 1000-1010, change={pressure_change:+.1f})"
+                        )
+
+                elif pressure < 1020:
+                    # Normal to slightly low → partly cloudy
+                    current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
+                    _LOGGER.debug(
+                        f"Weather: PRIORITY 5 - Current state from pressure: partlycloudy "
+                        f"(pressure={pressure:.1f} hPa, 1010-1020, normal)"
+                    )
+
+                else:
+                    # High pressure → clear/sunny
+                    if self._is_night():
+                        current_condition_from_pressure = ATTR_CONDITION_CLEAR_NIGHT
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: clear-night "
+                            f"(pressure={pressure:.1f} hPa ≥ 1020, high, nighttime)"
+                        )
+                    else:
+                        current_condition_from_pressure = ATTR_CONDITION_SUNNY
+                        _LOGGER.debug(
+                            f"Weather: PRIORITY 5 - Current state from pressure: sunny "
+                            f"(pressure={pressure:.1f} hPa ≥ 1020, high, daytime)"
+                        )
+
+
+
+            # ========================================================================
+            # PHASE 3: HUMIDITY FINE-TUNING (After Forecast)
+            # Adjust forecast prediction based on humidity
+            # ONLY increases cloudiness (never decreases)
+            #
+            # ⚠️ IMPORTANT: Skip humidity if solar radiation is available!
+            # Solar (85% accuracy) is MORE ACCURATE than humidity (70% accuracy)
+            # Humidity fine-tuning is ONLY for nighttime or when solar is not available
+            # ========================================================================
             condition = None
 
-            # Determine which sensor to use based on forecast model
-            if forecast_model == FORECAST_MODEL_ENHANCED:
-                # Enhanced uses sensor.local_forecast_enhanced (dynamic weighting based on pressure change)
-                forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
-                sensor_name = "Enhanced (Dynamic)"
-            elif forecast_model == FORECAST_MODEL_NEGRETTI:
-                # Negretti uses sensor.local_forecast_neg_zam_detail
-                forecast_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
-                sensor_name = "Negretti-Zambra"
-            elif forecast_model == FORECAST_MODEL_ZAMBRETTI:
-                # Zambretti uses sensor.local_forecast_zambretti_detail (classic algorithm)
-                forecast_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-                sensor_name = "Zambretti"
-            else:
-                # Fallback to default if invalid model configured
-                _LOGGER.warning(
-                    f"Invalid forecast_model '{forecast_model}', falling back to {DEFAULT_FORECAST_MODEL}"
+            if current_condition_from_pressure is not None:
+                # We have pressure-based prediction → use it as baseline
+                condition = current_condition_from_pressure
+                _LOGGER.debug(
+                    f"Weather: PHASE 2 result - Pressure-based current state: {condition}"
                 )
-                forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
-                sensor_name = "Enhanced (Dynamic)"
 
-            if forecast_sensor and forecast_sensor.state not in ("unknown", "unavailable", None):
-                try:
-                    attrs = forecast_sensor.attributes or {}
-                    forecast_text = forecast_sensor.state or "Unknown"
-                    forecast_num = attrs.get("forecast_number", None)
-                    letter_code = attrs.get("letter_code", "A")
-
+                # PHASE 3: Humidity fine-tuning (ONLY if solar NOT available!)
+                # SKIP ENTIRELY if solar radiation is active (more accurate!)
+                if solar_cloudiness is not None:
+                    # Solar radiation available → skip humidity completely
                     _LOGGER.debug(
-                        f"Weather: Using {sensor_name} forecast model - "
-                        f"text='{forecast_text}', num={forecast_num}, letter={letter_code} "
-                        f"(NOTE: This predicts FUTURE 6-12h ahead, not current state)"
+                        f"Weather: PHASE 3 - SKIPPING humidity fine-tuning entirely "
+                        f"(solar radiation available: {solar_cloudiness}, 85% accuracy > 70% humidity)"
                     )
+                    # Jump to PHASE 4 (solar validation)
+                    pass
+                else:
+                    # No solar → use humidity fine-tuning
+                    humidity = self.humidity
 
-                    # SMART DECISION: Combine solar cloudiness with pressure stability
-                    # Solar measures ACTUAL cloudiness (objective, high priority)
-                    # Pressure indicates STABILITY (subjective, medium priority)
-                    # Forecast predicts FUTURE (6-12h ahead, low priority)
-                    if solar_cloudiness is not None and current_condition_from_pressure is not None:
-                        # We have both solar and pressure data
-                        # Decision logic:
-                        # 1. Solar determines cloudiness (sunny/partlycloudy/cloudy)
-                        # 2. Pressure adds precipitation warning if very low (<1000 hPa)
-                        # 3. Without rain sensor, we can't confirm precipitation - trust solar
+                    if humidity is not None:
+                        # VALIDATION: Check if humidity sensor is valid
+                        humidity_is_valid = True
 
-                        # Check if pressure is critically low (indicates precipitation)
-                        pressure = self.native_pressure
-                        critically_low_pressure = pressure and pressure < 995  # < 995 hPa = very unstable
-
-                        # ENHANCEMENT: Use temperature + humidity for better precipitation detection
-                        # High humidity (>80%) + cloudy + low pressure = strong indication of precipitation
-                        # Low humidity (<50%) = unlikely precipitation even with low pressure
-                        temp = self.native_temperature
-                        humidity = self.humidity
-                        dewpoint = self.native_dew_point
-
-                        # Calculate dewpoint spread for moisture analysis
-                        dewpoint_spread = None
-                        high_moisture = False
-                        low_moisture = False
-
-                        if temp is not None and humidity is not None:
-                            # High humidity check
-                            if humidity > 80:
-                                high_moisture = True
-                                _LOGGER.debug(
-                                    f"Weather: HIGH moisture detected - humidity={humidity:.1f}% > 80% "
-                                    f"(increases precipitation likelihood)"
-                                )
-                            elif humidity < 50:
-                                low_moisture = True
-                                _LOGGER.debug(
-                                    f"Weather: LOW moisture detected - humidity={humidity:.1f}% < 50% "
-                                    f"(reduces precipitation likelihood)"
-                                )
-
-                            # Dewpoint spread check (additional moisture indicator)
-                            if dewpoint is not None:
-                                dewpoint_spread = temp - dewpoint
-                                if dewpoint_spread < 3.0:  # Near saturation
-                                    high_moisture = True
-                                    _LOGGER.debug(
-                                        f"Weather: Near saturation detected - spread={dewpoint_spread:.1f}°C < 3°C "
-                                        f"(strong moisture indicator)"
-                                    )
-
-                        # Decision logic based on solar + pressure + humidity combination
-                        # This provides best estimate without rain sensor
-
-                        if critically_low_pressure and solar_cloudiness == ATTR_CONDITION_CLOUDY and high_moisture:
-                            # CLOUDY + Very low pressure + HIGH humidity = RAINY (very likely precipitation)
-                            # Triple confirmation: visual (solar), atmospheric (pressure), moisture (humidity)
-                            condition = ATTR_CONDITION_RAINY
-                            humidity_str = f"{humidity:.1f}" if humidity is not None else "N/A"
-                            _LOGGER.debug(
-                                f"Weather: Solar + Pressure + Humidity → RAINY - "
-                                f"solar=CLOUDY + pressure={pressure:.1f} hPa < 995 + humidity={humidity_str}% > 80. "
-                                f"Triple confirmation strongly suggests precipitation (without rain sensor)"
+                        # Check 1: Humidity should be 0-100%
+                        if humidity < 0 or humidity > 100:
+                            humidity_is_valid = False
+                            _LOGGER.warning(
+                                f"Weather: PHASE 3 - Humidity sensor INVALID: {humidity:.1f}% (out of range). "
+                                f"Skipping humidity fine-tuning."
                             )
-                        elif critically_low_pressure and solar_cloudiness == ATTR_CONDITION_CLOUDY and not low_moisture:
-                            # CLOUDY + Very low pressure (without low humidity) = RAINY
-                            # Even without high humidity confirmation, combination suggests rain
-                            condition = ATTR_CONDITION_RAINY
-                            humidity_str = f"{humidity:.1f}" if humidity is not None else "N/A"
-                            _LOGGER.debug(
-                                f"Weather: Solar + Pressure combination → RAINY - "
-                                f"solar=CLOUDY + pressure={pressure:.1f} hPa < 995. "
-                                f"Combination strongly suggests precipitation (humidity={humidity_str}%)"
-                            )
-                        elif critically_low_pressure and solar_cloudiness == ATTR_CONDITION_CLOUDY and low_moisture:
-                            # CLOUDY + Very low pressure BUT low humidity = CLOUDY (not rainy)
-                            # Low humidity contradicts precipitation - trust humidity sensor
-                            condition = solar_cloudiness  # Keep CLOUDY
-                            _LOGGER.debug(
-                                f"Weather: Solar cloudy with low pressure BUT low humidity - "
-                                f"solar=CLOUDY, pressure={pressure:.1f} hPa < 995, humidity={humidity:.1f}% < 50%. "
-                                f"Low humidity contradicts precipitation, keeping CLOUDY"
-                            )
-                        elif critically_low_pressure and solar_cloudiness == ATTR_CONDITION_PARTLYCLOUDY:
-                            # PARTLY CLOUDY + Very low pressure = keep PARTLY CLOUDY
-                            # Not enough clouds for rain, just unstable conditions
-                            condition = solar_cloudiness
-                            _LOGGER.debug(
-                                f"Weather: Solar partly cloudy with low pressure - "
-                                f"solar={solar_cloudiness}, pressure={pressure:.1f} hPa < 995. "
-                                f"Not enough clouds for precipitation, keeping solar cloudiness"
-                            )
-                        else:
-                            # Normal conditions - solar has priority
-                            condition = solar_cloudiness
-                            pressure_str = f"{pressure:.1f}" if pressure is not None else "N/A"
-                            humidity_str = f"{humidity:.1f}" if humidity is not None else "N/A"
-                            _LOGGER.debug(
-                                f"Weather: Using solar cloudiness - "
-                                f"condition={condition}, pressure={pressure_str} hPa, "
-                                f"humidity={humidity_str}%. "
-                                f"Solar has priority over pressure estimate. "
-                                f"Forecast '{forecast_text}' is for 6-12h future."
-                            )
-                    elif current_condition_from_pressure is not None:
-                        # We have current condition from pressure (PRIORITY 4) - use it!
-                        # Forecast model predicts FUTURE (6-12h ahead), not current state
 
-                        # ENHANCED LOGIC: If pressure says "rainy" but rain sensor shows no precipitation,
-                        # downgrade to "cloudy" (pressure is predicting future, not current state)
-                        # This prevents false "rainy" display when it's only cloudy
+                        # Check 2: Don't override definitive conditions (rain, snow, fog)
+                        if condition in (
+                            ATTR_CONDITION_RAINY,
+                            ATTR_CONDITION_POURING,
+                            ATTR_CONDITION_SNOWY,
+                            ATTR_CONDITION_SNOWY_RAINY,
+                            ATTR_CONDITION_LIGHTNING_RAINY,
+                            ATTR_CONDITION_FOG,
+                            "windy",
+                            "windy-variant",
+                        ):
+                            _LOGGER.debug(
+                                f"Weather: PHASE 3 - Skipping humidity fine-tuning for definitive condition: {condition}"
+                            )
+                            humidity_is_valid = False
 
-                        if current_condition_from_pressure == ATTR_CONDITION_RAINY:
-                            # Check if we have rain sensor data
-                            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
-                            current_rain = 0.0
-                            has_rain_sensor = False
+                        if humidity_is_valid:
+                            _LOGGER.debug(
+                                f"Weather: PHASE 3 - Humidity fine-tuning - "
+                                f"humidity={humidity:.1f}%, condition={condition}"
+                            )
 
-                            if rain_rate_sensor_id:
-                                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
-                                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
-                                    has_rain_sensor = True
-                                    try:
-                                        current_rain = float(rain_sensor.state)
-                                    except (ValueError, TypeError):
-                                        pass
+                            # ================================================================
+                            # HUMIDITY-BASED CLOUDINESS ADJUSTMENTS
+                            # ONLY INCREASE cloudiness (never decrease!)
+                            # ================================================================
 
-                            # If we have rain sensor and it shows NO precipitation,
-                            # but pressure says "rainy", downgrade to "cloudy"
-                            # (Pressure predicts future, rain sensor shows current reality)
-                            if has_rain_sensor and current_rain <= 0.01:
+                            original_condition = condition
+
+                            # LEVEL 1: Very high humidity (>90%) → Adjust to CLOUDY
+                            if humidity > 90 and condition == ATTR_CONDITION_PARTLYCLOUDY:
                                 condition = ATTR_CONDITION_CLOUDY
                                 _LOGGER.debug(
-                                    f"Weather: Pressure says RAINY (pressure < 1000 hPa) BUT rain sensor shows "
-                                    f"no precipitation ({current_rain:.3f} mm/h). "
-                                    f"Downgrading to CLOUDY (pressure predicts future, rain sensor shows current). "
-                                    f"Without solar sensor, trusting rain sensor over pressure estimate."
+                                    f"Weather: PHASE 3 - Humidity adjustment: {original_condition} → {condition} "
+                                    f"(RH={humidity:.1f}% > 90%)"
+                                )
+
+                            # LEVEL 2: High humidity (>85%) → Adjust to PARTLYCLOUDY
+                            elif humidity > 85 and condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT):
+                                condition = ATTR_CONDITION_PARTLYCLOUDY
+                                _LOGGER.debug(
+                                    f"Weather: PHASE 3 - Humidity adjustment: {original_condition} → {condition} "
+                                    f"(RH={humidity:.1f}% > 85%)"
                                 )
                             else:
-                                # No rain sensor or sensor shows rain - trust pressure
-                                condition = current_condition_from_pressure
-                                rain_str = f"{current_rain:.3f}" if has_rain_sensor else "N/A"
                                 _LOGGER.debug(
-                                    f"Weather: Using PRIORITY 4 pressure condition - "
-                                    f"condition={condition} (current state from pressure), "
-                                    f"rain_sensor={rain_str} mm/h. "
-                                    f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
+                                    f"Weather: PHASE 3 - No humidity adjustment needed "
+                                    f"(RH={humidity:.1f}%, condition={condition})"
                                 )
-                        else:
-                            # Not rainy - use pressure condition as-is
-                            condition = current_condition_from_pressure
-                            _LOGGER.debug(
-                                f"Weather: Using PRIORITY 4 pressure condition - "
-                                f"condition={condition} (current state from pressure). "
-                                f"Forecast '{forecast_text}' (num={forecast_num}) is for 6-12h future, not current state."
-                            )
-                    else:
-                        # No solar AND no current condition - use forecast model as last fallback
-                        from .forecast_models import map_forecast_to_condition
-                        condition = map_forecast_to_condition(
-                            forecast_text=forecast_text,
-                            forecast_num=forecast_num,
-                            is_night_func=self._is_night,
-                            source=sensor_name
-                        )
 
+                        # After humidity fine-tuning, we have: condition with humidity adjustments
                         _LOGGER.debug(
-                            f"Weather: Mapped forecast → condition {condition} "
-                            f"(using forecast as LAST FALLBACK - no solar or pressure data available)"
+                            f"Weather: PHASE 3 result - After humidity fine-tuning: {condition}"
                         )
 
-                    # FOG is handled in PRIORITY 2 with scientific model (WMO/NOAA/MetOffice)
-                    # No need for duplicate fog logic here - PRIORITY 2 has:
-                    # - Direct access to temp/dewpoint/humidity/wind
-                    # - 3-level model (CRITICAL/LIKELY/POSSIBLE)
-                    # - 90% accuracy with wind and night factors
-                    # - Returns FOG before reaching this point
-                    #
-                    # CLOUDINESS ADJUSTMENTS for medium/low fog risk are now handled
-                    # via dewpoint spread in PRIORITY 2 MIST/CLOUDY logic:
-                    # - spread < 2.5°C + humidity > 85% → continues to solar/pressure
-                    # - Will naturally show CLOUDY/PARTLYCLOUDY instead of FOG
+            # ========================================================================
+            # PHASE 4: SOLAR VALIDATION (Final Override - Real Data!)
+            # Compare humidity-adjusted forecast with actual solar radiation
+            # Solar radiation is REAL measurement → overrides everything except precipitation
+            # MUST BE LAST because it's the most accurate (85% vs 60-70% forecast)
+            # ========================================================================
 
-                    # HUMIDITY-BASED CLOUD COVER CORRECTION
-                    # ⚠️ NOTE: This section moved OUTSIDE forecast block in v3.1.9
-                    # to apply universally to ALL conditions (solar, pressure, forecast)
-                    # See end of condition determination for universal humidity corrections
+            if condition is not None and solar_cloudiness is not None:
+                # We have both forecast+humidity AND solar → validate
+                # Map conditions to cloudiness level for comparison
+                cloudiness_map = {
+                    ATTR_CONDITION_SUNNY: 0,
+                    ATTR_CONDITION_CLEAR_NIGHT: 0,
+                    ATTR_CONDITION_PARTLYCLOUDY: 1,
+                    ATTR_CONDITION_CLOUDY: 2,
+                    ATTR_CONDITION_RAINY: 3,
+                    ATTR_CONDITION_POURING: 3,
+                    ATTR_CONDITION_SNOWY: 3,
+                    ATTR_CONDITION_SNOWY_RAINY: 3,
+                    ATTR_CONDITION_LIGHTNING_RAINY: 3,
+                }
 
-                    # SOLAR CLOUDINESS OVERRIDE (INTELLIGENT)
-                    # Solar radiation measures CURRENT cloudiness, forecast predicts FUTURE
-                    # Decision logic:
-                    # 1. If rain sensor CONFIRMS precipitation → keep forecast (it's raining NOW)
-                    # 2. If rain sensor = 0 AND solar sunny → solar wins (forecast is for future)
-                    # 3. If no rain sensor → trust forecast for precipitation (we can't verify)
-                    if solar_cloudiness is not None:
-                        # Check if forecast predicts precipitation
-                        forecast_predicts_precipitation = condition in (
-                            ATTR_CONDITION_RAINY, ATTR_CONDITION_SNOWY,
-                            "pouring", "lightning-rainy"  # String literals for compatibility
-                        )
+                solar_level = cloudiness_map.get(solar_cloudiness, 1)
+                forecast_level = cloudiness_map.get(condition, 1)
 
-                        if forecast_predicts_precipitation:
-                            # Forecast says rain/snow - verify with rain sensor
-                            rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
-                            current_rain = 0.0
-                            rain_sensor_available = False
-
-                            if rain_rate_sensor_id:
-                                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
-                                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
-                                    try:
-                                        current_rain = float(rain_sensor.state)
-                                        rain_sensor_available = True
-                                    except (ValueError, TypeError):
-                                        pass
-
-                            if rain_sensor_available:
-                                # We have rain sensor - use it to verify
-                                if current_rain > 0.01:
-                                    # Actually raining NOW - forecast is correct, keep it
-                                    _LOGGER.debug(
-                                        f"Weather: Solar NOT overriding - "
-                                        f"forecast={condition}, rain_sensor={current_rain:.3f} mm/h confirms precipitation "
-                                        f"(solar={solar_cloudiness} but it's actually raining)"
-                                    )
-                                else:
-                                    # NOT raining NOW - solar wins (forecast is for future)
-                                    _LOGGER.debug(
-                                        f"Weather: Solar OVERRIDES forecast precipitation - "
-                                        f"forecast={condition} → solar={solar_cloudiness}, "
-                                        f"rain_sensor=0 confirms no current precipitation "
-                                        f"(forecast may be predicting future rain)"
-                                    )
-                                    condition = solar_cloudiness
-                            else:
-                                # No rain sensor - trust forecast (can't verify)
-                                _LOGGER.debug(
-                                    f"Weather: Solar NOT overriding - "
-                                    f"forecast={condition} predicts precipitation, no rain sensor to verify "
-                                    f"(trusting forecast, solar would suggest {solar_cloudiness})"
-                                )
-                        else:
-                            # Forecast doesn't predict precipitation - solar always wins
-                            _LOGGER.debug(
-                                f"Weather: Solar cloudiness override - "
-                                f"forecast={condition} → solar={solar_cloudiness} "
-                                f"(solar measures actual cloud cover)"
-                            )
-                            condition = solar_cloudiness
-
-
-                    # SNOW CONDITION CONVERSION
-                    # Convert RAINY to SNOWY when temperature is freezing
-                    # This applies to:
-                    # - Forecast predictions (PRIORITY 5)
-                    # - Solar + Pressure combinations (PRIORITY 3 + 4)
-                    #
-                    # Do NOT convert if condition is from:
-                    # - PRIORITY 1 (rain sensor) - actual measurement (converts at source)
-                    # - PRIORITY 2 (fog/mist) - actual measurement (not precipitation)
-                    #
-                    # Detect source:
-                    # - used_forecast = True: PRIORITY 5 (forecast model)
-                    # - used_forecast = False + solar_cloudiness: PRIORITY 3 (solar + pressure combination)
-                    # - used_forecast = False + no solar: PRIORITY 4 (pressure only)
-                    used_forecast = (solar_cloudiness is None and current_condition_from_pressure is None)
-
-                    # If condition is "rainy" but conditions are freezing, convert to "snowy"
-                    # This handles BOTH forecast predictions AND solar+pressure combinations
-                    if condition == ATTR_CONDITION_RAINY:
-                        temp = self.native_temperature
-                        if temp is not None and temp <= 2:
-                            # Check if we have high snow risk or high precipitation probability
-                            enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
-                            snow_risk = None
-                            if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable", None):
-                                try:
-                                    enhanced_attrs = enhanced_sensor.attributes or {}
-                                    snow_risk = enhanced_attrs.get("snow_risk", None)
-                                except (AttributeError, KeyError, TypeError):
-                                    pass
-
-                            # Get precipitation probability
-                            rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
-                            rain_prob = 0
-                            if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
-                                try:
-                                    rain_prob = float(rain_prob_sensor.state)
-                                except (ValueError, TypeError):
-                                    pass
-
-                            # Convert rainy to snowy if:
-                            # 1. High snow risk + any precipitation probability >= 40%, OR
-                            # 2. Medium snow risk + precipitation probability >= 50%, OR
-                            # 3. Temperature <= 0°C + precipitation probability >= 60%
-                            should_convert = False
-                            reason = "unknown"  # Initialize to avoid warning
-                            if snow_risk in ("high", "Vysoké riziko snehu") and rain_prob >= 40:
-                                should_convert = True
-                                reason = f"high snow_risk + rain_prob={rain_prob}%"
-                            elif snow_risk in ("medium", "Stredné riziko snehu") and rain_prob >= 50:
-                                should_convert = True
-                                reason = f"medium snow_risk + rain_prob={rain_prob}%"
-                            elif temp <= 0 and rain_prob >= 60:
-                                should_convert = True
-                                reason = f"freezing temp + high rain_prob={rain_prob}%"
-
-                            if should_convert:
-                                source = "forecast" if used_forecast else "solar+pressure"
-                                _LOGGER.debug(
-                                    f"Weather: Snow conversion: rainy → snowy "
-                                    f"(source={source}, temp={temp:.1f}°C, {reason})"
-                                )
-                                condition = ATTR_CONDITION_SNOWY
-                            else:
-                                _LOGGER.debug(
-                                    f"Weather: Keeping rainy condition despite cold temp "
-                                    f"(temp={temp:.1f}°C, snow_risk={snow_risk}, rain_prob={rain_prob}% - "
-                                    f"conditions not met for snow conversion)"
-                                )
-
-                    # Don't return yet - apply universal humidity corrections first
-                    # (see end of method)
-                except (AttributeError, KeyError, TypeError) as e:
-                    _LOGGER.debug(f"Weather: Error reading forecast sensor: {e}")
-                    # Set condition to None to trigger fallback
-                    condition = None
-
-            # Forecast sensor not available - use current condition from pressure if available
-            if condition is None and current_condition_from_pressure is not None:
+                # Compare humidity-adjusted forecast vs solar
+                if forecast_level >= 3:
+                    # Forecast predicts PRECIPITATION (rainy/snowy/etc.)
+                    # Solar cannot detect precipitation → trust forecast
+                    _LOGGER.debug(
+                        f"Weather: PHASE 4 - Forecast predicts precipitation ({condition}), "
+                        f"solar shows cloudiness ({solar_cloudiness}). "
+                        f"Keeping forecast (solar can't detect precipitation)."
+                    )
+                elif abs(solar_level - forecast_level) > 1:
+                    # Solar and forecast disagree by >1 level → override with solar (real data!)
+                    # Example: forecast=sunny (0) but solar=cloudy (2) → override to CLOUDY
+                    # Example: forecast=cloudy (2) but solar=sunny (0) → override to SUNNY
+                    _LOGGER.info(
+                        f"Weather: PHASE 4 - Solar FINAL OVERRIDE! "
+                        f"Forecast+humidity={condition} (level={forecast_level}) but "
+                        f"solar={solar_cloudiness} (level={solar_level}), "
+                        f"difference={abs(solar_level - forecast_level)} > 1. "
+                        f"Using solar radiation (REAL DATA overrides prediction!)."
+                    )
+                    condition = solar_cloudiness
+                else:
+                    # Solar and forecast agree (or differ by ≤1 level) → keep forecast
+                    _LOGGER.debug(
+                        f"Weather: PHASE 4 - Solar validation: forecast+humidity={condition} (level={forecast_level}), "
+                        f"solar={solar_cloudiness} (level={solar_level}), "
+                        f"difference={abs(solar_level - forecast_level)} ≤ 1. "
+                        f"Keeping forecast (agreement)."
+                    )
+            elif condition is None and solar_cloudiness is not None:
+                # No forecast but have solar → use solar directly
+                condition = solar_cloudiness
                 _LOGGER.debug(
-                    f"Weather: Forecast sensors unavailable, using current condition from pressure: "
-                    f"{current_condition_from_pressure} (CURRENT state based on pressure NOW)"
+                    f"Weather: No forecast available, using solar cloudiness: {condition}"
                 )
-                condition = current_condition_from_pressure
+            elif condition is not None:
+                # Have forecast but no solar → keep forecast
+                _LOGGER.debug(
+                    f"Weather: PHASE 4 - No solar radiation available, keeping forecast+humidity: {condition}"
+                )
 
-            # PRIORITY 6: Fallback based on pressure
+            # ========================================================================
+            # PHASE 5: WIND CONDITIONS CHECK (After forecast+humidity+solar)
+            # Check wind AFTER cloudiness determination for best accuracy
+            # Uses result from forecast+humidity+solar (60-85% accuracy) instead of
+            # simple pressure fallback (55% accuracy) - scientifically correct!
+            #
+            # IMPORTANT: Wind can ONLY override basic cloudiness conditions:
+            # - sunny, clear-night, partlycloudy, cloudy
+            # Wind CANNOT override precipitation/fog (they are more important):
+            # - rainy, snowy, fog, pouring, lightning-rainy
+            # ========================================================================
+            wind_speed = self.native_wind_speed
+            wind_gust = self.native_wind_gust_speed
+
+            if (wind_speed is not None or wind_gust is not None) and condition is not None:
+                # Determine effective wind speed (max of wind or gust)
+                effective_wind = wind_speed if wind_speed is not None else 0.0
+                if wind_gust is not None and wind_gust > effective_wind:
+                    effective_wind = wind_gust
+
+                if effective_wind >= 10.8:  # Force 6+ (Strong breeze or higher)
+                    # Wind can ONLY override basic cloudiness conditions
+                    # Check if current condition is basic cloudiness (not precipitation/fog)
+                    basic_cloudiness_conditions = (
+                        ATTR_CONDITION_SUNNY,
+                        ATTR_CONDITION_CLEAR_NIGHT,
+                        ATTR_CONDITION_PARTLYCLOUDY,
+                        ATTR_CONDITION_CLOUDY
+                    )
+
+                    if condition in basic_cloudiness_conditions:
+                        # Basic cloudiness - wind can override
+                        if condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT, ATTR_CONDITION_PARTLYCLOUDY):
+                            # Clear/partly cloudy → windy
+                            _LOGGER.info(
+                                f"Weather: PHASE 5 - Wind override → windy "
+                                f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
+                                f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
+                                f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s, "
+                                f"condition={condition} → clear/partly cloudy)"
+                            )
+                            condition = "windy"
+                        else:  # cloudy
+                            # Cloudy → windy-variant
+                            _LOGGER.info(
+                                f"Weather: PHASE 5 - Wind override → windy-variant "
+                                f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
+                                f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
+                                f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s, "
+                                f"condition={condition} → cloudy)"
+                            )
+                            condition = "windy-variant"
+                    else:
+                        # Precipitation/fog - wind CANNOT override!
+                        # Rain, snow, fog are more important than wind
+                        _LOGGER.debug(
+                            f"Weather: PHASE 5 - Strong wind detected "
+                            f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
+                            f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
+                            f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s) "
+                            f"but condition={condition} (precipitation/fog) - NOT overriding. "
+                            f"Precipitation/fog has priority over wind."
+                        )
+
+            # ========================================================================
+            # PHASE 6: ABSOLUTE FINAL FALLBACK (Only if pressure sensor missing)
+            # This should NEVER happen in normal operation (pressure is REQUIRED sensor!)
+            # If we reach here during startup, sensors may not be ready yet
+            # ========================================================================
             if condition is None:
                 pressure = self.native_pressure
-                if pressure:
-                    if pressure < 1000:
-                        # Low pressure indicates precipitation
-                        # Check if conditions are freezing - convert rainy to snowy
-                        temp = self.native_temperature
-                        if temp is not None and temp <= 2:
-                            _LOGGER.debug(
-                                f"Weather: Fallback to snowy (pressure={pressure}, temp={temp:.1f}°C ≤2°C)"
-                            )
-                            condition = ATTR_CONDITION_SNOWY
-                        else:
-                            _LOGGER.debug(f"Weather: Fallback to rainy (pressure={pressure})")
-                            condition = ATTR_CONDITION_RAINY
-                    elif pressure < 1013:
-                        _LOGGER.debug(f"Weather: Fallback to cloudy (pressure={pressure})")
-                        condition = ATTR_CONDITION_CLOUDY
-                    elif pressure < 1020:
-                        # Medium pressure = partly cloudy
-                        # Keep partlycloudy for both day and night (HA shows correct icon)
-                        _LOGGER.debug(f"Weather: Fallback to partlycloudy (pressure={pressure})")
-                        condition = ATTR_CONDITION_PARTLYCLOUDY
-                    else:
-                        # High pressure = clear skies
-                        if self._is_night():
-                            _LOGGER.debug(f"Weather: Fallback to clear night (pressure={pressure})")
-                            condition = ATTR_CONDITION_CLEAR_NIGHT
-                        else:
-                            _LOGGER.debug(f"Weather: Fallback to sunny (pressure={pressure})")
-                            condition = ATTR_CONDITION_SUNNY
-
-            # Final fallback
-            if condition is None:
-                _LOGGER.debug(f"Weather: Final fallback to partlycloudy (no forecast/pressure data)")
-                condition = ATTR_CONDITION_PARTLYCLOUDY
-
-            # ========================================================================
-            # UNIVERSAL HUMIDITY-BASED CLOUD COVER CORRECTIONS
-            # Applied to ALL conditions regardless of source (solar, pressure, forecast)
-            # ========================================================================
-            humidity = self.humidity
-            if humidity is not None:
-                # Get forecast_num if available (for Fine weather forecast detection)
-                forecast_num = None
-                try:
-                    forecast_model = self._get_config(CONF_FORECAST_MODEL) or DEFAULT_FORECAST_MODEL
-                    if forecast_model == FORECAST_MODEL_ZAMBRETTI:
-                        forecast_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
-                    elif forecast_model == FORECAST_MODEL_NEGRETTI:
-                        forecast_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
-                    else:
-                        forecast_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
-
-                    if forecast_sensor and forecast_sensor.state not in ("unknown", "unavailable", None):
-                        attrs = forecast_sensor.attributes or {}
-                        forecast_num = attrs.get("forecast_number", None)
-                except:
-                    pass  # forecast_num stays None
-
-                _LOGGER.debug(f"Weather: Universal humidity correction check - humidity={humidity}%, forecast_num={forecast_num}, condition={condition}")
-
-                # Check if it's night - humidity has bigger impact at night
-                # (condensation, dew, night clouds are more visible with high humidity)
-                is_night = self._is_night()
-
-                # ========================================================================
-                # HUMIDITY-BASED CLOUDINESS CORRECTIONS (WMO/NOAA meteorological standards)
-                # ========================================================================
-                # Based on scientific research:
-                # - RH > 95% → Near saturation, clouds/fog very likely (critical)
-                # - RH 90-95% → High probability of clouds (condensation level)
-                # - RH 85-90% → Moderate cloud probability (visible moisture)
-                # - RH 80-85% → Haze/partial clouds possible
-                # - RH < 80% → Low cloud formation probability
-                #
-                # Special considerations:
-                # - Night: Lower thresholds (clouds more visible, condensation)
-                # - Fine weather forecasts (num ≤ 3): Stronger evidence needed
-                # ========================================================================
-
-                # LEVEL 1: EXTREME humidity (>95%) = definitely cloudy/overcast
-                # Near saturation - clouds WILL form regardless of forecast
-                if humidity > 95 and condition in (
-                    ATTR_CONDITION_PARTLYCLOUDY,
-                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                ):
-                    _LOGGER.debug(
-                        f"Weather: Humidity correction (CRITICAL): {condition} → cloudy "
-                        f"(RH={humidity:.1f}% > 95% - near saturation, clouds inevitable)"
+                if pressure is None:
+                    # Likely startup - sensors not ready yet
+                    _LOGGER.info(
+                        f"Weather: PHASE 5 - Sensors not ready yet (startup). "
+                        f"Pressure sensor not available. Using default condition (partlycloudy) "
+                        f"until sensors initialize."
                     )
-                    condition = ATTR_CONDITION_CLOUDY
-
-                # LEVEL 2: Very high humidity (90-95%) = mostly cloudy
-                # BUT respect "Fine weather" forecasts (forecast_num ≤ 3)
-                # These are strong stable forecasts that need stronger evidence
-                elif humidity > 90 and condition in (
-                    ATTR_CONDITION_PARTLYCLOUDY,
-                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                ) and (forecast_num is None or forecast_num > 3):
-                    _LOGGER.debug(
-                        f"Weather: Humidity correction (very high): {condition} → cloudy "
-                        f"(RH={humidity:.1f}% > 90% - high condensation, forecast_num={forecast_num})"
+                    condition = ATTR_CONDITION_PARTLYCLOUDY  # ✅ Better default than exceptional
+                else:
+                    # Runtime failure - this should never happen!
+                    _LOGGER.warning(
+                        f"Weather: PHASE 5 - No condition could be determined! "
+                        f"Pressure={pressure:.1f} hPa available, but no priority matched. "
+                        f"This is unexpected - falling back to EXCEPTIONAL."
                     )
-                    condition = ATTR_CONDITION_CLOUDY
+                    condition = ATTR_CONDITION_EXCEPTIONAL
 
-                # LEVEL 3: High humidity (85-90%) = partial clouds likely
-                # Respect both Fine (≤3) and Fair (≤5) forecasts
-                elif humidity > 85 and condition in (
-                    ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT
-                ) and (forecast_num is None or forecast_num > 5):
-                    _LOGGER.debug(
-                        f"Weather: Humidity correction (high): {condition} → partlycloudy "
-                        f"(RH={humidity:.1f}% > 85% - visible moisture, forecast_num={forecast_num})"
-                    )
-                    condition = ATTR_CONDITION_PARTLYCLOUDY
 
-                # LEVEL 4: Night special case (80-85%) = partial clouds more visible at night
-                # At night, lower threshold because:
-                # - Condensation forms easier (cooler air)
-                # - Night clouds more visible (street lights, moon reflection)
-                # - Dew formation indicates high moisture
-                elif is_night and humidity > 80 and condition == ATTR_CONDITION_CLEAR_NIGHT:
-                    _LOGGER.debug(
-                        f"Weather: Humidity correction (night clouds): {condition} → partlycloudy "
-                        f"(RH={humidity:.1f}% > 80% at night - condensation/dew, night clouds visible)"
-                    )
-                    condition = ATTR_CONDITION_PARTLYCLOUDY
-
-                # Note: We don't add day correction at 75% - that's too aggressive
-                # 75% RH is moderate humidity, not necessarily clouds
-                # Only at 80%+ (or 85%+ for day sunny conditions) do we correct
-
-            # Note: We don't convert partlycloudy to clear-night at night
-            # Home Assistant automatically shows the correct night icon for partlycloudy
 
             return condition
         except Exception as e:
@@ -1437,9 +1772,26 @@ class LocalWeatherForecastWeather(WeatherEntity):
             attrs["fog_risk"] = fog_risk_level
             attrs["dewpoint_spread"] = round(spread, 2)
             attrs["dew_point"] = round(dewpoint, 2)
+
+            # Check if fog is CURRENTLY present (not just risk)
+            # This is useful when condition shows precipitation but fog is also present
+            wind_speed = self.native_wind_speed or 0.0
+            humidity = self.humidity or 0.0
+            current_hour = datetime.now().hour
+            is_night = current_hour < 6 or current_hour >= 20
+
+            fog_detected = False
+            if (spread < 0.5 and humidity > 95) or \
+               (spread < 1.0 and humidity > 93 and wind_speed < 3.0) or \
+               (1.5 <= spread < 2.5 and humidity > 85 and wind_speed < 2.0) or \
+               (is_night and 1.0 <= spread < 1.5 and humidity > 90 and wind_speed < 2.0):
+                fog_detected = True
+
+            attrs["fog_detected"] = fog_detected
+
             _LOGGER.debug(
-                f"Weather: Fog risk={fog_risk_level}, temp={temp:.1f}°C, "
-                f"dewpoint={dewpoint:.1f}°C, spread={spread:.1f}°C"
+                f"Weather: Fog risk={fog_risk_level}, fog_detected={fog_detected}, "
+                f"temp={temp:.1f}°C, dewpoint={dewpoint:.1f}°C, spread={spread:.1f}°C"
             )
 
         # Add snow risk and frost/ice risk

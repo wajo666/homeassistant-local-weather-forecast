@@ -1,8 +1,13 @@
-"""Negretti & Zambra forecast algorithm."""
+"""Negretti & Zambra forecast algorithm.
+
+✅ INTEGRATED WITH UNIFIED SYSTEM:
+- Uses forecast_mapping.get_forecast_text() for text retrieval
+- Internal codes (0-25) are universal for all models
+- No duplicate text storage needed
+"""
 from datetime import datetime
 import logging
 
-from .forecast_data import FORECAST_TEXTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -276,19 +281,37 @@ def calculate_negretti_zambra_forecast(
         f"z_option={z_option}"
     )
 
-    # Build forecast text
-    forecast_text = ""
-    if is_exceptional:
-        forecast_text = exceptional_text[lang_index]
+    # Build forecast text using unified system
+    # ✅ USE UNIFIED SYSTEM: Get text from forecast_mapping
+    from .forecast_mapping import get_forecast_text
 
-    forecast_text += FORECAST_TEXTS[forecast_idx][lang_index]
+    base_forecast_text = get_forecast_text(
+        forecast_num=forecast_idx,
+        lang_index=lang_index
+    )
+
+    # Add exceptional weather prefix if needed
+    if is_exceptional:
+        exceptional_text = [
+            "außergewöhnliches Wetter, ",
+            "Exceptional Weather, ",
+            "εξαιρετικός καιρός, ",
+            "Tempo eccezionale, ",
+            "Výnimočné počasie, "
+        ]
+        forecast_text = exceptional_text[lang_index] + base_forecast_text
+    else:
+        forecast_text = base_forecast_text
+
+    # Calculate letter code for display purposes
     letter_code = _map_zambretti_to_letter(forecast_idx + 1)
 
     _LOGGER.debug(
-        f"Negretti: RESULT - forecast_number={forecast_idx}, letter_code={letter_code}, "
-        f"text='{forecast_text}'"
+        f"Negretti: RESULT - forecast_code={forecast_idx}, "
+        f"letter={letter_code} (display), text='{forecast_text}'"
     )
 
+    # Return [text, code, letter] - forecast_calculator expects 3 items
     return [forecast_text, forecast_idx, letter_code]
 
 
@@ -318,14 +341,14 @@ def _map_zambretti_to_letter(z: int) -> str:
         6: "R",
         7: "U",
         8: "V",
-        9: "X", 18: "X",
+        9: "F", 18: "X",  # FIXED: z=9 (high pressure + steady) should be F (Fairly Fine), not X (Very Unsettled)!
         12: "E",
         13: "K",
         14: "N",
         15: "P",
         16: "S",
         17: "W",
-        19: "Z", 32: "Z", 33: "Z",  # z=33 is extreme rising pressure
+        19: "B",  # FIXED: High pressure (~1040 hPa) + rising trend = Fine weather (B), not stormy (Z)!
         22: "F",  # FIXED: Missing z=22 letter mapping
         23: "F",
         24: "G",
@@ -336,6 +359,7 @@ def _map_zambretti_to_letter(z: int) -> str:
         29: "Q",
         30: "T",
         31: "Y",
+        32: "Z", 33: "Z",  # z=32-33 is extreme rising pressure (recovery from storm)
     }
     result = mapping.get(z, "A")
     if z not in mapping:

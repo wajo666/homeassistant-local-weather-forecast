@@ -34,22 +34,33 @@ def test_map_zambretti_to_letter_various():
 
 
 def test_map_zambretti_to_letter_x():
-    """Test mapping for letter X."""
-    assert _map_zambretti_to_letter(9) == "X"
+    """Test mapping for letter X - now only Z=18."""
+    # FIXED: Z=9 (high pressure + steady) → F (Fairly Fine), not X (Very Unsettled)!
     assert _map_zambretti_to_letter(18) == "X"
 
 
 def test_map_zambretti_to_letter_z():
-    """Test mapping for letter Z."""
-    assert _map_zambretti_to_letter(19) == "Z"
+    """Test mapping for letter Z - only extreme cases."""
+    # FIXED: Z=19 (high pressure + rising) → B (Fine Weather), not Z (Stormy)!
     assert _map_zambretti_to_letter(32) == "Z"
     assert _map_zambretti_to_letter(33) == "Z"
 
 
 def test_map_zambretti_to_letter_f():
-    """Test mapping for letter F."""
+    """Test mapping for letter F - including corrected Z=9."""
+    # FIXED: Z=9 now correctly maps to F (Fairly Fine)
+    assert _map_zambretti_to_letter(9) == "F"
     assert _map_zambretti_to_letter(22) == "F"
     assert _map_zambretti_to_letter(23) == "F"
+
+
+def test_map_zambretti_to_letter_b_high_pressure_rising():
+    """Test mapping for letter B - including corrected Z=19."""
+    # FIXED: Z=19 (high pressure + rising) → B (Fine Weather), not Z (Stormy)!
+    assert _map_zambretti_to_letter(19) == "B"
+    assert _map_zambretti_to_letter(2) == "B"
+    assert _map_zambretti_to_letter(11) == "B"
+    assert _map_zambretti_to_letter(21) == "B"
 
 
 def test_map_zambretti_to_letter_unknown():
@@ -78,7 +89,7 @@ def test_calculate_forecast_steady_winter(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     assert isinstance(result[0], str)  # forecast_text
     assert isinstance(result[1], int)  # forecast_number
     assert isinstance(result[2], str)  # letter_code
@@ -99,7 +110,7 @@ def test_calculate_forecast_rising_summer(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     assert isinstance(result[0], str)
     assert isinstance(result[1], int)
     assert isinstance(result[2], str)
@@ -120,7 +131,7 @@ def test_calculate_forecast_falling_winter(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     assert isinstance(result[0], str)
     assert isinstance(result[1], int)
     assert isinstance(result[2], str)
@@ -141,7 +152,7 @@ def test_calculate_forecast_exceptional_high_pressure(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     # Should contain "Exceptional Weather" for English
     assert "Exceptional" in result[0] or isinstance(result[0], str)
 
@@ -161,7 +172,7 @@ def test_calculate_forecast_exceptional_low_pressure(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
 
 
 @patch('custom_components.local_weather_forecast.negretti_zambra.datetime')
@@ -357,7 +368,7 @@ def test_calculate_forecast_all_wind_sectors(mock_datetime):
         wind_data = [1, direction, dir_text, 1]
         result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
         assert isinstance(result, list)
-        assert len(result) == 3
+        assert len(result) == 3  # Returns: [text, code, letter]
         assert isinstance(result[0], str)
         assert isinstance(result[1], int)
         assert isinstance(result[2], str)
@@ -377,7 +388,8 @@ def test_calculate_forecast_letter_code_valid(mock_datetime):
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
-    letter_code = result[2]
+    # Extract letter_code from result
+    text, num, letter_code = result
     assert isinstance(letter_code, str)
     assert len(letter_code) == 1
     assert letter_code.isalpha()
@@ -419,7 +431,7 @@ def test_forecast_realistic_values(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     assert isinstance(result[0], str)
     assert 0 <= result[1] <= 25  # Valid forecast index range
     assert isinstance(result[2], str)
@@ -442,7 +454,7 @@ def test_exceptional_weather_slovak(mock_datetime):
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
 
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 3  # Returns: [text, code, letter]
     assert isinstance(result[0], str)
     # Should not throw "list index out of range" error
     assert len(result[0]) > 0
@@ -465,7 +477,7 @@ def test_summer_adjustment_moderate_pressure_rising(mock_datetime):
     elevation = 300.0
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Summer adjustment should be applied for moderate pressure
     assert isinstance(num, int)
@@ -494,7 +506,7 @@ def test_summer_adjustment_very_low_pressure_rising(mock_datetime):
     elevation = 300.0
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Should not give overly optimistic forecast during storm recovery
     assert isinstance(num, int)
@@ -523,7 +535,7 @@ def test_summer_adjustment_high_pressure_rising(mock_datetime):
     elevation = 300.0
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Should give fine weather forecast without over-adjustment
     assert isinstance(num, int)
@@ -550,7 +562,7 @@ def test_summer_adjustment_very_low_pressure_falling(mock_datetime):
     elevation = 300.0
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Very low pressure falling should give stormy forecast
     assert isinstance(num, int)
@@ -572,7 +584,7 @@ def test_summer_adjustment_high_pressure_falling(mock_datetime):
     elevation = 300.0
 
     result = calculate_negretti_zambra_forecast(p0, pressure_change, wind_data, lang_index, elevation, hemisphere="north")
-    text, num, letter = result
+    text, num, letter = result  # Has 3 values
 
     # Should give reasonable forecast for anticyclone breakdown
     assert isinstance(num, int)
