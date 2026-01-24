@@ -554,7 +554,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 elevation_factor = 1 + (elevation / 1000) * 0.12
                 theoretical_max *= elevation_factor
 
-            if theoretical_max > 50:  # Only during significant daylight
+            # WMO: Use any positive solar radiation value (not just >50 W/m²)
+            # This allows accurate cloudiness detection even in low-light conditions
+            if theoretical_max > 0:  # Avoid division by zero
                 # Calculate sky transparency (same as in condition())
                 sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
                 # Cloud coverage = 100% - transparency%
@@ -1110,17 +1112,21 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # Only use solar radiation during daytime with sufficient sunlight
             # IMPORTANT: Check both sun position AND actual solar radiation value!
             # - sun.sun above_horizon: Prevents use at night
-            # - solar_radiation > 10 W/m²: Filters out twilight when cloud detection is unreliable
+            # - solar_radiation > 0 W/m²: Any positive value is valid (prevents division by zero)
             #
-            # Why 10 W/m² threshold?
-            # - Civil twilight: radiation drops to 10-20 W/m² (sun 0-6° below horizon)
-            # - Winter afternoon (low sun): 15-50 W/m² even with clear skies
-            # - During midday: clear skies give 100-800 W/m² depending on season
-            # - Threshold 10 W/m²: Reliable cloud detection, filters unreliable twilight measurements
-            # - Below 10 W/m²: Too dim to distinguish cloud features accurately
+            # Why 0 W/m² threshold (changed from 10 W/m²)?
+            # WMO UNIVERSAL APPROACH: Use transparency ratio (actual/theoretical) instead of absolute threshold
+            # - Works for ANY sensor (weak or strong)
+            # - Works in ANY conditions (twilight, winter, overcast)
+            # - Accurate even at low light: 5 W/m² actual vs 20 W/m² theoretical = 25% transparency → cloudy ✓
+            # - Old 10 W/m² threshold skipped valid measurements during:
+            #   * Civil twilight: 5-20 W/m² (sun 0-6° below horizon)
+            #   * Winter afternoon: 15-50 W/m²
+            #   * Overcast morning: 20-100 W/m²
+            # - Night (0 W/m²): Correctly skipped by sun.sun check + theoretical_max > 0 check
             if (solar_radiation is not None
                 and self.hass.states.is_state('sun.sun', 'above_horizon')
-                and solar_radiation > 10):
+                and solar_radiation > 0):
 
                 # Calculate theoretical maximum solar radiation for current location and time
                 # UNIVERSAL: Works for any latitude, elevation, season, and time of day
@@ -1212,7 +1218,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     f"air_mass={air_mass:.2f}, theoretical_max={theoretical_max:.0f} W/m²"
                 )
 
-                if theoretical_max > 50:  # Only during significant daylight
+                # WMO: Use any positive solar radiation value (not just >50 W/m²)
+                # This allows accurate cloudiness detection even in low-light conditions
+                if theoretical_max > 0:  # Avoid division by zero
                     # Calculate sky transparency ratio (how much sunlight reaches ground)
                     # This ratio is independent of time/position - compares actual vs expected
                     sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
