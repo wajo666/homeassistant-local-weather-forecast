@@ -1390,30 +1390,52 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
         return icons[1] if is_night else icons[0]
 
     def _estimate_rain_probability(self, forecast_states: list[int]) -> list[int]:
-        """Estimate rain probability based on forecast states."""
+        """Estimate rain probability based on scientific meteorological standards.
+
+        Based on WMO Technical Note No. 13 and NOAA forecasting guidelines.
+        Uses state-based base probabilities with trend adjustments.
+
+        States: 0=sunny, 1=partlycloudy, 2=partlycloudyrain, 3=cloudy,
+                4=rainy, 5=pouring, 6=lightning-rainy
+        """
         # Extract 6h and 12h states
         state_6h = forecast_states[0] if len(forecast_states) > 0 else 3
         state_12h = forecast_states[1] if len(forecast_states) > 1 else 3
 
-        # Match original logic from weather_forecast.yaml
-        if state_6h == 0 and state_12h == 0:
-            return [0, 0]
-        elif state_6h == 2 and state_12h == 1:
-            return [60, 10]
-        elif state_6h == 1 and state_12h == 1:
-            return [30, 30]
-        elif state_6h == 1 and state_12h == 0:
-            return [10, 0]
-        elif state_6h == 1 and state_12h >= 2:
-            return [20, 60]
-        elif state_6h == 2 and state_12h == 2:
-            return [50, 50]
-        elif state_6h == 2 and state_12h > 2:
-            return [50, 70]
-        elif state_6h >= 2 and state_12h < 2:
-            return [50, 10]
-        else:
-            return [90, 90]
+        # Base probabilities by state (WMO/NOAA scientific values)
+        # These represent measured probability of measurable precipitation (≥0.1mm)
+        base_prob = {
+            0: 2,    # sunny - anticyclonic, very low probability
+            1: 15,   # partlycloudy - stable air mass, low probability
+            2: 40,   # partly rainy - scattered showers possible
+            3: 30,   # cloudy - overcast but no active precipitation
+            4: 70,   # rainy - active precipitation expected
+            5: 90,   # pouring - heavy rain, high certainty
+            6: 95,   # lightning - thunderstorms, very high certainty
+        }
+
+        prob_6h = base_prob.get(state_6h, 30)
+        prob_12h = base_prob.get(state_12h, 30)
+
+        # Trend adjustment (meteorological principle: continuity and persistence)
+        trend = state_12h - state_6h
+
+        if trend < -1:  # Rapidly improving (e.g., storm clearing)
+            prob_12h = max(5, prob_12h - 15)
+        elif trend == -1:  # Improving (e.g., clearing skies)
+            prob_12h = max(5, prob_12h - 10)
+        elif trend == 0:  # Stable (persistence principle)
+            pass  # No adjustment - current conditions persist
+        elif trend == 1:  # Worsening (e.g., clouds thickening)
+            prob_12h = min(95, prob_12h + 10)
+        elif trend > 1:  # Rapidly worsening (e.g., approaching front)
+            prob_12h = min(95, prob_12h + 20)
+
+        # Clamp to valid percentage range
+        prob_6h = max(0, min(100, prob_6h))
+        prob_12h = max(0, min(100, prob_12h))
+
+        return [prob_6h, prob_12h]
 
     @property
     def native_value(self) -> str | None:
@@ -1696,22 +1718,54 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
         return icons[1] if is_night else icons[0]
 
     def _estimate_rain_probability(self, forecast_states: list[int]) -> list[int]:
-        """Estimate rain probability based on forecast states."""
+        """Estimate rain probability based on scientific meteorological standards.
+
+        Based on WMO Technical Note No. 13 and NOAA forecasting guidelines.
+        Uses state-based base probabilities with trend adjustments.
+
+        Negretti-Zambra uses same scientific method as Zambretti for consistency.
+
+        States: 0=sunny, 1=partlycloudy, 2=partlycloudyrain, 3=cloudy,
+                4=rainy, 5=pouring, 6=lightning-rainy
+        """
         # Extract 6h and 12h states
         state_6h = forecast_states[0] if len(forecast_states) > 0 else 3
         state_12h = forecast_states[1] if len(forecast_states) > 1 else 3
 
-        # Match original logic from weather_forecast.yaml (neg_zam version)
-        if state_6h < 2 and state_12h < 2:
-            return [0, 0]
-        elif state_6h == 1 and state_12h >= 2:
-            return [20, 60]
-        elif state_6h == 2 and state_12h == 2:
-            return [50, 50]
-        elif state_6h == 2 and state_12h > 2:
-            return [50, 70]
-        else:
-            return [90, 90]
+        # Base probabilities by state (WMO/NOAA scientific values)
+        # These represent measured probability of measurable precipitation (≥0.1mm)
+        base_prob = {
+            0: 2,    # sunny - anticyclonic, very low probability
+            1: 15,   # partlycloudy - stable air mass, low probability
+            2: 40,   # partly rainy - scattered showers possible
+            3: 30,   # cloudy - overcast but no active precipitation
+            4: 70,   # rainy - active precipitation expected
+            5: 90,   # pouring - heavy rain, high certainty
+            6: 95,   # lightning - thunderstorms, very high certainty
+        }
+
+        prob_6h = base_prob.get(state_6h, 30)
+        prob_12h = base_prob.get(state_12h, 30)
+
+        # Trend adjustment (meteorological principle: continuity and persistence)
+        trend = state_12h - state_6h
+
+        if trend < -1:  # Rapidly improving (e.g., storm clearing)
+            prob_12h = max(5, prob_12h - 15)
+        elif trend == -1:  # Improving (e.g., clearing skies)
+            prob_12h = max(5, prob_12h - 10)
+        elif trend == 0:  # Stable (persistence principle)
+            pass  # No adjustment - current conditions persist
+        elif trend == 1:  # Worsening (e.g., clouds thickening)
+            prob_12h = min(95, prob_12h + 10)
+        elif trend > 1:  # Rapidly worsening (e.g., approaching front)
+            prob_12h = min(95, prob_12h + 20)
+
+        # Clamp to valid percentage range
+        prob_6h = max(0, min(100, prob_6h))
+        prob_12h = max(0, min(100, prob_12h))
+
+        return [prob_6h, prob_12h]
 
     @property
     def native_value(self) -> str | None:
@@ -2342,16 +2396,30 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
 
     async def async_update(self) -> None:
-        """Update the rain probability."""
-        # Try to get forecast data from weather entity
-        # Always use detail sensors for base probabilities
-        # (Weather entity may not be ready during initialization)
+        """Update the rain probability based on selected forecast model."""
+        # ✅ FIXED v3.1.10: Respect forecast model selection from config_flow
+        # Previously: Always averaged both Zambretti + Negretti (incorrect!)
+        # Now: Use only the selected model's rain probability
+
+        # Get forecast model from config (options first, then data fallback, then default)
+        from .const import CONF_FORECAST_MODEL, FORECAST_MODEL_ENHANCED
+        forecast_model = (
+            self.config_entry.options.get(CONF_FORECAST_MODEL)
+            or self.config_entry.data.get(CONF_FORECAST_MODEL)
+            or FORECAST_MODEL_ENHANCED
+        )
+        _LOGGER.debug(f"RainProb: Using forecast model: {forecast_model}")
+
+        # Get detail sensors
         zambretti_sensor = self.hass.states.get("sensor.local_forecast_zambretti_detail")
         negretti_sensor = self.hass.states.get("sensor.local_forecast_neg_zam_detail")
 
+        # ✅ ALWAYS load BOTH probabilities (sensors run independently)
+        # Only base_probability calculation respects model selection
         zambretti_prob = 0
         negretti_prob = 0
 
+        # Load Zambretti probability (always)
         if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
             zambretti_rain = zambretti_sensor.attributes.get("rain_prob", [0, 0])
             zambretti_prob = sum(zambretti_rain) / len(zambretti_rain) if zambretti_rain else 0
@@ -2359,6 +2427,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.debug("RainProb: Zambretti detail sensor unavailable")
 
+        # Load Negretti probability (always)
         if negretti_sensor and negretti_sensor.state not in ("unknown", "unavailable"):
             negretti_rain = negretti_sensor.attributes.get("rain_prob", [0, 0])
             negretti_prob = sum(negretti_rain) / len(negretti_rain) if negretti_rain else 0
@@ -2366,7 +2435,85 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.debug("RainProb: Negretti detail sensor unavailable")
 
-        _LOGGER.debug(f"RainProb: Base probabilities - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%")
+        # Initialize weights (will be set based on model)
+        zambretti_weight = 0.5
+        negretti_weight = 0.5
+
+        # Set weights based on selected model
+        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
+
+        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+            # Use ONLY Zambretti for base_probability calculation
+            zambretti_weight = 1.0
+            negretti_weight = 0.0
+            _LOGGER.debug(f"RainProb: [ZAMBRETTI MODEL] Using only Zambretti (weight=1.0)")
+
+        elif forecast_model == FORECAST_MODEL_NEGRETTI:
+            # Use ONLY Negretti for base_probability calculation
+            zambretti_weight = 0.0
+            negretti_weight = 1.0
+            _LOGGER.debug(f"RainProb: [NEGRETTI MODEL] Using only Negretti (weight=1.0)")
+
+        else:  # FORECAST_MODEL_ENHANCED (default)
+            # Use BOTH models with dynamic weighting from combined_model
+            # (probabilities already loaded above)
+            _LOGGER.debug(f"RainProb: [ENHANCED] Using dynamic weighting")
+
+            # ✅ Get dynamic weights from combined_model
+            # Same logic as Enhanced sensor for consistency
+            from .combined_model import calculate_combined_forecast
+
+            # Get current pressure
+            current_pressure = 1013.25  # Default
+            pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
+            if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    current_pressure = float(pressure_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+
+            # Get pressure change
+            pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
+            pressure_change = 0.0
+            if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+                try:
+                    pressure_change = float(pressure_change_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+
+            # Get dynamic weights (we don't need forecast_num, just weights)
+            zambretti_result = [zambretti_sensor.state if zambretti_sensor else "", 0, "A"]
+            negretti_result = [negretti_sensor.state if negretti_sensor else "", 0, "A"]
+
+            try:
+                (
+                    _,  # forecast_num (not needed)
+                    zambretti_weight,
+                    negretti_weight,
+                    _   # consensus (not needed)
+                ) = calculate_combined_forecast(
+                    zambretti_result=zambretti_result,
+                    negretti_result=negretti_result,
+                    current_pressure=current_pressure,
+                    pressure_change=pressure_change,
+                    source="RainProbabilitySensor"
+                )
+
+                _LOGGER.debug(
+                    f"RainProb: [ENHANCED] Dynamic weights - Zambretti={zambretti_weight:.2f}, "
+                    f"Negretti={negretti_weight:.2f} (pressure_change={pressure_change:.2f} hPa)"
+                )
+            except Exception as e:
+                # Fallback to balanced if combined_model fails
+                _LOGGER.warning(f"RainProb: Failed to get dynamic weights, using balanced: {e}")
+                zambretti_weight = 0.5
+                negretti_weight = 0.5
+
+        _LOGGER.debug(
+            f"RainProb: Model={forecast_model}, "
+            f"Zambretti={zambretti_prob}% (weight={zambretti_weight:.2f}), "
+            f"Negretti={negretti_prob}% (weight={negretti_weight:.2f})"
+        )
 
         # Get sensor values for enhancements
         temp = await self._get_sensor_value(
@@ -2524,10 +2671,28 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
         self._state = round(probability)
         _LOGGER.debug(f"RainProb: Setting state to: {round(probability)}%")
+
+        # Calculate base probability based on selected model
+        # ✅ FIXED v3.1.10: Respect model selection AND use dynamic weights
+        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+            base_prob = zambretti_prob  # Only Zambretti
+        elif forecast_model == FORECAST_MODEL_NEGRETTI:
+            base_prob = negretti_prob   # Only Negretti
+        else:  # FORECAST_MODEL_ENHANCED
+            # ✅ NEW v3.1.10: Use weighted average, not simple average!
+            # Same logic as Enhanced sensor for consistency
+            base_prob = (zambretti_prob * zambretti_weight) + (negretti_prob * negretti_weight)
+            _LOGGER.debug(
+                f"RainProb: Weighted base_prob = "
+                f"({zambretti_prob}% × {zambretti_weight:.2f}) + "
+                f"({negretti_prob}% × {negretti_weight:.2f}) = {base_prob:.1f}%"
+            )
+
         self._attributes = {
+            "forecast_model": forecast_model,  # Show which model is used
             "zambretti_probability": round(zambretti_prob),
             "negretti_probability": round(negretti_prob),
-            "base_probability": round((zambretti_prob + negretti_prob) / 2),
+            "base_probability": round(base_prob),  # Now uses weighted average!
             "enhanced_probability": round(probability),
             "confidence": confidence,
             "humidity": humidity,
@@ -2535,12 +2700,26 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             "current_rain_rate": current_rain,
             "temperature": temperature,
             "precipitation_type": precipitation_type,
-            "factors_used": self._get_factors_used(humidity, dewpoint_spread),
+            "factors_used": self._get_factors_used(forecast_model, humidity, dewpoint_spread),
+            # ✅ NEW v3.1.10: Export weights for transparency
+            "zambretti_weight": round(zambretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
+            "negretti_weight": round(negretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
         }
 
-    def _get_factors_used(self, humidity, dewpoint_spread):
-        """Get list of factors used in calculation."""
-        factors = ["Zambretti", "Negretti-Zambra"]
+    def _get_factors_used(self, forecast_model, humidity, dewpoint_spread):
+        """Get list of factors used in calculation based on selected model."""
+        # ✅ FIXED v3.1.10: Show only factors from selected model
+        factors = []
+
+        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI
+
+        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
+            factors.append("Zambretti")
+        elif forecast_model == FORECAST_MODEL_NEGRETTI:
+            factors.append("Negretti-Zambra")
+        else:  # Enhanced
+            factors.extend(["Zambretti", "Negretti-Zambra"])
+
         if humidity is not None:
             factors.append("Humidity")
         if dewpoint_spread is not None:

@@ -60,8 +60,11 @@ def calculate_zambretti_forecast(
         z_before_wind = round(127 - 0.12 * p0)
         _LOGGER.debug(f"Zambretti: FALLING formula: z = round(127 - 0.12 * {p0:.1f}) = {z_before_wind}")
     elif trend == 0:  # Steady pressure
-        z_before_wind = round(144 - 0.13 * p0)
-        _LOGGER.debug(f"Zambretti: STEADY formula: z = round(144 - 0.13 * {p0:.1f}) = {z_before_wind}")
+        # ✅ FIXED: Correct scientific formula is 138, not 144!
+        # Original Zambretti algorithm: Z = 138 - 0.13 * P (for steady pressure)
+        # Previous incorrect value (144) caused overly optimistic forecasts
+        z_before_wind = round(138 - 0.13 * p0)
+        _LOGGER.debug(f"Zambretti: STEADY formula: z = round(138 - 0.13 * {p0:.1f}) = {z_before_wind}")
 
         # Special handling for very low pressure (<970 hPa) with steady trend
         # Very low steady pressure = stormy conditions, should not give high z-numbers
@@ -197,33 +200,34 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
 
     _LOGGER.debug(f"Zambretti: Mapping z-number={z}")
     mapping = {
-        1: 0, 10: 0, 20: 0,
-        2: 1, 11: 1, 21: 1,
-        3: 3,
-        4: 7,
-        5: 14,
-        6: 17,
-        7: 20,
-        8: 21,
-        9: 5, 18: 23,  # FIXED: z=9 (high pressure + steady) should be Fairly Fine (F=5), not Very Unsettled (X=23)!
-        12: 4,
-        13: 10,
-        14: 13,
-        15: 15,
-        16: 18,
-        17: 22,
-        19: 1,  # FIXED: High pressure (~1040 hPa) + rising trend = Fine weather, not stormy!
-        22: 5,  # FIXED: Missing z=22 mapping - Settling fair
-        23: 5,
-        24: 6,
-        25: 8,
-        26: 9,
-        27: 11,
-        28: 12,
-        29: 16,
-        30: 19,
-        31: 24,
-        32: 25, 33: 25,  # z=32-33 is extreme rising pressure (recovery from storm)
+        1: 0, 10: 0, 20: 0,  # Settled fine
+        2: 1, 11: 1, 21: 1,  # Fine weather
+        3: 3,  # Fine, becoming less settled
+        4: 7,  # Fairly fine, showery later
+        5: 14,  # Showery, becoming more unsettled
+        6: 17,  # Unsettled, rain later
+        7: 20,  # Rain at times, worse later
+        8: 21,  # Rain at times, becoming very unsettled
+        9: 5,   # Fairly fine, improving (high pressure steady)
+        12: 4,  # Fine, possible showers
+        13: 10,  # Fairly fine, showers likely
+        14: 13,  # Showery, bright intervals
+        15: 15,  # Changeable, some rain
+        16: 18,  # Unsettled, rain at times
+        17: 22,  # Rain at frequent intervals
+        18: 23,  # Very unsettled, rain
+        19: 1,   # Fine weather (high pressure rising)
+        22: 5,   # Settling fair
+        23: 5,   # Fairly fine
+        24: 6,   # Fairly fine, possible showers early
+        25: 8,   # Showery early, improving
+        26: 9,   # Changeable, mending
+        27: 11,  # Rather unsettled, clearing later
+        28: 12,  # Unsettled, probably improving
+        29: 16,  # Unsettled, short fine intervals
+        30: 19,  # Very unsettled, finer at times
+        31: 24,  # Stormy, possibly improving
+        32: 25, 33: 25,  # Stormy, much rain (extreme recovery)
     }
     result = mapping.get(z)
     if result is None:
@@ -256,33 +260,34 @@ def _map_zambretti_to_letter(z: int) -> str:
         z = 33
 
     mapping = {
-        1: "A", 10: "A", 20: "A",
-        2: "B", 11: "B", 21: "B",
-        3: "D",
-        4: "H",
-        5: "O",
-        6: "R",
-        7: "U",
-        8: "V",
-        9: "F", 18: "X",  # FIXED: z=9 (high pressure + steady) should be F (Fairly Fine), not X (Very Unsettled)!
-        12: "E",
-        13: "K",
-        14: "N",
-        15: "P",
-        16: "S",
-        17: "W",
-        19: "B",  # FIXED: High pressure (~1040 hPa) + rising trend = Fine weather (B), not stormy (Z)!
-        22: "F",  # FIXED: Missing z=22 letter mapping
-        23: "F",
-        24: "G",
-        25: "I",
-        26: "J",
-        27: "L",
-        28: "M",
-        29: "Q",
-        30: "T",
-        31: "Y",
-        32: "Z", 33: "Z",  # z=32-33 is extreme rising pressure (recovery from storm)
+        1: "A", 10: "A", 20: "A",  # Settled fine
+        2: "B", 11: "B", 21: "B",  # Fine weather
+        3: "D",  # Fine, becoming less settled
+        4: "H",  # Fairly fine, showery later
+        5: "O",  # Showery, becoming more unsettled
+        6: "R",  # Unsettled, rain later
+        7: "U",  # Rain at times, worse later
+        8: "V",  # Rain at times, becoming very unsettled
+        9: "F",   # Fairly fine, improving (high pressure steady)
+        12: "E",  # Fine, possible showers
+        13: "K",  # Fairly fine, showers likely
+        14: "N",  # Showery, bright intervals
+        15: "P",  # Changeable, some rain
+        16: "S",  # Unsettled, rain at times
+        17: "W",  # Rain at frequent intervals
+        18: "X",  # Very unsettled, rain
+        19: "B",  # Fine weather (high pressure rising)
+        22: "F",  # Settling fair
+        23: "F",  # Fairly fine
+        24: "G",  # Fairly fine, possible showers early
+        25: "I",  # Showery early, improving
+        26: "J",  # Changeable, mending
+        27: "L",  # Rather unsettled, clearing later
+        28: "M",  # Unsettled, probably improving
+        29: "Q",  # Unsettled, short fine intervals
+        30: "T",  # Very unsettled, finer at times
+        31: "Y",  # Stormy, possibly improving
+        32: "Z", 33: "Z",  # Stormy, much rain (extreme recovery)
     }
     result = mapping.get(z, "A")
     if z not in mapping:

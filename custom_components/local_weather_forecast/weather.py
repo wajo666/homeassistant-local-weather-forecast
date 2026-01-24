@@ -138,6 +138,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
         self._last_rain_check_time = None  # Track when we last checked (for rate calculation)
+        self._hail_conditions_present = False  # Track if atmospheric conditions favor hail (v3.1.10)
 
         # Log rain sensor configuration at startup
         rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
@@ -667,6 +668,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         pass
 
                 # EXCEPTIONAL: Extreme pressure (hurricane, bomb cyclone, extreme anticyclone)
+                # ✅ Using independent 'if' checks - each condition is evaluated separately
+                # This ensures we catch all exceptional scenarios and log all reasons
                 if pressure < 920:
                     # Hurricane-force low pressure
                     _LOGGER.debug(
@@ -675,7 +678,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
                     return "exceptional"
 
-                elif pressure > 1070:
+                if pressure > 1070:
                     # Extreme high pressure (Siberian anticyclone)
                     _LOGGER.debug(
                         f"⚠️ EXCEPTIONAL WEATHER: Extreme high pressure detected! "
@@ -683,8 +686,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
                     return "exceptional"
 
-                elif abs(pressure_change) > 10:
+                if abs(pressure_change) > 10:
                     # Bomb cyclogenesis (rapid pressure change)
+                    # Can occur at ANY pressure - independent of absolute pressure value
                     _LOGGER.debug(
                         f"⚠️ EXCEPTIONAL WEATHER: Bomb cyclone detected! "
                         f"Rapid pressure change: {pressure_change:+.1f} hPa/3h"
@@ -692,39 +696,44 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     return "exceptional"
 
                 # HAIL: Severe thunderstorm conditions
-                # Check if we have storm conditions (lightning-rainy from forecast)
+                # ✅ NEW v3.1.10: Check actual current conditions, not forecast!
+                # Hail requires:
+                # 1. Active precipitation (will be checked in PRIORITY 1)
+                # 2. Convective temperature (15-30°C)
+                # 3. High humidity (>80%)
+                # 4. Very unstable atmosphere (gust_ratio >2.5)
+
+                # We check these conditions here; if precipitation is detected in PRIORITY 1,
+                # and these conditions are met, PRIORITY 1 will return "hail" instead of rain.
+                # For now, we just store hail_risk_present flag for later use.
+
+                temp = self.native_temperature
+                humidity = self.humidity
+
+                # Get gust ratio from enhanced sensor
                 enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                gust_ratio = None
                 if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
-                    forecast_code = enhanced_sensor.attributes.get("forecast_number")
+                    gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
 
-                    # Code 25 = Stormy conditions
-                    if forecast_code == 25:
-                        # Check hail indicators
-                        temp = self.native_temperature
-                        humidity = self.humidity
+                # Set internal flag if atmospheric conditions favor hail
+                # (actual hail detection happens in PRIORITY 1 when precipitation is confirmed)
+                if temp is not None and humidity is not None and gust_ratio is not None:
+                    self._hail_conditions_present = (
+                        15 <= temp <= 30 and
+                        humidity > 80 and
+                        gust_ratio > 2.5
+                    )
 
-                        # Get gust ratio from enhanced sensor
-                        gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
-
-                        if temp is not None and humidity is not None and gust_ratio is not None:
-                            # Hail conditions:
-                            # 1. Temperature 15-30°C (convective zone)
-                            # 2. High humidity > 80%
-                            # 3. Very unstable atmosphere (gust_ratio > 2.5)
-                            if 15 <= temp <= 30 and humidity > 80 and gust_ratio > 2.5:
-                                _LOGGER.debug(
-                                    f"🧊 HAIL RISK: Severe thunderstorm conditions detected! "
-                                    f"Temp={temp:.1f}°C (convective), Humidity={humidity:.0f}% (high), "
-                                    f"Gust ratio={gust_ratio:.2f} (very unstable)"
-                                )
-                                return "hail"
-                            else:
-                                _LOGGER.debug(
-                                    f"Weather: Storm detected (code 25) but not hail conditions - "
-                                    f"temp={temp:.1f}°C ({'OK' if 15 <= temp <= 30 else 'out of range'}), "
-                                    f"humidity={humidity:.0f}% ({'OK' if humidity > 80 else 'too low'}), "
-                                    f"gust_ratio={gust_ratio:.2f} ({'OK' if gust_ratio > 2.5 else 'too stable'})"
-                                )
+                    if self._hail_conditions_present:
+                        _LOGGER.debug(
+                            f"Weather: ⚠️ HAIL-FAVORABLE conditions detected! "
+                            f"Temp={temp:.1f}°C (convective zone), Humidity={humidity:.0f}% (high), "
+                            f"Gust ratio={gust_ratio:.2f} (very unstable). "
+                            f"Will return HAIL if active precipitation is detected."
+                        )
+                else:
+                    self._hail_conditions_present = False
 
             # PRIORITY 1: Check if currently raining (Netatmo INCREMENT sensor detection)
             rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
@@ -886,8 +895,25 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                             )
                                         return ATTR_CONDITION_SNOWY_RAINY
 
-                                # If we reach here: temp > 4°C OR (temp 3-4°C + humidity > 85%)
-                                # → RAIN or POURING
+                                # If we reach here, precipitation is liquid (RAIN or POURING):
+                                # - temp > 4°C (outside transition zone), OR
+                                # - temp 3-4°C + humidity > 85% (warm + humid in transition zone)
+                                # Note: Other transition zone cases already returned SNOW (temp ≤1°C, dry)
+                                #       or MIXED (temp 1-3°C or temp 3-4°C with humidity ≤85%)
+
+                                # ✅ NEW v3.1.10: Check for HAIL before returning rain/pouring
+                                # Hail occurs during severe thunderstorms with:
+                                # - Active precipitation (already confirmed above)
+                                # - Convective temperature (15-30°C)
+                                # - High humidity (>80%)
+                                # - Very unstable atmosphere (gust_ratio >2.5)
+                                if hasattr(self, '_hail_conditions_present') and self._hail_conditions_present:
+                                    _LOGGER.info(
+                                        f"🧊 HAIL DETECTED! Active precipitation + hail-favorable atmospheric conditions. "
+                                        f"Temp={temp:.1f}°C (convective), Humidity={current_humidity:.0f}% (high), "
+                                        f"Gust ratio >2.5 (very unstable). Returning HAIL condition."
+                                    )
+                                    return ATTR_CONDITION_HAIL
 
                                 # RAIN or POURING - Liquid precipitation
                                 # For rate sensors (mm/h), we can detect intensity

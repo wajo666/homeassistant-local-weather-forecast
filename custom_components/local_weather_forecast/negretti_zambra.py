@@ -207,18 +207,23 @@ def calculate_negretti_zambra_forecast(
         _LOGGER.debug(f"Negretti: No wind direction adjustment applied (hemisphere={'north' if hemisphere_numeric == 1 else 'south'}, wind_speed_fak={wind_speed_fak})")
 
     # Summer adjustment for rising/falling trends
+    # ✅ FIXED v3.1.10: Use original Negretti & Zambra absolute value (7 hPa)
+    # Original barometers (1890s) used 950-1050 hPa range, 7% = 7 hPa
+    # Our expanded range (910-1085 hPa) made 7% = 12.25 hPa (too aggressive!)
+    # Scientific correction: Summer effects are physical constants, not percentage-scaled
+    #
     # Apply only for moderate pressure (975-1025 hPa) - same logic as Zambretti
     # Very low pressure (<975 hPa) = storm conditions, no adjustment needed
     # Very high pressure (>1025 hPa) = already optimal, no adjustment needed
+    SUMMER_ADJUSTMENT_HPA = 7.0  # Original Negretti & Zambra value
+
     if is_summer and 975 <= p0 <= 1025:
         if trend == 1:
-            adjustment = 7 / 100 * bar_range
-            z_hp = z_hp + adjustment
-            _LOGGER.debug(f"Negretti: Summer RISING adjustment: +{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
+            z_hp = z_hp + SUMMER_ADJUSTMENT_HPA
+            _LOGGER.debug(f"Negretti: Summer RISING adjustment: +{SUMMER_ADJUSTMENT_HPA} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
         elif trend == -1:
-            adjustment = 7 / 100 * bar_range
-            z_hp = z_hp - adjustment
-            _LOGGER.debug(f"Negretti: Summer FALLING adjustment: -{adjustment:.1f} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
+            z_hp = z_hp - SUMMER_ADJUSTMENT_HPA
+            _LOGGER.debug(f"Negretti: Summer FALLING adjustment: -{SUMMER_ADJUSTMENT_HPA} hPa → z_hp={z_hp:.1f} hPa (p0={p0:.1f} hPa in moderate range)")
     elif is_summer and p0 < 975:
         _LOGGER.debug(f"Negretti: Skipping summer adjustment for very low pressure ({p0:.1f} hPa < 975, storm conditions)")
     elif is_summer and p0 > 1025:
@@ -333,33 +338,34 @@ def _map_zambretti_to_letter(z: int) -> str:
         z = 33
 
     mapping = {
-        1: "A", 10: "A", 20: "A",
-        2: "B", 11: "B", 21: "B",
-        3: "D",
-        4: "H",
-        5: "O",
-        6: "R",
-        7: "U",
-        8: "V",
-        9: "F", 18: "X",  # FIXED: z=9 (high pressure + steady) should be F (Fairly Fine), not X (Very Unsettled)!
-        12: "E",
-        13: "K",
-        14: "N",
-        15: "P",
-        16: "S",
-        17: "W",
-        19: "B",  # FIXED: High pressure (~1040 hPa) + rising trend = Fine weather (B), not stormy (Z)!
-        22: "F",  # FIXED: Missing z=22 letter mapping
-        23: "F",
-        24: "G",
-        25: "I",
-        26: "J",
-        27: "L",
-        28: "M",
-        29: "Q",
-        30: "T",
-        31: "Y",
-        32: "Z", 33: "Z",  # z=32-33 is extreme rising pressure (recovery from storm)
+        1: "A", 10: "A", 20: "A",  # Settled fine
+        2: "B", 11: "B", 21: "B",  # Fine weather
+        3: "D",  # Fine, becoming less settled
+        4: "H",  # Fairly fine, showery later
+        5: "O",  # Showery, becoming more unsettled
+        6: "R",  # Unsettled, rain later
+        7: "U",  # Rain at times, worse later
+        8: "V",  # Rain at times, becoming very unsettled
+        9: "F",   # Fairly fine, improving (high pressure steady)
+        12: "E",  # Fine, possible showers
+        13: "K",  # Fairly fine, showers likely
+        14: "N",  # Showery, bright intervals
+        15: "P",  # Changeable, some rain
+        16: "S",  # Unsettled, rain at times
+        17: "W",  # Rain at frequent intervals
+        18: "X",  # Very unsettled, rain
+        19: "B",  # Fine weather (high pressure rising)
+        22: "F",  # Settling fair
+        23: "F",  # Fairly fine
+        24: "G",  # Fairly fine, possible showers early
+        25: "I",  # Showery early, improving
+        26: "J",  # Changeable, mending
+        27: "L",  # Rather unsettled, clearing later
+        28: "M",  # Unsettled, probably improving
+        29: "Q",  # Unsettled, short fine intervals
+        30: "T",  # Very unsettled, finer at times
+        31: "Y",  # Stormy, possibly improving
+        32: "Z", 33: "Z",  # Stormy, much rain (extreme recovery)
     }
     result = mapping.get(z, "A")
     if z not in mapping:
