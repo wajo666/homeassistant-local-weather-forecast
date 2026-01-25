@@ -160,8 +160,10 @@ The integration uses a **6-phase smart system** to determine current weather wit
 
 ┌─────────────────────────────────────────────────────────┐
 │ Compare Solar vs Pressure+Humidity Result               │
-│ If difference >1 level → Use SOLAR (real measurement!)  │
-│ Solar cannot detect precipitation → keeps rain/snow     │
+│ If difference ≥1 level → Use SOLAR (real measurement!)  │
+│ ⚠️ If pressure suggests "cloudy" but solar shows        │
+│    "sunny" → Use SOLAR (real data wins!)                │
+│ Rain sensor determines precipitation, not pressure!     │
 │ Result: validated_condition                             │
 └─────────────────────────────────────────────────────────┘
 

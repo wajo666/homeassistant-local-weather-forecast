@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced Attributes** - New sensor data: fog risk, snow risk, frost risk, wind scale, atmosphere stability
 
 ### 🔧 Fixed
+- **Forecast vs Rain/Solar Priority** - Fixed critical bug where forecast "rainy" prediction overrode solar cloudiness even when rain sensor = 0. Forecast is now correctly treated as PREDICTION (future), not current state
+- **Solar Override Priority** - Fixed PHASE 4 threshold (changed >1 to ≥1) so solar sensor correctly overrides pressure-based forecast
+- **Terminology Confusion** - Fixed misleading comments/variables that said "forecast" when it was actually "pressure+humidity" result. Current state uses DIRECT PRESSURE MAPPING, not Zambretti/Negretti forecast
 - **Visibility Calculation** - Now 100% WMO compliant (8 precision levels instead of 4)
 - **Zambretti Formula** - Corrected steady pressure calculation for more accurate forecasts
 - **Negretti Summer Adjustment** - Fixed seasonal calculations
