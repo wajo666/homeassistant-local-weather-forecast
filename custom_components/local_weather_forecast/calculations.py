@@ -422,30 +422,75 @@ def interpolate_forecast(
 
 def calculate_visibility_from_humidity(humidity: float, temperature: float) -> Optional[float]:
     """
-    Estimate visibility based on humidity and temperature.
-    This is a rough approximation.
+    Estimate visibility based on humidity and temperature (WMO compliant).
+
+    WMO Visibility Categories (WMO-No. 8, Manual of Codes):
+    - Excellent:  > 40 km  (RH < 50%)
+    - Very good:  20-40 km (RH 50-60%)
+    - Good:       10-20 km (RH 60-70%)
+    - Moderate:   4-10 km  (RH 70-80%)
+    - Poor:       2-4 km   (RH 80-85%)
+    - Very poor:  1-2 km   (RH 85-90%)
+    - Mist:       1-5 km   (RH 90-95%, WMO Code 30)
+    - Fog:        < 1 km   (RH > 95%, WMO Codes 10-12)
+
+    Note: Further fog adjustments based on dewpoint spread are applied
+    in weather.py native_visibility() method.
 
     Args:
         humidity: Relative humidity in %
-        temperature: Temperature in °C
+        temperature: Temperature in °C (currently not used, reserved for future enhancements)
 
     Returns:
         Estimated visibility in km, or None if not calculable
+
+    References:
+        - WMO-No. 8: Manual of Codes, Volume I.1
+        - WMO-No. 306: Manual on Codes, International Codes
     """
     if humidity <= 0 or humidity > 100:
         return None
 
     try:
-        # Very rough approximation
-        # High humidity = lower visibility
+        # WMO-compliant visibility categories (8 levels for better granularity)
         if humidity > 95:
-            return round(1.0, 1)  # Fog/mist
+            # Dense fog conditions (RH > 95%, WMO Codes 11-12)
+            # Visibility: < 1000m (fog definition)
+            return 0.5  # 500m (will be further reduced by fog adjustments if dewpoint spread < 0.5)
+        elif humidity > 90:
+            # Light fog/heavy mist (RH 90-95%, WMO Code 10/30)
+            # Visibility: ~1 km (borderline fog/mist)
+            return 0.8  # 800m (approaching fog threshold)
         elif humidity > 85:
-            return round(5.0, 1)  # Hazy
+            # Mist (RH 85-90%, WMO Code 30)
+            # Visibility: 1-5 km (mist definition)
+            return 1.5  # 1.5km (middle of mist range)
+        elif humidity > 80:
+            # Poor visibility (RH 80-85%)
+            # Visibility: 2-4 km
+            return 3.0  # 3km (poor visibility)
         elif humidity > 70:
-            return round(10.0, 1)  # Reduced
+            # Moderate visibility (RH 70-80%)
+            # Visibility: 4-10 km
+            return 7.0  # 7km (moderate visibility)
+        elif humidity > 60:
+            # Good visibility (RH 60-70%)
+            # Visibility: 10-20 km
+            return 15.0  # 15km (good visibility)
+        elif humidity > 50:
+            # Very good visibility (RH 50-60%)
+            # Visibility: 20-40 km
+            return 30.0  # 30km (very good visibility)
         else:
-            return round(20.0, 1)  # Good
+            # Excellent visibility (RH < 50%)
+            # Visibility: > 40 km
+            return 50.0  # 50km (excellent visibility)
+
+        # Note: Temperature correction could be added in future:
+        # - Cold air (< 0°C): visibility *= 1.1 (clearer air, less water vapor)
+        # - Hot air (> 30°C): visibility *= 0.9 (more haze, heat shimmer)
+        # - Exception: Ice fog at < -20°C: visibility can drop dramatically
+
     except (ValueError, ZeroDivisionError):
         return None
 

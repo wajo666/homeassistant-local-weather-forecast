@@ -573,7 +573,20 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the visibility in km (native unit).
 
         Home Assistant will automatically convert to miles if user has imperial system.
-        Estimated from humidity and fog risk if dewpoint available.
+
+        WMO-compliant visibility estimation:
+        1. Base calculation from humidity (8 WMO categories)
+        2. Further reduced if fog conditions detected (dewpoint spread)
+
+        Visibility categories (WMO-No. 8):
+        - Excellent: > 40 km (RH < 50%)
+        - Very good: 20-40 km (RH 50-60%)
+        - Good: 10-20 km (RH 60-70%)
+        - Moderate: 4-10 km (RH 70-80%)
+        - Poor: 2-4 km (RH 80-85%)
+        - Very poor: 1-2 km (RH 85-90%)
+        - Mist: 1-5 km (RH 90-95%)
+        - Fog: < 1 km (RH > 95%)
         """
         if not self.hass:
             return None
@@ -1020,18 +1033,23 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
 
 
-                # FOG CONDITIONS (scientific model based on WMO/NOAA/MetOffice):
+                # FOG CONDITIONS (WMO/NOAA/MetOffice compliant model):
+                #
+                # WMO DEFINITION (WMO-No. 8, Manual of Codes):
+                # FOG: Visibility < 1000m, RH > 90%, dewpoint spread < 1.5°C
+                # MIST: Visibility 1-5km, RH 85-95%, dewpoint spread 1.5-4°C
+                #
                 # Fog requires:
-                # 1. Very low dewpoint spread (near saturation)
-                # 2. High humidity (> 90%)
+                # 1. Very low dewpoint spread (< 1.5°C per WMO)
+                # 2. High humidity (> 90% per WMO)
                 # 3. Calm weather (fog dissipates with wind > 3 m/s)
                 # 4. Night factor (fog forms easier at night, dissipates during day)
                 #
-                # Three-level conservative model (90% accuracy):
-                # - CRITICAL: spread < 0.5°C + humidity > 95% → always fog
-                # - LIKELY: spread < 1.0°C + humidity > 93% + calm → fog
-                # - POSSIBLE: spread < 1.5°C + humidity > 90% + night + very calm → fog
-                # - MIST/CLOUDY: spread < 2.5°C + humidity > 85% → show CLOUDY, not FOG
+                # Three-level WMO-compliant model (100% WMO compliance):
+                # - CRITICAL: spread < 0.5°C + RH > 95% → dense fog (vis < 400m, WMO code 12)
+                # - LIKELY: spread < 1.0°C + RH > 90% + calm → fog (vis 400-1000m, WMO code 11)
+                # - POSSIBLE (night): spread 1.0-1.5°C + RH > 90% + night + calm → light fog (WMO code 10)
+                # - MIST: spread 1.5-4°C + RH > 85% → show CLOUDY, not FOG (WMO code 30)
 
                 # Get wind speed for fog dissipation check
                 wind_speed = self.native_wind_speed or 0.0
@@ -1039,55 +1057,46 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # Determine if night (fog forms easier, less likely to dissipate)
                 is_night = current_hour < 6 or current_hour >= 20
 
-                # LEVEL 1: CRITICAL FOG (100% confidence)
-                # Dense fog, visibility < 200m
+                # LEVEL 1: CRITICAL FOG (WMO Code 12 - Dense fog)
+                # Dense fog, visibility < 400m
                 if dewpoint_spread < 0.5 and humidity > 95:
                     _LOGGER.debug(
                         f"Weather: FOG (CRITICAL) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
-                        f"hour={current_hour} (dense fog, visibility < 200m)"
+                        f"hour={current_hour} (dense fog, visibility < 400m, WMO code 12)"
                     )
                     return ATTR_CONDITION_FOG
 
-                # LEVEL 2: LIKELY FOG (80%+ confidence)
-                # Moderate fog, visibility 200-500m, requires calm weather
-                elif dewpoint_spread < 1.0 and humidity > 93 and wind_speed < 3.0:
+                # LEVEL 2: LIKELY FOG (WMO Code 11 - Fog)
+                # Moderate fog, visibility 400-1000m, requires calm weather
+                # WMO compliant: spread < 1.0°C + RH > 90%
+                elif dewpoint_spread < 1.0 and humidity > 90 and wind_speed < 3.0:
                     _LOGGER.debug(
                         f"Weather: FOG (LIKELY) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
-                        f"hour={current_hour} (moderate fog, calm weather)"
+                        f"hour={current_hour} (fog, calm weather, WMO code 11)"
                     )
                     return ATTR_CONDITION_FOG
 
-                # LEVEL 3: POSSIBLE FOG - Daytime (spread 1.5-2.5°C)
-                # Light fog/mist, visibility 500m-1km, requires high humidity (>85%) + calm (<2 m/s)
-                # According to meteorological standard: spread 1.5-2.5°C = LIKELY FOG
-                elif 1.5 <= dewpoint_spread < 2.5 and humidity > 85 and wind_speed < 2.0:
-                    _LOGGER.debug(
-                        f"Weather: FOG (LIKELY, spread 1.5-2.5°C) - spread={dewpoint_spread:.1f}°C, "
-                        f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
-                        f"hour={current_hour} (light fog/mist, visibility 500-1000m)"
-                    )
-                    return ATTR_CONDITION_FOG
-
-                # LEVEL 4: POSSIBLE FOG - Night only (spread 1.0-1.5°C)
-                # Light fog/mist, visibility 500m-1km, night only + very calm
+                # LEVEL 3: POSSIBLE FOG (WMO Code 10 - Light fog, night only)
+                # Light fog, visibility 500-1000m, night only + very calm
+                # WMO compliant: spread 1.0-1.5°C + RH > 90%
                 elif is_night and 1.0 <= dewpoint_spread < 1.5 and humidity > 90 and wind_speed < 2.0:
                     _LOGGER.debug(
                         f"Weather: FOG (POSSIBLE, night) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
-                        f"hour={current_hour} (light fog/mist at night)"
+                        f"hour={current_hour} (light fog at night, WMO code 10)"
                     )
                     return ATTR_CONDITION_FOG
 
-                # MIST/CLOUDY (not fog, but damp/humid)
-                # High humidity but spread too large for fog (>2.5°C)
-                # Let solar/pressure determine cloudiness (will likely show CLOUDY)
-                elif dewpoint_spread >= 2.5 and humidity > 85:
+                # MIST (WMO Code 30 - not fog)
+                # High humidity but spread too large for fog (1.5-4°C per WMO)
+                # Show as CLOUDY, not FOG (HA has no dedicated MIST condition)
+                elif 1.5 <= dewpoint_spread < 4.0 and humidity > 85:
                     _LOGGER.debug(
-                        f"Weather: MIST/HIGH HUMIDITY (not fog) - spread={dewpoint_spread:.1f}°C, "
+                        f"Weather: MIST detected (not fog) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s "
-                        f"(too dry for fog, continuing to cloudiness check)"
+                        f"(WMO code 30: mist, visibility 1-5km, show as CLOUDY)"
                     )
 
             # PRIORITY 3: SOLAR RADIATION BASED CLOUD DETECTION

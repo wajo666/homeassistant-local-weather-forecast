@@ -318,28 +318,62 @@ class TestCalculateVisibilityFromHumidity:
     """Tests for calculate_visibility_from_humidity function."""
 
     def test_very_high_humidity(self):
-        """Test visibility in very high humidity (fog)."""
+        """Test visibility in very high humidity (fog conditions, RH > 95%)."""
         result = calculate_visibility_from_humidity(98.0, 10.0)
         assert result is not None
-        assert result <= 1.0
+        # WMO: RH > 95% = fog conditions, visibility < 1 km
+        assert result == 0.5  # 500m (will be further reduced by fog adjustments)
 
     def test_high_humidity(self):
-        """Test visibility in high humidity (hazy)."""
+        """Test visibility in high humidity (mist, RH 85-90%)."""
         result = calculate_visibility_from_humidity(87.0, 20.0)
         assert result is not None
-        assert result <= 5.0
+        # WMO: RH 85-90% = mist, visibility 1-5 km
+        assert result == 1.5  # 1.5km (middle of mist range)
 
     def test_moderate_humidity(self):
-        """Test visibility in moderate humidity."""
+        """Test visibility in moderate humidity (RH 70-80%)."""
         result = calculate_visibility_from_humidity(75.0, 15.0)
         assert result is not None
-        assert result <= 10.0
+        # WMO: RH 70-80% = moderate visibility, 4-10 km
+        assert result == 7.0  # 7km (moderate visibility)
 
     def test_low_humidity(self):
-        """Test visibility in low humidity (good)."""
+        """Test visibility in low humidity (very good visibility, RH < 50%)."""
         result = calculate_visibility_from_humidity(50.0, 25.0)
         assert result is not None
-        assert result >= 10.0
+        # WMO: RH < 50% = excellent visibility, > 40 km
+        assert result == 50.0  # 50km (excellent visibility)
+
+    def test_fog_conditions(self):
+        """Test visibility in dense fog (RH > 95%)."""
+        result = calculate_visibility_from_humidity(96.0, 5.0)
+        assert result == 0.5  # 500m (fog)
+
+    def test_light_fog_mist(self):
+        """Test visibility in light fog/heavy mist (RH 90-95%)."""
+        result = calculate_visibility_from_humidity(92.0, 10.0)
+        assert result == 0.8  # 800m (borderline fog/mist)
+
+    def test_poor_visibility(self):
+        """Test visibility in poor conditions (RH 80-85%)."""
+        result = calculate_visibility_from_humidity(82.0, 15.0)
+        assert result == 3.0  # 3km (poor visibility)
+
+    def test_good_visibility(self):
+        """Test visibility in good conditions (RH 60-70%)."""
+        result = calculate_visibility_from_humidity(65.0, 20.0)
+        assert result == 15.0  # 15km (good visibility)
+
+    def test_very_good_visibility(self):
+        """Test visibility in very good conditions (RH 50-60%)."""
+        result = calculate_visibility_from_humidity(55.0, 25.0)
+        assert result == 30.0  # 30km (very good visibility)
+
+    def test_excellent_visibility(self):
+        """Test visibility in excellent conditions (RH < 50%)."""
+        result = calculate_visibility_from_humidity(40.0, 30.0)
+        assert result == 50.0  # 50km (excellent visibility)
 
     def test_invalid_humidity(self):
         """Test with invalid humidity values."""
