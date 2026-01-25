@@ -587,8 +587,8 @@ def get_snow_risk(
         temperature: Temperature in °C
         humidity: Relative humidity in %
         dewpoint: Dew point in °C
-        precipitation_prob: Precipitation probability (0-100%) - REQUIRED for HIGH/MEDIUM risk
-        precipitation_prob: Optional precipitation probability (0-100%)
+        precipitation_prob: Optional precipitation probability (0-100%).
+                           REQUIRED for HIGH/MEDIUM risk levels.
 
     Returns:
         Snow risk level: none, low, medium, high
