@@ -1346,7 +1346,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # - More accurate for immediate state (0h)
             # - Simpler and more reliable than trend-based prediction
             #
-            # ⚠️ CRITICAL: Maps to CLOUDINESS ONLY, never precipitation!
+            # ⚠️ CRITICAL: Maps to CLOUDINESS ONLY if rain sensor exists!
             # - Rain sensor (PRIORITY 1) determines if it's raining
             # - This mapping shows cloud conditions based on pressure
             # - Low pressure = cloudy (rain LIKELY), not "rainy" (rain NOW)
@@ -1358,6 +1358,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # - 1015-1023 hPa: Normal → PARTLY CLOUDY
             # - > 1023 hPa: High pressure → CLEAR/SUNNY
             # ========================================================================
+
+            # 🚨 CRITICAL: Check if we have rain sensor configured (used in PHASE 2 and PHASE 3)
+            # If rain sensor exists, it is ABSOLUTE AUTHORITY for precipitation
+            # Pressure and humidity can only determine CLOUDINESS, not rain presence
+            rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
+            has_rain_sensor = rain_sensor_id is not None
 
             current_condition_from_pressure = None
 
@@ -1374,6 +1380,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                 # Get temperature for rain/snow determination
                 temperature = self.native_temperature
+
 
                 # ========================================================================
                 # PRESSURE → WEATHER MAPPING (WMO Guide No. 8, 2018)
@@ -1393,61 +1400,89 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # Pressure change (WMO Code for pressure tendency):
                 # - ≤ -3.5 hPa/3h: Rapid fall (WMO Code 0-3)
                 # - ≥ +3.5 hPa/3h: Rapid rise (WMO Code 5-8)
+                #
+                # ⚠️ RAIN SENSOR OVERRIDE:
+                # - If rain sensor is configured → pressure shows CLOUDINESS only
+                # - If no rain sensor → pressure can predict PRECIPITATION
+                # - Rain sensor = PRIORITY 0 (absolute authority)
                 # ========================================================================
 
                 if pressure < 970:
                     # WMO: INTENSE LOW (< 970 hPa)
                     # Severe storms, hurricane-force winds
                     # Precipitation probability: 90-100%
-                    current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
-                    _LOGGER.debug(
-                        f"Weather: PRESSURE → lightning-rainy "
-                        f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low → severe storms)"
-                    )
+                    if has_rain_sensor:
+                        # Rain sensor will handle precipitation → show cloudiness only
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low, rain sensor active → cloudiness only)"
+                        )
+                    else:
+                        # No rain sensor → predict precipitation
+                        current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → lightning-rainy "
+                            f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low → severe storms, no rain sensor)"
+                        )
 
                 elif pressure < 990:  # ✅ WMO STANDARD: Deep Low (970-990 hPa)
                     # WMO: DEEP LOW (970-990 hPa)
                     # Strong cyclone, heavy precipitation
                     # Precipitation probability: 70-95%
-                    if pressure_change <= -3.5:  # WMO Code 0-3: Rapid fall
+                    if has_rain_sensor:
+                        # Rain sensor will handle precipitation → show cloudiness only
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low, rain sensor active → cloudiness only)"
+                        )
+                    elif pressure_change <= -3.5:  # WMO Code 0-3: Rapid fall
                         # Rapidly intensifying → severe storms
                         current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → lightning-rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid fall {pressure_change:.1f} → intensifying storm)"
+                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid fall {pressure_change:.1f} → intensifying storm, no rain sensor)"
                         )
                     elif pressure_change <= -1.5:
                         # Falling → heavy rain
                         current_condition_from_pressure = ATTR_CONDITION_POURING
                         _LOGGER.debug(
                             f"Weather: PRESSURE → pouring "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO falling {pressure_change:.1f} → heavy rain)"
+                            f"(pressure={pressure:.1f} hPa < 990, WMO falling {pressure_change:.1f} → heavy rain, no rain sensor)"
                         )
                     elif pressure_change >= 3.5:  # WMO Code 5-8: Rapid rise
                         # Rapidly improving → moderate rain
                         current_condition_from_pressure = ATTR_CONDITION_RAINY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid rise {pressure_change:+.1f} → improving)"
+                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid rise {pressure_change:+.1f} → improving, no rain sensor)"
                         )
                     else:
                         # Stable/moderate → rain
                         current_condition_from_pressure = ATTR_CONDITION_RAINY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low → rain)"
+                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low → rain, no rain sensor)"
                         )
 
                 elif pressure < 1010:  # ✅ WMO STANDARD: Low (990-1010 hPa)
                     # WMO: LOW (990-1010 hPa)
                     # Cyclonic activity, unsettled
                     # Precipitation probability: 30-70%
-                    if pressure_change <= -3.0:
+                    if has_rain_sensor:
+                        # Rain sensor will handle precipitation → show cloudiness only
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO: Low, rain sensor active → cloudiness only)"
+                        )
+                    elif pressure_change <= -3.0:
                         # Rapid fall → rain developing
                         current_condition_from_pressure = ATTR_CONDITION_RAINY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid fall {pressure_change:.1f} → rain developing)"
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid fall {pressure_change:.1f} → rain developing, no rain sensor)"
                         )
                     elif pressure_change <= -1.5:
                         # Moderate fall → cloudy (rain threat)
@@ -1596,7 +1631,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             # ================================================================
                             # HUMIDITY-BASED WEATHER REFINEMENT
                             # Can IMPROVE (dry air → less severe) or WORSEN (wet air → more severe)
+                            #
+                            # ⚠️ RAIN SENSOR OVERRIDE:
+                            # If rain sensor is configured → humidity can only refine CLOUDINESS
+                            # Rain sensor has absolute authority for precipitation determination
                             # ================================================================
+
 
                             original_condition = condition
 
@@ -1607,17 +1647,31 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             if humidity < 50:
                                 # Very low humidity → significantly improve conditions
                                 if condition == ATTR_CONDITION_RAINY:
-                                    condition = ATTR_CONDITION_CLOUDY
-                                    _LOGGER.debug(
-                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
-                                        f"(RH={humidity:.1f}% < 50%, too dry for sustained rain)"
-                                    )
+                                    if has_rain_sensor:
+                                        # Rain sensor active → don't override precipitation, only cloudiness
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - SKIPPED rainy→cloudy improvement "
+                                            f"(RH={humidity:.1f}% < 50%, but rain sensor has authority)"
+                                        )
+                                    else:
+                                        # No rain sensor → humidity can improve
+                                        condition = ATTR_CONDITION_CLOUDY
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                            f"(RH={humidity:.1f}% < 50%, too dry for sustained rain, no rain sensor)"
+                                        )
                                 elif condition == ATTR_CONDITION_POURING:
-                                    condition = ATTR_CONDITION_RAINY
-                                    _LOGGER.debug(
-                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
-                                        f"(RH={humidity:.1f}% < 50%, too dry for heavy rain)"
-                                    )
+                                    if has_rain_sensor:
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - SKIPPED pouring→rainy improvement "
+                                            f"(RH={humidity:.1f}% < 50%, but rain sensor has authority)"
+                                        )
+                                    else:
+                                        condition = ATTR_CONDITION_RAINY
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                            f"(RH={humidity:.1f}% < 50%, too dry for heavy rain, no rain sensor)"
+                                        )
                                 elif condition == ATTR_CONDITION_CLOUDY:
                                     condition = ATTR_CONDITION_PARTLYCLOUDY
                                     _LOGGER.debug(
@@ -1628,11 +1682,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             elif humidity < 65:
                                 # Low-moderate humidity → moderately improve
                                 if condition == ATTR_CONDITION_POURING:
-                                    condition = ATTR_CONDITION_RAINY
-                                    _LOGGER.debug(
-                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
-                                        f"(RH={humidity:.1f}% < 65%, not enough moisture for heavy rain)"
-                                    )
+                                    if has_rain_sensor:
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - SKIPPED pouring→rainy improvement "
+                                            f"(RH={humidity:.1f}% < 65%, but rain sensor has authority)"
+                                        )
+                                    else:
+                                        condition = ATTR_CONDITION_RAINY
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                            f"(RH={humidity:.1f}% < 65%, not enough moisture for heavy rain, no rain sensor)"
+                                        )
 
                             # ----------------------------------------------------------------
                             # SCENARIO 2: WORSEN conditions (high humidity = wetter = worse)
@@ -1641,11 +1701,18 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             elif humidity > 90:
                                 # Very high humidity → significantly worsen conditions
                                 if condition == ATTR_CONDITION_CLOUDY:
-                                    condition = ATTR_CONDITION_RAINY
-                                    _LOGGER.debug(
-                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
-                                        f"(RH={humidity:.1f}% > 90%, very wet → rain likely)"
-                                    )
+                                    if has_rain_sensor:
+                                        # Rain sensor active → don't add precipitation, only cloudiness
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - SKIPPED cloudy→rainy worsening "
+                                            f"(RH={humidity:.1f}% > 90%, but rain sensor has authority)"
+                                        )
+                                    else:
+                                        condition = ATTR_CONDITION_RAINY
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                            f"(RH={humidity:.1f}% > 90%, very wet → rain likely, no rain sensor)"
+                                        )
                                 elif condition == ATTR_CONDITION_PARTLYCLOUDY:
                                     condition = ATTR_CONDITION_CLOUDY
                                     _LOGGER.debug(
@@ -1659,11 +1726,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                         f"(RH={humidity:.1f}% > 90%, moisture present)"
                                     )
                                 elif condition == ATTR_CONDITION_RAINY:
-                                    condition = ATTR_CONDITION_POURING
-                                    _LOGGER.debug(
-                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
-                                        f"(RH={humidity:.1f}% > 90%, saturated → heavy rain)"
-                                    )
+                                    if has_rain_sensor:
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - SKIPPED rainy→pouring worsening "
+                                            f"(RH={humidity:.1f}% > 90%, but rain sensor has authority)"
+                                        )
+                                    else:
+                                        condition = ATTR_CONDITION_POURING
+                                        _LOGGER.debug(
+                                            f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                            f"(RH={humidity:.1f}% > 90%, saturated → heavy rain, no rain sensor)"
+                                        )
 
                             elif humidity > 80:
                                 # High humidity → moderately worsen
