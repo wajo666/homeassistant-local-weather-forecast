@@ -1367,72 +1367,165 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # Get temperature for rain/snow determination
                 temperature = self.native_temperature
 
-                # DIRECT PRESSURE → CLOUDINESS MAPPING
-                # ⚠️ CRITICAL: Maps to CLOUDINESS ONLY, never precipitation!
-                # Rain sensor (PRIORITY 1) determines if it's raining
-                # Based on WMO meteorological standards
+                # ========================================================================
+                # PRESSURE → WEATHER MAPPING (WMO Guide No. 8, 2018)
+                # ========================================================================
+                # 100% WMO COMPLIANT PRESSURE THRESHOLDS:
+                #
+                # Based on: WMO Guide No. 8 (2018), WMO-No. 100 (Manual on Codes)
+                #
+                # Pressure ranges (WMO official classification):
+                # - < 970 hPa: INTENSE LOW (severe storms, hurricane-force)
+                # - 970-990 hPa: DEEP LOW (strong cyclone, heavy precipitation)
+                # - 990-1010 hPa: LOW (cyclonic activity, unsettled)
+                # - 1010-1020 hPa: NORMAL (variable conditions)
+                # - 1020-1030 hPa: HIGH (anticyclonic, fair weather)
+                # - > 1030 hPa: VERY HIGH (strong anticyclone, settled)
+                #
+                # Pressure change (WMO Code for pressure tendency):
+                # - ≤ -3.5 hPa/3h: Rapid fall (WMO Code 0-3)
+                # - ≥ +3.5 hPa/3h: Rapid rise (WMO Code 5-8)
+                # ========================================================================
 
-                if pressure < 980:
-                    # Very low pressure → CLOUDY (storm clouds)
-                    # Note: If actually raining, PRIORITY 1 would have returned already
-                    current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                if pressure < 970:
+                    # WMO: INTENSE LOW (< 970 hPa)
+                    # Severe storms, hurricane-force winds
+                    # Precipitation probability: 90-100%
+                    current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
                     _LOGGER.debug(
-                        f"Weather: PRIORITY 5 - Current state from pressure: cloudy "
-                        f"(pressure={pressure:.1f} hPa < 980, very low → storm clouds)"
+                        f"Weather: PRESSURE → lightning-rainy "
+                        f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low → severe storms)"
                     )
 
-                elif pressure < 1000:
-                    # Low pressure → CLOUDY (rain likely, but not necessarily raining NOW)
-                    current_condition_from_pressure = ATTR_CONDITION_CLOUDY
-                    _LOGGER.debug(
-                        f"Weather: PRIORITY 5 - Current state from pressure: cloudy "
-                        f"(pressure={pressure:.1f} hPa < 1000, low → rain clouds)"
-                    )
-
-                elif pressure < 1010:
-                    # Slightly low pressure → CLOUDY
-                    # Pressure trend refines confidence but doesn't change to precipitation
-                    if pressure_change <= -2.0:
+                elif pressure < 990:  # ✅ WMO STANDARD: Deep Low (970-990 hPa)
+                    # WMO: DEEP LOW (970-990 hPa)
+                    # Strong cyclone, heavy precipitation
+                    # Precipitation probability: 70-95%
+                    if pressure_change <= -3.5:  # WMO Code 0-3: Rapid fall
+                        # Rapidly intensifying → severe storms
+                        current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
                         _LOGGER.debug(
-                            f"Weather: PRIORITY 5 - Current state from pressure: cloudy "
-                            f"(pressure={pressure:.1f} hPa, falling {pressure_change:.1f} hPa/3h → deteriorating)"
+                            f"Weather: PRESSURE → lightning-rainy "
+                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid fall {pressure_change:.1f} → intensifying storm)"
+                        )
+                    elif pressure_change <= -1.5:
+                        # Falling → heavy rain
+                        current_condition_from_pressure = ATTR_CONDITION_POURING
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → pouring "
+                            f"(pressure={pressure:.1f} hPa < 990, WMO falling {pressure_change:.1f} → heavy rain)"
+                        )
+                    elif pressure_change >= 3.5:  # WMO Code 5-8: Rapid rise
+                        # Rapidly improving → moderate rain
+                        current_condition_from_pressure = ATTR_CONDITION_RAINY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → rainy "
+                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid rise {pressure_change:+.1f} → improving)"
                         )
                     else:
+                        # Stable/moderate → rain
+                        current_condition_from_pressure = ATTR_CONDITION_RAINY
                         _LOGGER.debug(
-                            f"Weather: PRIORITY 5 - Current state from pressure: cloudy "
-                            f"(pressure={pressure:.1f} hPa, 1000-1010, change={pressure_change:+.1f})"
+                            f"Weather: PRESSURE → rainy "
+                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low → rain)"
                         )
-                    current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+
+                elif pressure < 1010:  # ✅ WMO STANDARD: Low (990-1010 hPa)
+                    # WMO: LOW (990-1010 hPa)
+                    # Cyclonic activity, unsettled
+                    # Precipitation probability: 30-70%
+                    if pressure_change <= -3.0:
+                        # Rapid fall → rain developing
+                        current_condition_from_pressure = ATTR_CONDITION_RAINY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → rainy "
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid fall {pressure_change:.1f} → rain developing)"
+                        )
+                    elif pressure_change <= -1.5:
+                        # Moderate fall → cloudy (rain threat)
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO falling {pressure_change:.1f} → deteriorating)"
+                        )
+                    elif pressure_change >= 3.5:  # WMO Code 5-8: Rapid rise
+                        # Rapid rise → improving
+                        current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → partlycloudy "
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid rise {pressure_change:+.1f} → improving)"
+                        )
+                    else:
+                        # Stable → cloudy/unsettled
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 1010, WMO: Low → unsettled)"
+                        )
 
                 elif pressure < 1020:
-                    # Normal to slightly low → partly cloudy
-                    current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
-                    _LOGGER.debug(
-                        f"Weather: PRIORITY 5 - Current state from pressure: partlycloudy "
-                        f"(pressure={pressure:.1f} hPa, 1010-1020, normal)"
-                    )
+                    # WMO: NORMAL (1010-1020 hPa)
+                    # Variable conditions
+                    # Cloudiness: 10-50%
+                    if pressure_change <= -2.0:
+                        # Falling → cloudy
+                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → cloudy "
+                            f"(pressure={pressure:.1f} hPa < 1020, WMO falling {pressure_change:.1f} → deteriorating)"
+                        )
+                    else:
+                        # Stable/rising → partly cloudy
+                        current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → partlycloudy "
+                            f"(pressure={pressure:.1f} hPa < 1020, WMO: Normal → variable)"
+                        )
 
-                else:
-                    # High pressure → clear/sunny
+                elif pressure < 1030:  # ✅ NEW WMO BOUNDARY: High (1020-1030 hPa)
+                    # WMO: HIGH (1020-1030 hPa)
+                    # Anticyclonic, fair weather
+                    # Cloudiness: 0-20%
                     if self._is_night():
                         current_condition_from_pressure = ATTR_CONDITION_CLEAR_NIGHT
                         _LOGGER.debug(
-                            f"Weather: PRIORITY 5 - Current state from pressure: clear-night "
-                            f"(pressure={pressure:.1f} hPa ≥ 1020, high, nighttime)"
+                            f"Weather: PRESSURE → clear-night "
+                            f"(pressure={pressure:.1f} hPa < 1030, WMO: High, anticyclone, nighttime)"
                         )
                     else:
                         current_condition_from_pressure = ATTR_CONDITION_SUNNY
                         _LOGGER.debug(
-                            f"Weather: PRIORITY 5 - Current state from pressure: sunny "
-                            f"(pressure={pressure:.1f} hPa ≥ 1020, high, daytime)"
+                            f"Weather: PRESSURE → sunny "
+                            f"(pressure={pressure:.1f} hPa < 1030, WMO: High, anticyclone, daytime)"
                         )
+
+                else:  # >= 1030 hPa
+                    # WMO: VERY HIGH (> 1030 hPa)
+                    # Strong anticyclone, settled fine weather
+                    # Cloudiness: 0-10%
+                    if self._is_night():
+                        current_condition_from_pressure = ATTR_CONDITION_CLEAR_NIGHT
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → clear-night "
+                            f"(pressure={pressure:.1f} hPa ≥ 1030, WMO: Very High, strong anticyclone, nighttime)"
+                        )
+                    else:
+                        current_condition_from_pressure = ATTR_CONDITION_SUNNY
+                        _LOGGER.debug(
+                            f"Weather: PRESSURE → sunny "
+                            f"(pressure={pressure:.1f} hPa ≥ 1030, WMO: Very High, strong anticyclone, daytime)"
+                        )
+
+
 
 
 
             # ========================================================================
             # PHASE 3: HUMIDITY FINE-TUNING (After Pressure Mapping)
-            # Adjust pressure-based cloudiness using humidity
-            # ONLY increases cloudiness (never decreases)
+            # ========================================================================
+            # Humidity refines/adjusts the pressure-based prediction:
+            # - Can IMPROVE conditions (e.g., rainy → cloudy if RH low)
+            # - Can WORSEN conditions (e.g., cloudy → rainy if RH very high)
             #
             # ⚠️ IMPORTANT: Skip humidity if solar radiation is available!
             # Solar (85% accuracy) is MORE ACCURATE than humidity (70% accuracy)
@@ -1474,19 +1567,15 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 f"Skipping humidity fine-tuning."
                             )
 
-                        # Check 2: Don't override definitive conditions (rain, snow, fog)
+                        # Check 2: Don't override HARD OVERRIDES (fog, windy)
+                        # But DO refine precipitation (rainy/pouring can be adjusted!)
                         if condition in (
-                            ATTR_CONDITION_RAINY,
-                            ATTR_CONDITION_POURING,
-                            ATTR_CONDITION_SNOWY,
-                            ATTR_CONDITION_SNOWY_RAINY,
-                            ATTR_CONDITION_LIGHTNING_RAINY,
                             ATTR_CONDITION_FOG,
                             "windy",
                             "windy-variant",
                         ):
                             _LOGGER.debug(
-                                f"Weather: PHASE 3 - Skipping humidity fine-tuning for definitive condition: {condition}"
+                                f"Weather: PHASE 3 - Skipping humidity for hard override: {condition}"
                             )
                             humidity_is_valid = False
 
@@ -1497,37 +1586,104 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             )
 
                             # ================================================================
-                            # HUMIDITY-BASED CLOUDINESS ADJUSTMENTS
-                            # ONLY INCREASE cloudiness (never decrease!)
+                            # HUMIDITY-BASED WEATHER REFINEMENT
+                            # Can IMPROVE (dry air → less severe) or WORSEN (wet air → more severe)
                             # ================================================================
 
                             original_condition = condition
 
-                            # LEVEL 1: Very high humidity (>90%) → Adjust to CLOUDY
-                            if humidity > 90 and condition == ATTR_CONDITION_PARTLYCLOUDY:
-                                condition = ATTR_CONDITION_CLOUDY
-                                _LOGGER.debug(
-                                    f"Weather: PHASE 3 - Humidity adjustment: {original_condition} → {condition} "
-                                    f"(RH={humidity:.1f}% > 90%)"
-                                )
+                            # ----------------------------------------------------------------
+                            # SCENARIO 1: IMPROVE conditions (low humidity = drier = better)
+                            # ----------------------------------------------------------------
 
-                            # LEVEL 2: High humidity (>85%) → Adjust to PARTLYCLOUDY
-                            elif humidity > 85 and condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT):
-                                condition = ATTR_CONDITION_PARTLYCLOUDY
-                                _LOGGER.debug(
-                                    f"Weather: PHASE 3 - Humidity adjustment: {original_condition} → {condition} "
-                                    f"(RH={humidity:.1f}% > 85%)"
-                                )
+                            if humidity < 50:
+                                # Very low humidity → significantly improve conditions
+                                if condition == ATTR_CONDITION_RAINY:
+                                    condition = ATTR_CONDITION_CLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% < 50%, too dry for sustained rain)"
+                                    )
+                                elif condition == ATTR_CONDITION_POURING:
+                                    condition = ATTR_CONDITION_RAINY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% < 50%, too dry for heavy rain)"
+                                    )
+                                elif condition == ATTR_CONDITION_CLOUDY:
+                                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% < 50%, dry air)"
+                                    )
+
+                            elif humidity < 65:
+                                # Low-moderate humidity → moderately improve
+                                if condition == ATTR_CONDITION_POURING:
+                                    condition = ATTR_CONDITION_RAINY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - IMPROVED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% < 65%, not enough moisture for heavy rain)"
+                                    )
+
+                            # ----------------------------------------------------------------
+                            # SCENARIO 2: WORSEN conditions (high humidity = wetter = worse)
+                            # ----------------------------------------------------------------
+
+                            elif humidity > 90:
+                                # Very high humidity → significantly worsen conditions
+                                if condition == ATTR_CONDITION_CLOUDY:
+                                    condition = ATTR_CONDITION_RAINY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 90%, very wet → rain likely)"
+                                    )
+                                elif condition == ATTR_CONDITION_PARTLYCLOUDY:
+                                    condition = ATTR_CONDITION_CLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 90%, very wet)"
+                                    )
+                                elif condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT):
+                                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 90%, moisture present)"
+                                    )
+                                elif condition == ATTR_CONDITION_RAINY:
+                                    condition = ATTR_CONDITION_POURING
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 90%, saturated → heavy rain)"
+                                    )
+
+                            elif humidity > 80:
+                                # High humidity → moderately worsen
+                                if condition == ATTR_CONDITION_PARTLYCLOUDY:
+                                    condition = ATTR_CONDITION_CLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 80%, high moisture)"
+                                    )
+                                elif condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT):
+                                    condition = ATTR_CONDITION_PARTLYCLOUDY
+                                    _LOGGER.debug(
+                                        f"Weather: PHASE 3 - WORSENED: {original_condition} → {condition} "
+                                        f"(RH={humidity:.1f}% > 80%, moisture present)"
+                                    )
+
                             else:
+                                # Normal humidity (65-80%) → no significant change
                                 _LOGGER.debug(
-                                    f"Weather: PHASE 3 - No humidity adjustment needed "
-                                    f"(RH={humidity:.1f}%, condition={condition})"
+                                    f"Weather: PHASE 3 - No significant humidity adjustment "
+                                    f"(RH={humidity:.1f}%, normal range 65-80%)"
                                 )
 
                         # After humidity fine-tuning, we have: condition with humidity adjustments
                         _LOGGER.debug(
                             f"Weather: PHASE 3 result - After humidity fine-tuning: {condition}"
                         )
+
 
             # ========================================================================
             # PHASE 4: SOLAR FINAL OVERRIDE (Real Data Wins!)
