@@ -139,6 +139,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
         self._last_rain_check_time = None  # Track when we last checked (for rate calculation)
         self._hail_conditions_present = False  # Track if atmospheric conditions favor hail (v3.1.10)
+        self._theoretical_max_solar = None  # Cache calculated theoretical max (for solar_radiation_enhanced.yaml)
 
         # Log rain sensor configuration at startup
         rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
@@ -553,6 +554,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if elevation > 0:
                 elevation_factor = 1 + (elevation / 1000) * 0.12
                 theoretical_max *= elevation_factor
+
+            # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
+            self._theoretical_max_solar = theoretical_max
 
             # WMO: Use any positive solar radiation value (not just >50 W/m²)
             # This allows accurate cloudiness detection even in low-light conditions
@@ -1206,20 +1210,24 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # Solar constant (1361 W/m²) × atmospheric transmission
                 solar_constant = 1361  # W/m² at top of atmosphere
 
-                # Atmospheric transmission coefficient (0.7-0.8 for clear sky)
-                # Varies with air mass: more atmosphere = more absorption
-                transmission = 0.7 ** (air_mass ** 0.678)
+                # Atmospheric transmission with Linke turbidity (WMO standard)
+                # Linke turbidity factor: 2.0-3.0 (clean) to 5.0-6.0 (polluted urban)
+                # Standard value: 3.0 for typical urban conditions
+                linke_turbidity = 3.0
+                transmission = math.exp(-0.09 * air_mass * linke_turbidity)
 
                 # Maximum solar radiation at sea level for current sun position
                 max_solar_sea_level = solar_constant * transmission * max(0.0, sin_elevation)
 
                 # 6. Adjust for elevation (thinner atmosphere at higher altitude)
-                # For every 1000m elevation: ~10% more solar radiation
-                # Formula: radiation increases by ~7-12% per 1000m (we use 10%)
-                elevation_factor = 1 + (elevation / 1000) * 0.10
+                # Formula: ~12% increase per 1000m (WMO standard, matches cloud_coverage)
+                elevation_factor = 1 + (elevation / 1000) * 0.12
 
                 # Final theoretical maximum for clear sky at this location and time
                 theoretical_max = max_solar_sea_level * elevation_factor
+
+                # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
+                self._theoretical_max_solar = theoretical_max
 
                 _LOGGER.debug(
                     f"Weather: Solar calculation - lat={latitude:.1f}°, elev={elevation}m, "
@@ -2111,6 +2119,11 @@ class LocalWeatherForecastWeather(WeatherEntity):
         if "fog_risk" in attrs:
             fog_risk = attrs["fog_risk"]
             attrs["visibility_estimate"] = get_visibility_estimate(self.hass, fog_risk)
+
+        # Export theoretical_max_solar for use in solar_radiation_enhanced.yaml
+        # This ensures EXACT synchronization (Python math.sin/exp vs Jinja2 approximations)
+        if self._theoretical_max_solar is not None:
+            attrs["theoretical_max_solar"] = round(self._theoretical_max_solar, 1)
 
         attrs["attribution"] = "Local Weather Forecast based on Zambretti and Negretti-Zambra algorithms"
 
