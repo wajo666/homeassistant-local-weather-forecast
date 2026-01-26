@@ -158,23 +158,38 @@ def forecast_code_to_condition(
         # 13-14: Showery, bright intervals → cloudy (showers ≠ continuous rain!)
         condition = "cloudy"
     elif code <= 17:
-        # 15-17: Changeable/Unsettled with rain prediction
-        # For CURRENT state (0h): Show cloudiness only (rain sensor determines precipitation)
-        # For FUTURE forecast (1-24h): Show predicted precipitation
-        if is_current_state:
-            condition = "cloudy"  # Current: heavy clouds (rain conditions but not raining yet)
-        else:
-            condition = "rainy"   # Future: predicted precipitation
+        # 15-17: Changeable/Unsettled with "rain LATER" prediction
+        # These forecasts say "neskôr dáž��" (rain later, 3-6h), NOT "dážď teraz" (rain now)
+        # Example texts:
+        #   15: "Changeable, some rain" (premenlivé s občasným dažďom)
+        #   16: "Unsettled, short fine intervals" (nestále s krátkymi jasnými intervalmi)
+        #   17: "Unsettled, rain later" (nestále, NESKÔR dážď) ← KEY!
+        #
+        # CORRECT MAPPING:
+        # - Always map to "cloudy" (heavy clouds, rain threat, but NOT raining yet)
+        # - Rain sensor determines if actually precipitating
+        # - For 3-6h forecasts, these will naturally progress to rainy codes (18-23)
+        condition = "cloudy"  # Heavy clouds with rain threat (but not raining yet)
 
     # Rainy weather (18-23)
     elif code <= 23:
-        # 18-23: Rain at times, very unsettled
-        # For CURRENT state (0h): Show cloudiness only
-        # For FUTURE forecast (1-24h): Show predicted precipitation
+        # 18-23: ACTIVE rain predictions ("rain at times", "frequent rain", "rain now")
+        # These forecasts say "dážď" (rain NOW/frequent), NOT "neskôr dážď" (rain later)
+        # Example texts:
+        #   18: "Unsettled, rain at times" (nestále s občasným dažďom)
+        #   19: "Very unsettled, finer at times" (veľmi premenlivé a daždivé)
+        #   20: "Rain at times, worse later" (občasný dážď, neskôr zhoršenie)
+        #   21: "Rain at times, very unsettled" (občasný dážď, veľmi nestále)
+        #   22: "Rain at frequent intervals" (častý dážď)
+        #   23: "Very unsettled, rain" (dážď, veľmi nestále)
+        #
+        # CORRECT MAPPING:
+        # - For CURRENT state (0h): Show cloudiness only (rain sensor determines actual precipitation)
+        # - For FORECAST (1-24h): Show predicted precipitation (rainy)
         if is_current_state:
-            condition = "cloudy"  # Current: overcast (rain conditions)
+            condition = "cloudy"  # Current: overcast (rain conditions, sensor determines if raining)
         else:
-            condition = "rainy"   # Future: predicted precipitation
+            condition = "rainy"   # Forecast: predicted active precipitation
 
     # Very unsettled, stormy (24-25)
     elif code == 24:

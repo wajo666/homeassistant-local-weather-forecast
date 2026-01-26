@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [3.1.10] - 2026-01-25
+## [3.1.10] - 2026-01-26
 
 ### ✨ Added
 - **100% WMO Compliant** - Pressure thresholds now follow official WMO meteorological standards
@@ -23,10 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Visibility** - 100% WMO compliant calculation
 - **Startup** - Plugin waits for sensors before starting
 - **Forecast Models** - Improved Zambretti and Negretti calculations
+- **Hourly Forecasts** - Now show realistic progression (cloudy → rainy instead of rainy everywhere)
+- **Daily Forecasts** - Highlight worst weather when conditions are tied (storms beat sunny)
+- **"Rain Later" Code** - Code 17 now correctly shows cloudy (not rainy) until rain starts
 
 ### 📊 Impact
 - **Accuracy:** Improved from ~75% to ~85%
 - **Standards:** 100% WMO compliant
+- **Better planning:** See when rain actually starts, no false alarms
 
 ---
 

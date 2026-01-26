@@ -15,22 +15,28 @@ class TestForecastConditionMapping:
     """Test forecast code to condition mapping (without temperature conversion)."""
 
     def test_rain_codes_stay_rainy(self):
-        """Test rain codes return rainy regardless of temperature.
+        """Test rain codes return correct condition based on timeframe.
+
+        - Codes 15-17: "Rain LATER" → cloudy (not raining yet)
+        - Codes 18+: "Rain NOW/frequent" → rainy (for forecast)
 
         Temperature-based conversion is disabled - only rain sensor determines
         actual precipitation type (rain/snow/mixed).
         """
-        # Code 15 = Some Rain → rainy
-        result = forecast_code_to_condition(15, is_night=False, temperature=10.0)
-        assert result == "rainy"
+        # Code 15 = Some Rain (later) → cloudy (current state)
+        result = forecast_code_to_condition(15, is_night=False, temperature=10.0, is_current_state=True)
+        assert result == "cloudy"
 
-        # Same result at freezing temperature (conversion disabled)
-        result = forecast_code_to_condition(15, is_night=False, temperature=0.0)
-        assert result == "rainy"
+        # Same code for forecast → still cloudy (rain comes later, not in 1-3h)
+        result = forecast_code_to_condition(15, is_night=False, temperature=0.0, is_current_state=False)
+        assert result == "cloudy"
 
-        # Code 18 = Rain At Times → rainy
-        result = forecast_code_to_condition(18, is_night=False, temperature=-5.0)
-        assert result == "rainy"
+        # Code 18 = Rain At Times → rainy (for FORECAST, not current)
+        result_current = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=True)
+        assert result_current == "cloudy"  # Current: sensor determines precipitation
+
+        result_forecast = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=False)
+        assert result_forecast == "rainy"  # Forecast: predicted active rain
 
     def test_lightning_stays_unchanged(self):
         """Test lightning-rainy stays regardless of temperature."""
@@ -53,17 +59,17 @@ class TestForecastConditionMapping:
 
     def test_no_temperature_provided(self):
         """Test behavior when temperature is None."""
-        # Code 15 = Some Rain, no temp → rainy
+        # Code 15 = Some Rain (later), no temp → cloudy (not raining yet)
         result = forecast_code_to_condition(15, is_night=False, temperature=None)
-        assert result == "rainy"
+        assert result == "cloudy"
 
-        # Code 20 = Rain At Times, Worse Later → rainy
-        result = forecast_code_to_condition(20, is_night=False, temperature=None)
-        assert result == "rainy"
+        # Code 20 = Rain At Times, Worse Later → rainy (for FORECAST)
+        result_forecast = forecast_code_to_condition(20, is_night=False, temperature=None, is_current_state=False)
+        assert result_forecast == "rainy"
 
-        # Code 24 = Stormy → pouring
-        result = forecast_code_to_condition(24, is_night=False, temperature=None)
-        assert result == "pouring"
+        # Code 24 = Stormy → pouring (for FORECAST)
+        result_forecast = forecast_code_to_condition(24, is_night=False, temperature=None, is_current_state=False)
+        assert result_forecast == "pouring"
 
     def test_pouring_code(self):
         """Test pouring code returns pouring."""

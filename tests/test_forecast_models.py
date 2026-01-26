@@ -364,7 +364,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_storm(self):
         """Test storm detection for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Stormy, much rain",
@@ -375,7 +375,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_storm(self):
         """Test storm detection for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Thunder and gale",
@@ -386,7 +386,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_heavy_rain(self):
         """Test heavy rain (rainy) for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Heavy rain",
@@ -397,7 +397,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_rain(self):
         """Test partlycloudy detection for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Polooblačno, miestami dážď.",
@@ -408,7 +408,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_fair_day(self):
         """Test fair weather during day for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Settled fine",
@@ -420,7 +420,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_fair_night(self):
         """Test fair weather during night for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Settled fine",
@@ -432,7 +432,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_fair_day(self):
         """Test fair weather during day for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Pekné počasie!",
@@ -444,7 +444,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_fair_night(self):
         """Test fair weather during night for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Stabilne pekné počasie!",
@@ -456,7 +456,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_unsettled_day(self):
         """Test unsettled weather during day for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         # Test text WITHOUT rain keywords -> partlycloudy
         condition = map_forecast_to_condition(
@@ -469,7 +469,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_unsettled_night(self):
         """Test unsettled weather during night for Zambretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Changeable",
@@ -482,7 +482,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_partly_cloudy(self):
         """Test partly cloudy for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Polooblačno",
@@ -494,7 +494,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_cloudy(self):
         """Test fully cloudy for Negretti."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Oblačno, zamračené",
@@ -504,19 +504,22 @@ class TestUniversalConditionMapping:
         assert condition == "cloudy"
 
     def test_combined_forecast_rainy(self):
-        """Test Combined forecast rain detection."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        """Test Combined forecast rain detection (keywords map to code 15 = cloudy)."""
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
+        # "Rain" keyword → code 15 ("Changeable, some rain")
+        # Code 15 = cloudy (rain threat, not actively raining)
         condition = map_forecast_to_condition(
             forecast_text="Rain at times, later worse",
             forecast_num=None,
             source="Combined"
         )
-        assert condition == "rainy"
+        # Code 15 = cloudy (rain threat/later, not rainy now)
+        assert condition == "cloudy"
 
     def test_default_fallback_day(self):
         """Test default fallback during day."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Unknown forecast",
@@ -528,7 +531,7 @@ class TestUniversalConditionMapping:
 
     def test_default_fallback_night(self):
         """Test default fallback during night."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Unknown forecast",
@@ -542,16 +545,17 @@ class TestUniversalConditionMapping:
 
     def test_slovak_keywords(self):
         """Test Slovak language keywords work correctly."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Test Slovak rain
+        # Test Slovak rain keyword → code 15 = cloudy (rain threat)
         condition_rain = map_forecast_to_condition(
             forecast_text="Dážď a zrážky",
             source="Slovak"
         )
-        assert condition_rain == "rainy"
+        # "Dážď" keyword → code 15 = cloudy (not actively raining, threat of rain)
+        assert condition_rain == "cloudy"
 
-        # Test Slovak cloudy
+        # Test Slovak cloudy keyword → code 13 = cloudy
         condition_cloudy = map_forecast_to_condition(
             forecast_text="Zamračené",
             source="Slovak"
@@ -569,7 +573,7 @@ class TestUniversalConditionMapping:
 
     def test_zambretti_fair_weather_numbers(self):
         """Test Zambretti fair weather detection for numbers 0-5."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         # Zambretti 0-5 should be sunny (if no unsettled keywords)
         for num in range(6):  # 0, 1, 2, 3, 4, 5
@@ -592,7 +596,7 @@ class TestUniversalConditionMapping:
 
     def test_negretti_fair_weather_numbers(self):
         """Test Negretti fair weather detection for numbers 0-2."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         # Negretti 0-2 should be sunny (if no unsettled keywords)
         for num in range(3):  # 0, 1, 2
@@ -614,24 +618,24 @@ class TestUniversalConditionMapping:
         assert condition_3 == "partlycloudy", "Negretti #3 should default to partlycloudy"
 
     def test_zambretti_fair_with_unsettled_mention(self):
-        """Test that unsettled keywords override fair number."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        """Test Zambretti fair weather with 'rain later' becomes cloudy."""
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Zambretti #4 normally fair, but "later worse" should prevent sunny
+        # Zambretti #4 normally fair, but "later rain" keyword → code 15
         condition = map_forecast_to_condition(
             forecast_text="Fine, but later rain",
             forecast_num=4,
             is_night_func=lambda: False,
             source="Zambretti"
         )
-        # Should NOT be sunny because of "rain" keyword
+        # "rain" keyword → code 15 = cloudy (rain threat/later, not rainy now)
+        # This prevents showing "sunny" when rain is predicted later
         assert condition != "sunny", "Should not be sunny with 'rain' in text"
-        # Should be rainy because of "rain" keyword
-        assert condition == "rainy"
+        assert condition == "cloudy"  # Heavy clouds, rain threat
 
     def test_negretti_clear_night(self):
         """Test Negretti fair weather at night becomes clear-night."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         condition = map_forecast_to_condition(
             forecast_text="Stabilne pekné počasie!",

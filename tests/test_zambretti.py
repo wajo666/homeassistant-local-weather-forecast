@@ -475,7 +475,7 @@ class TestSeasonalIconMapping:
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_rising_pressure_summer_vs_winter(self, mock_datetime):
         """Test that rising pressure gives more optimistic forecast in summer."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         p0 = 1015.0  # Moderate pressure (gives different forecast numbers)
         pressure_change = 2.5  # Rising
@@ -518,7 +518,7 @@ class TestSeasonalIconMapping:
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_steady_pressure_winter_vs_summer(self, mock_datetime):
         """Test that steady pressure gives more pessimistic forecast in winter."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         p0 = 1010.0  # Moderate pressure
         pressure_change = 0.5  # Steady
@@ -582,7 +582,7 @@ class TestSeasonalIconMapping:
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_all_months_icon_consistency(self, mock_datetime):
         """Test that icons are reasonable across all months."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         p0 = 1020.0  # High pressure
         pressure_change = 2.0  # Rising
@@ -615,7 +615,7 @@ class TestSeasonalIconMapping:
     @patch('custom_components.local_weather_forecast.zambretti.datetime')
     def test_day_night_icon_conversion(self, mock_datetime):
         """Test that sunny/clear-night conversion works in all seasons."""
-        from custom_components.local_weather_forecast.forecast_models import map_forecast_to_condition
+        from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
         # Mock winter
         mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)

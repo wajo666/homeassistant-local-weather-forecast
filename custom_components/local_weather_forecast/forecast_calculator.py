@@ -1019,54 +1019,41 @@ class HourlyForecastGenerator:
             is_night = self._is_night(future_time)
             is_daytime = not is_night
 
+            # ✅ FIX: Determine if this is CURRENT state (0-1h) or FUTURE forecast (2h+)
+            # Logic:
+            # - 0-1h: Show cloudiness (smooth transition from current weather)
+            # - 2h+: Show predicted precipitation (based on forecast model)
+            #
+            # NOTE: Hourly forecasts use ONLY forecast model (Zambretti/Negretti/Enhanced)
+            #       Rain sensor is used ONLY for current weather (weather entity state)
+            is_current_state = (hour_offset <= 1)
+
             _LOGGER.debug(
                 f"Forecast for {future_time.strftime('%Y-%m-%d %H:%M')}: "
+                f"hour_offset={hour_offset}h, is_current_state={is_current_state}, "
                 f"hour={future_time.hour:02d}, is_daytime={is_daytime}, is_night={is_night}, "
                 f"forecast_letter={forecast_letter}, forecast_num={forecast_num}, model={self.forecast_model}"
             )
 
-            # Determine weather condition using the CORRECT mapping for selected model
-            if self.forecast_model == FORECAST_MODEL_NEGRETTI and negretti_letter:
-                # Use Negretti-Zambra mapping
-                try:
-                    from .negretti_zambra import _map_zambretti_to_letter
-                    # Map Negretti number to condition via Zambretti mapping
-                    # (Negretti uses same letter system as Zambretti)
-                    condition = self.zambretti.get_condition(negretti_letter, future_time)
-                    _LOGGER.debug(
-                        f"Using Negretti-Zambra mapping: letter={negretti_letter} → condition={condition}"
-                    )
-                except Exception as e:
-                    _LOGGER.debug(f"Negretti mapping failed: {e}, falling back to Zambretti")
-                    condition = self.zambretti.get_condition(forecast_letter, future_time)
-            else:
-                # Use Zambretti mapping (default for ZAMBRETTI and ENHANCED models)
-                condition = self.zambretti.get_condition(forecast_letter, future_time)
-
-            _LOGGER.debug(
-                f"Condition for {future_time.strftime('%H:%M')}: "
-                f"model={self.forecast_model}, letter={forecast_letter} → condition={condition}"
+            # ✅ FIX: Use unified mapping with correct is_current_state parameter
+            # This ensures:
+            # - Codes 15-17 (rain LATER) → always cloudy
+            # - Codes 18-23 (rain NOW) → cloudy for 0-1h, rainy for 2h+
+            # - Codes 24-25 (storms) → cloudy for 0-1h, pouring/lightning for 2h+
+            condition = map_forecast_to_condition(
+                forecast_letter=forecast_letter,
+                forecast_num=forecast_num,
+                is_night_func=lambda: is_night,
+                temperature=future_temp,
+                source=f"HourlyForecast_{self.forecast_model}",
+                is_current_state=is_current_state
             )
 
-            # NIGHT CONVERSION for forecasts
-            # Convert ONLY sunny to clear-night during nighttime
-            # Keep partlycloudy as-is - HA shows correct moon+clouds icon automatically
-            if is_night and condition == "sunny":
-                _LOGGER.debug(
-                    f"Hourly forecast night conversion: sunny → clear-night "
-                    f"(time={future_time.strftime('%H:%M')})"
-                )
-                condition = "clear-night"
-
-            # SNOW CONVERSION for forecasts
-            # Convert rainy/pouring to snowy when temperature is at or below freezing
-            # This ensures winter precipitation displays correctly
-            if future_temp <= 2.0 and condition in ("rainy", "pouring"):
-                _LOGGER.debug(
-                    f"Hourly forecast snow conversion: {condition} → snowy "
-                    f"(temp={future_temp:.1f}°C ≤ 2°C, time={future_time.strftime('%H:%M')})"
-                )
-                condition = "snowy"
+            _LOGGER.debug(
+                f"Final condition for {future_time.strftime('%H:%M')}: "
+                f"model={self.forecast_model}, letter={forecast_letter}, "
+                f"code={forecast_num}, is_current={is_current_state} → {condition}"
+            )
 
             # Calculate rain probability from selected model (Zambretti/Negretti/Enhanced)
             # NOTE: Rain override is NOT applied to forecasts - only to current weather display
@@ -1232,14 +1219,64 @@ class DailyForecastGenerator:
             daily_temp_min = round(min(temps), 1)
 
             # Find most common condition (daytime hours only)
+            # If tie, select the worst (highest priority) condition
             daytime_hours = [
                 f for f in day_hours
                 if 7 <= datetime.fromisoformat(f["datetime"]).hour <= 19
             ]
             if daytime_hours:
                 conditions = [f["condition"] for f in daytime_hours]
-                # Get most frequent condition
-                daily_condition = max(set(conditions), key=conditions.count)
+
+                # Priority system: precipitation > cloudiness > clear
+                # Higher number = worse weather = higher priority
+                CONDITION_PRIORITY = {
+                    "lightning-rainy": 8,  # Worst: Thunderstorms
+                    "pouring": 7,          # Very bad: Heavy rain
+                    "rainy": 6,            # Bad: Rain
+                    "snowy-rainy": 6,      # Bad: Mixed precipitation
+                    "snowy": 6,            # Bad: Snow
+                    "hail": 6,             # Bad: Hail
+                    "cloudy": 4,           # Moderate: Overcast
+                    "fog": 3,              # Moderate: Fog
+                    "partlycloudy": 2,     # Good: Partly cloudy
+                    "sunny": 1,            # Best: Sunny
+                    "clear-night": 1,      # Best: Clear night
+                    "windy": 3,            # Moderate: Windy
+                    "windy-variant": 4,    # Moderate: Windy with clouds
+                    "exceptional": 9,      # Exceptional conditions
+                }
+
+                # Count frequency of each condition
+                from collections import Counter
+                condition_counts = Counter(conditions)
+
+                # Find maximum frequency
+                max_count = max(condition_counts.values())
+
+                # Get all conditions with maximum frequency (potential tie)
+                tied_conditions = [
+                    cond for cond, count in condition_counts.items()
+                    if count == max_count
+                ]
+
+                if len(tied_conditions) == 1:
+                    # No tie - use the most frequent
+                    daily_condition = tied_conditions[0]
+                    _LOGGER.debug(
+                        f"Daily condition (most frequent): {daily_condition} "
+                        f"({max_count}× out of {len(conditions)} hours)"
+                    )
+                else:
+                    # Tie detected - select the worst (highest priority)
+                    daily_condition = max(
+                        tied_conditions,
+                        key=lambda c: CONDITION_PRIORITY.get(c, 0)
+                    )
+                    _LOGGER.debug(
+                        f"Daily condition (tie-break): {daily_condition} "
+                        f"(tied with {tied_conditions} at {max_count}×, "
+                        f"selected worst with priority={CONDITION_PRIORITY.get(daily_condition, 0)})"
+                    )
             else:
                 daily_condition = day_hours[len(day_hours) // 2]["condition"]
 
