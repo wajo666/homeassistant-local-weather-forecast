@@ -2013,7 +2013,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
         dewpoint = self.native_dew_point
         if temp is not None and dewpoint is not None:
             spread = temp - dewpoint
-            fog_risk_level = get_fog_risk(temp, dewpoint)
+            humidity = self.humidity
+            fog_risk_level = get_fog_risk(temp, dewpoint, humidity)
             attrs["fog_risk"] = fog_risk_level
             attrs["dewpoint_spread"] = round(spread, 2)
             attrs["dew_point"] = round(dewpoint, 2)

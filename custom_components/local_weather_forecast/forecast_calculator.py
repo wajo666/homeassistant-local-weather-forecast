@@ -972,9 +972,9 @@ class HourlyForecastGenerator:
                 _LOGGER.debug(f"Using Negretti-Zambra forecast: {negretti_letter}")
             else:  # FORECAST_MODEL_ENHANCED - use combined_model.py
                 if negretti_letter:
-                    # ✅ USE COMBINED MODEL MODULE (✅ SIMPLIFIED)
+                    # ✅ USE COMBINED MODEL MODULE WITH TIME DECAY (v3.1.12)
                     from .combined_model import (
-                        calculate_combined_forecast,
+                        calculate_combined_forecast_with_time,
                         calculate_combined_rain_probability
                     )
 
@@ -983,12 +983,13 @@ class HourlyForecastGenerator:
                         zambretti_weight,
                         negretti_weight,
                         consensus
-                    ) = calculate_combined_forecast(
+                    ) = calculate_combined_forecast_with_time(
                         zambretti_result=["", zambretti_num],  # ✅ SIMPLIFIED: [text, code]
                         negretti_result=["", negretti_num],    # ✅ SIMPLIFIED: [text, code]
                         current_pressure=future_pressure,
                         pressure_change=pressure_change,
-                        source="HourlyForecast"
+                        hours_ahead=hour_offset,  # ✅ NEW: TIME DECAY based on forecast horizon
+                        source=f"HourlyForecast_h{hour_offset}"
                     )
 
                     # forecast_letter determined from code for rain probability

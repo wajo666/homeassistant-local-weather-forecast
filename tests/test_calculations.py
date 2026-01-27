@@ -184,22 +184,54 @@ class TestGetFogRisk:
     def test_no_fog_risk(self):
         """Test no fog risk with large temperature-dewpoint spread."""
         assert get_fog_risk(20.0, 10.0) == "none"  # spread = 10.0
+        assert get_fog_risk(20.0, 10.0, 50.0) == "none"  # with humidity
 
     def test_low_fog_risk(self):
         """Test low fog risk."""
-        assert get_fog_risk(20.0, 17.0) == "low"  # spread = 3.0 (>= 2.5 and <= 4)
+        # Without humidity - conservative spread-only estimate
+        assert get_fog_risk(20.0, 17.0) == "low"  # spread = 3.0
+        # With humidity but too dry for fog
+        assert get_fog_risk(20.0, 17.0, 50.0) == "none"  # spread = 3.0, RH too low
+        # With humidity in mist range
+        assert get_fog_risk(20.0, 17.0, 80.0) == "low"  # spread = 3.0, RH 80%
 
     def test_medium_fog_risk(self):
         """Test medium fog risk."""
-        assert get_fog_risk(10.0, 8.0) == "medium"  # spread = 2.0 (>= 1.5 and < 2.5)
+        # Without humidity - conservative estimate
+        assert get_fog_risk(10.0, 8.0) == "medium"  # spread = 2.0
+        # With humidity - WMO mist conditions
+        assert get_fog_risk(10.0, 8.0, 88.0) == "medium"  # spread = 2.0, RH 88% (mist)
 
     def test_high_fog_risk(self):
         """Test high fog risk with small spread."""
-        assert get_fog_risk(8.0, 7.0) == "high"  # spread = 1.0 (< 1.5)
+        # Without humidity
+        assert get_fog_risk(8.0, 7.0) == "high"  # spread = 1.0
+        # With high humidity - WMO fog conditions (spread < 1.0°C, RH > 90%)
+        assert get_fog_risk(8.0, 7.2, 92.0) == "high"  # spread = 0.8, RH 92% (< 1.0)
 
     def test_critical_fog_conditions(self):
         """Test critical fog conditions (spread < 1°C)."""
-        assert get_fog_risk(5.0, 4.5) == "high"  # spread = 0.5 (< 1.5)
+        # Without humidity
+        assert get_fog_risk(5.0, 4.5) == "high"  # spread = 0.5
+        # With humidity - WMO dense fog
+        assert get_fog_risk(5.0, 4.5, 96.0) == "high"  # spread = 0.5, RH 96%
+
+    def test_wmo_compliant_thresholds(self):
+        """Test WMO compliant fog detection with humidity."""
+        # WMO Code 12: Dense fog (spread < 0.5°C, RH > 95%)
+        assert get_fog_risk(10.0, 9.6, 96.0) == "high"  # spread = 0.4, RH 96%
+        
+        # WMO Code 11: Fog (spread < 1.0°C, RH > 90%)
+        assert get_fog_risk(10.0, 9.2, 91.0) == "high"  # spread = 0.8, RH 91%
+        
+        # WMO Code 10: Light fog (spread < 1.5°C, RH > 90%)
+        assert get_fog_risk(10.0, 8.8, 91.0) == "medium"  # spread = 1.2, RH 91%
+        
+        # WMO Code 30: Mist (spread < 2.5°C, RH > 85%)
+        assert get_fog_risk(10.0, 8.0, 87.0) == "medium"  # spread = 2.0, RH 87%
+        
+        # Dry air - no fog despite small spread
+        assert get_fog_risk(10.0, 9.0, 70.0) == "none"  # spread = 1.0, RH too low
 
 
 class TestCalculateRainProbabilityEnhanced:
@@ -524,9 +556,22 @@ class TestGetFrostRisk:
         assert result == "high"
 
     def test_medium_frost_risk(self):
-        """Test medium frost risk."""
-        result = get_frost_risk(-1.0, 1.0, wind_speed=2.5)
+        """Test medium frost risk - WMO compliant."""
+        # WMO: Both temperature AND dewpoint must be at/below 0°C
+        result = get_frost_risk(-1.0, -0.5, wind_speed=2.5)
         assert result == "medium"
+        
+        # Edge case: dewpoint exactly at 0°C should still be medium risk
+        result = get_frost_risk(-1.0, 0.0, wind_speed=2.5)
+        assert result == "medium"
+        
+    def test_medium_frost_risk_wmo_fix(self):
+        """Test that dewpoint > 0°C prevents medium frost risk (WMO fix)."""
+        # OLD BEHAVIOR (incorrect): dewpoint=1°C (>0°C) → medium risk ❌
+        # NEW BEHAVIOR (correct): dewpoint=1°C (>0°C) → low/none ✅
+        result = get_frost_risk(-1.0, 1.0, wind_speed=2.5)
+        # Should NOT be medium (dewpoint above freezing)
+        assert result in ["low", "none"]
 
     def test_low_frost_risk(self):
         """Test low frost risk."""

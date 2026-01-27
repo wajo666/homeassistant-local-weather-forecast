@@ -2243,7 +2243,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Get fog risk
         fog_risk = "none"
         if dewpoint is not None and temp is not None:
-            fog_risk = get_fog_risk(temp, dewpoint)
+            fog_risk = get_fog_risk(temp, dewpoint, humidity)
 
         # Get snow risk (only calculate if conditions are cold enough)
         snow_risk = "none"
@@ -2543,10 +2543,24 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.warning(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
-        # Use enhanced calculation
+        # ✅ FIXED v3.1.12: Apply weights BEFORE calling enhanced calculation
+        # This prevents Enhanced model from having artificially high base probability
+        # Example: Z=40%, N=60%, weights=0.5/0.5
+        #   OLD (BUG): base = (40 + 60) / 2 = 50% → too high!
+        #   NEW (FIX): base = (40*0.5 + 60*0.5) / 2 = (20 + 30) / 2 = 25% → correct!
+        weighted_zambretti = zambretti_prob * zambretti_weight
+        weighted_negretti = negretti_prob * negretti_weight
+        
+        _LOGGER.debug(
+            f"RainProb: Applying weights - "
+            f"Z: {zambretti_prob}% × {zambretti_weight:.2f} = {weighted_zambretti:.1f}%, "
+            f"N: {negretti_prob}% × {negretti_weight:.2f} = {weighted_negretti:.1f}%"
+        )
+
+        # Use enhanced calculation with WEIGHTED probabilities
         probability, confidence = calculate_rain_probability_enhanced(
-            zambretti_prob,
-            negretti_prob,
+            weighted_zambretti,
+            weighted_negretti,
             humidity,
             dewpoint_spread,
             temp,  # Pass temperature for cold-weather adjustments

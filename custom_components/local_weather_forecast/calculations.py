@@ -225,27 +225,93 @@ def get_comfort_level(apparent_temperature: float) -> str:
         return COMFORT_VERY_HOT
 
 
-def get_fog_risk(temperature: float, dewpoint: float) -> str:
+def get_fog_risk(
+    temperature: float,
+    dewpoint: float,
+    humidity: Optional[float] = None
+) -> str:
     """
-    Calculate fog risk based on temperature-dewpoint spread.
+    Calculate fog risk based on temperature-dewpoint spread and humidity.
+    
+    WMO (World Meteorological Organization) compliant fog detection:
+    - FOG: Visibility < 1000m, requires RH > 90%, dewpoint spread < 1.5°C
+    - MIST: Visibility 1-5km, RH 85-95%, dewpoint spread 1.5-4°C
+    
+    Without humidity sensor, uses conservative spread-only estimates.
 
     Args:
         temperature: Temperature in °C
         dewpoint: Dew point in °C
+        humidity: Optional relative humidity in % (improves accuracy)
 
     Returns:
-        Fog risk level
+        Fog risk level: none, low, medium, high
     """
     spread = abs(temperature - dewpoint)
 
+    # No fog if spread > 4°C (only light mist possible)
     if spread > 4:
         return FOG_RISK_NONE
-    elif spread >= 2.5:
-        return FOG_RISK_LOW
-    elif spread >= 1.5:
-        return FOG_RISK_MEDIUM
-    else:
+
+    # If humidity not available, use conservative spread-only estimates
+    # (Less accurate but better than nothing)
+    if humidity is None:
+        _LOGGER.debug(
+            f"FogRisk: No humidity sensor - using spread-only estimate "
+            f"(spread={spread:.1f}°C)"
+        )
+        if spread >= 2.5:
+            return FOG_RISK_LOW  # Mist possible
+        elif spread >= 1.5:
+            return FOG_RISK_MEDIUM  # Light fog possible
+        else:
+            return FOG_RISK_HIGH  # Fog likely
+
+    # WMO compliant fog risk with humidity (accurate)
+    # Based on WMO-No. 8 (Guide to Instruments and Methods of Observation)
+    
+    if spread < 0.5 and humidity > 95:
+        # WMO Code 12: Dense fog (visibility < 400m)
+        _LOGGER.debug(
+            f"FogRisk: HIGH - Dense fog conditions "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%, WMO code 12)"
+        )
         return FOG_RISK_HIGH
+    elif spread < 1.0 and humidity > 90:
+        # WMO Code 11: Fog (visibility 400-1000m)
+        _LOGGER.debug(
+            f"FogRisk: HIGH - Fog likely "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%, WMO code 11)"
+        )
+        return FOG_RISK_HIGH
+    elif spread < 1.5 and humidity > 90:
+        # WMO Code 10: Light fog (visibility 500-1000m)
+        _LOGGER.debug(
+            f"FogRisk: MEDIUM - Light fog possible "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%, WMO code 10)"
+        )
+        return FOG_RISK_MEDIUM
+    elif spread < 2.5 and humidity > 85:
+        # WMO Code 30: Mist (visibility 1-5km)
+        _LOGGER.debug(
+            f"FogRisk: MEDIUM - Mist conditions "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%, WMO code 30)"
+        )
+        return FOG_RISK_MEDIUM
+    elif spread < 4.0 and humidity > 75:
+        # Light mist, reduced visibility
+        _LOGGER.debug(
+            f"FogRisk: LOW - Light mist possible "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%)"
+        )
+        return FOG_RISK_LOW
+    else:
+        # Dry air or spread too large
+        _LOGGER.debug(
+            f"FogRisk: NONE - Conditions not met "
+            f"(spread={spread:.1f}°C, RH={humidity:.1f}%)"
+        )
+        return FOG_RISK_NONE
 
 
 def calculate_rain_probability_enhanced(
@@ -716,10 +782,15 @@ def get_frost_risk(
         return result
 
     # MEDIUM RISK: Frost formation likely
-    # Temperature 0 to -2°C, dewpoint near 0°C
-    if temperature <= 0 and dewpoint <= 2:
+    # Temperature 0 to -2°C, dewpoint ALSO at or below 0°C (both must be freezing!)
+    # WMO: Frost forms when both air temperature AND dewpoint are at/below 0°C
+    if -2 < temperature <= 0 and dewpoint <= 0:
         result = FROST_RISK_MEDIUM if (wind_speed is not None and wind_speed < 3) else FROST_RISK_LOW
-        _LOGGER.debug(f"FrostRisk: {result} - T={temperature:.1f}°C (≤0°C), Dewpoint={dewpoint:.1f}°C, Wind={wind_speed if wind_speed else 'unknown'} m/s")
+        _LOGGER.debug(
+            f"FrostRisk: {result} - T={temperature:.1f}°C (-2 to 0°C), "
+            f"Dewpoint={dewpoint:.1f}°C (≤0°C), Wind={wind_speed if wind_speed else 'unknown'} m/s "
+            f"(WMO: both temp and dewpoint at/below freezing)"
+        )
         return result
 
     # LOW RISK: Near-freezing conditions
