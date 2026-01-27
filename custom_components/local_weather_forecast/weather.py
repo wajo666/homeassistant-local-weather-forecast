@@ -936,31 +936,30 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     return ATTR_CONDITION_HAIL
 
                                 # RAIN or POURING - Liquid precipitation
-                                # For rate sensors (mm/h), we can detect intensity
-                                # For accumulation sensors (mm), we cannot reliably detect intensity
+                                # Detect intensity based on sensor value (works for both mm and mm/h)
+                                # WMO: > 10 mm/h = heavy rain (pouring)
+                                # Note: Some sensors report mm but are actually mm/h (Netatmo misconfiguration)
 
-                                # Check if this is a rate sensor with high intensity
+                                # Check for high intensity regardless of unit
                                 is_pouring = False
-                                if unit == "mm/h" and current_rain > 10:
-                                    # Rate sensor + high rate + warm temp → POURING
-                                    # WMO: > 10 mm/h = heavy rain (pouring)
+                                if current_rain > 10 and temp > 10:
+                                    # High rate + warm temp → POURING
                                     # Warm temperature (> 10°C) increases likelihood of convective rain
-                                    if temp > 10:
-                                        is_pouring = True
+                                    is_pouring = True
 
                                 if is_pouring:
                                     # POURING - Heavy convective rain
                                     if fog_also_present and dewpoint is not None and humidity is not None:
                                         _LOGGER.info(
                                             f"Weather: ⚠️ POURING + FOG detected simultaneously! "
-                                            f"rate={current_rain:.1f} mm/h (heavy rain), temp={temp:.1f}°C, "
+                                            f"value={current_rain:.1f} {unit} (heavy rain), temp={temp:.1f}°C, "
                                             f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
                                             f"Showing POURING (precipitation priority), fog_detected=True in attributes."
                                         )
                                     else:
                                         _LOGGER.debug(
                                             f"Weather: Heavy rain (POURING) detected - "
-                                            f"rate={current_rain:.1f} mm/h, temp={temp:.1f}°C"
+                                            f"value={current_rain:.1f} {unit}, temp={temp:.1f}°C"
                                         )
                                     return ATTR_CONDITION_POURING
                                 else:
@@ -1138,9 +1137,21 @@ class LocalWeatherForecastWeather(WeatherEntity):
             #   * Winter afternoon: 15-50 W/m²
             #   * Overcast morning: 20-100 W/m²
             # - Night (0 W/m²): Correctly skipped by sun.sun check + theoretical_max > 0 check
-            if (solar_radiation is not None
+            
+            # Check if we can use solar (daytime with sun above horizon)
+            can_use_solar = (solar_radiation is not None
                 and self.hass.states.is_state('sun.sun', 'above_horizon')
-                and solar_radiation > 0):
+                and solar_radiation > 0)
+            
+            if not can_use_solar and solar_sensor_id:
+                # Solar sensor configured but cannot be used (night or no sun)
+                _LOGGER.debug(
+                    f"Weather: Solar sensor configured but not usable "
+                    f"(sun below horizon or radiation=0). "
+                    f"Will use PRESSURE + HUMIDITY for cloudiness determination."
+                )
+            
+            if can_use_solar:
 
                 # Use sun.sun entity for accurate solar elevation - no manual calculations needed!
                 # This is simpler and more accurate than manual latitude/longitude/time calculations
@@ -1268,17 +1279,19 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
                                 )
 
-                            # Solar cloudiness determined - store hint for SECTION 2
+                            # Solar cloudiness determined
+                            # If solar is available, use it directly for cloudiness (85% accuracy)
+                            # No need to compare with pressure - solar is real observation!
                             # NOTE: Rain sensor is handled in PRIORITY 1 (already checked above)
                             # Solar ONLY determines cloudiness, NOT precipitation
                             if solar_cloudiness is not None:
                                 _LOGGER.debug(
-                                    f"Weather: Solar cloudiness={solar_cloudiness}, "
-                                    f"continuing to SECTION 2 (forecast determination). "
-                                    f"Rain is handled by PRIORITY 1, solar only shows clouds."
+                                    f"Weather: Solar cloudiness={solar_cloudiness} (transparency={sky_transparency*100:.0f}%). "
+                                    f"Using solar directly - real measurement (85% accuracy) > pressure estimate (60-70%). "
+                                    f"Rain/snow handled by PRIORITY 1 (rain sensor)."
                                 )
 
-                            # Fall through to SECTION 2 with solar_cloudiness hint
+                            # Fall through to PHASE 2 (will use solar if available)
             elif solar_radiation is not None and solar_radiation <= 10:
                 _LOGGER.debug(
                     f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 10), "
@@ -1295,45 +1308,58 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # - Example: Falling pressure → predicts "rain later" (but NOW may be clear!)
             # - Result: Often shows "cloudy" when actually sunny
             #
-            # ✅ DIRECT PRESSURE MAPPING:
+            # ✅ DIRECT PRESSURE MAPPING (ABSOLUTE VALUES ONLY):
             # - Based on WMO/NOAA meteorological thresholds
             # - Reflects CURRENT atmospheric cloudiness
             # - More accurate for immediate state (0h)
-            # - Simpler and more reliable than trend-based prediction
+            # - Uses ABSOLUTE pressure only (NO TREND!)
+            # - Pressure trend reserved for FORECAST (Zambretti/Negretti, hours 1-24)
             #
             # ⚠️ CRITICAL: Maps to CLOUDINESS ONLY if rain sensor exists!
             # - Rain sensor (PRIORITY 1) determines if it's raining
             # - This mapping shows cloud conditions based on pressure
             # - Low pressure = cloudy (rain LIKELY), not "rainy" (rain NOW)
             #
-            # Scientific basis:
-            # - < 980 hPa: Deep cyclone → CLOUDY (storm clouds)
-            # - 980-1008 hPa: Low pressure → CLOUDY (rain likely)
-            # - 1008-1015 hPa: Slightly low → CLOUDY
-            # - 1015-1023 hPa: Normal → PARTLY CLOUDY
-            # - > 1023 hPa: High pressure → CLEAR/SUNNY
+            # WMO pressure thresholds (absolute values):
+            # - < 970 hPa: Intense Low → CLOUDY (storm clouds)
+            # - 970-990 hPa: Deep Low → CLOUDY (strong cyclone)
+            # - 990-1010 hPa: Low → CLOUDY (unsettled)
+            # - 1010-1013 hPa: Below normal → CLOUDY
+            # - 1013-1020 hPa: Normal → PARTLY CLOUDY
+            # - 1020-1030 hPa: High → SUNNY/CLEAR
+            # - ≥ 1030 hPa: Very High → SUNNY/CLEAR
             # ========================================================================
 
-            # 🚨 CRITICAL: Check if we have rain sensor configured (used in PHASE 2 and PHASE 3)
-            # If rain sensor exists, it is ABSOLUTE AUTHORITY for precipitation
+            # 🚨 CRITICAL: Check if we have rain sensor AVAILABLE and WORKING
+            # If rain sensor exists AND is available, it is ABSOLUTE AUTHORITY for precipitation
             # Pressure and humidity can only determine CLOUDINESS, not rain presence
+            #
+            # IMPORTANT: Check actual sensor availability, not just configuration!
+            # - Configured but offline/unavailable → treat as NO sensor (pressure can indicate rain)
+            # - Configured and available → treat as HAS sensor (pressure shows only cloudiness)
             rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
-            has_rain_sensor = rain_sensor_id is not None
+            has_rain_sensor = False
+            if rain_sensor_id:
+                rain_sensor = self.hass.states.get(rain_sensor_id)
+                if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
+                    # Rain sensor is configured AND available → use it as authority
+                    has_rain_sensor = True
+                    _LOGGER.debug(
+                        f"Weather: Rain sensor AVAILABLE ({rain_sensor_id}), "
+                        f"pressure will show cloudiness only (precipitation from sensor)"
+                    )
+                else:
+                    # Rain sensor configured but NOT available → pressure can indicate precipitation
+                    _LOGGER.debug(
+                        f"Weather: Rain sensor configured ({rain_sensor_id}) but NOT AVAILABLE, "
+                        f"pressure will indicate precipitation likelihood"
+                    )
 
             current_condition_from_pressure = None
 
             pressure = self.native_pressure
             if pressure is not None:
-                # Get pressure change for trend analysis (optional enhancement)
-                pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
-                pressure_change = 0.0
-                if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
-                    try:
-                        pressure_change = float(pressure_change_sensor.state)
-                    except (ValueError, TypeError):
-                        pass
-
-                # Get temperature for rain/snow determination
+                # Get temperature for rain/snow determination (used in high-altitude snow logic)
                 temperature = self.native_temperature
 
 
@@ -1374,110 +1400,154 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low, rain sensor active → cloudiness only)"
                         )
                     else:
-                        # No rain sensor → predict precipitation
-                        current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → lightning-rainy "
-                            f"(pressure={pressure:.1f} hPa < 970, WMO: Intense Low → severe storms, no rain sensor)"
-                        )
+                        # No rain sensor → predict precipitation type based on temperature
+                        if temperature is not None:
+                            if temperature < -1:
+                                # Cold → SNOWY
+                                current_condition_from_pressure = ATTR_CONDITION_SNOWY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → snowy "
+                                    f"(pressure={pressure:.1f} hPa < 970, temp={temperature:.1f}°C < -1°C, WMO: Intense Low → snow, no rain sensor)"
+                                )
+                            elif -1 <= temperature <= 4:
+                                # Transition zone → MIXED
+                                current_condition_from_pressure = ATTR_CONDITION_SNOWY_RAINY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → snowy-rainy "
+                                    f"(pressure={pressure:.1f} hPa < 970, temp={temperature:.1f}°C in transition zone, WMO: Intense Low → mixed, no rain sensor)"
+                                )
+                            else:
+                                # Warm → LIGHTNING-RAINY
+                                current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → lightning-rainy "
+                                    f"(pressure={pressure:.1f} hPa < 970, temp={temperature:.1f}°C > 4°C, WMO: Intense Low → severe storms, no rain sensor)"
+                                )
+                        else:
+                            # Temperature unknown → default to rain
+                            current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
+                            _LOGGER.debug(
+                                f"Weather: PRESSURE → lightning-rainy "
+                                f"(pressure={pressure:.1f} hPa < 970, temp unknown, WMO: Intense Low → severe storms, no rain sensor)"
+                            )
 
                 elif pressure < 990:  # ✅ WMO STANDARD: Deep Low (970-990 hPa)
                     # WMO: DEEP LOW (970-990 hPa)
-                    # Strong cyclone, heavy precipitation
-                    # Precipitation probability: 70-95%
+                    # Strong cyclone, heavy precipitation likely
+                    # Cloudiness: 80-100% (overcast)
                     if has_rain_sensor:
-                        # Rain sensor will handle precipitation → show cloudiness only
+                        # Rain sensor handles precipitation → show cloudiness only
                         current_condition_from_pressure = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → cloudy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low, rain sensor active → cloudiness only)"
-                        )
-                    elif pressure_change <= -3.5:  # WMO Code 0-3: Rapid fall
-                        # Rapidly intensifying → severe storms
-                        current_condition_from_pressure = ATTR_CONDITION_LIGHTNING_RAINY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → lightning-rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid fall {pressure_change:.1f} → intensifying storm, no rain sensor)"
-                        )
-                    elif pressure_change <= -1.5:
-                        # Falling → heavy rain
-                        current_condition_from_pressure = ATTR_CONDITION_POURING
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → pouring "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO falling {pressure_change:.1f} → heavy rain, no rain sensor)"
-                        )
-                    elif pressure_change >= 3.5:  # WMO Code 5-8: Rapid rise
-                        # Rapidly improving → moderate rain
-                        current_condition_from_pressure = ATTR_CONDITION_RAINY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO rapid rise {pressure_change:+.1f} → improving, no rain sensor)"
+                            f"(pressure={pressure:.1f} hPa 970-990, WMO: Deep Low, rain sensor active → cloudiness only)"
                         )
                     else:
-                        # Stable/moderate → rain
-                        current_condition_from_pressure = ATTR_CONDITION_RAINY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 990, WMO: Deep Low → rain, no rain sensor)"
-                        )
+                        # No rain sensor → WMO Deep Low = HEAVY precipitation
+                        # Check temperature to determine type
+                        if temperature is not None:
+                            if temperature < -1:
+                                # Cold → SNOWY
+                                current_condition_from_pressure = ATTR_CONDITION_SNOWY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → snowy "
+                                    f"(pressure={pressure:.1f} hPa 970-990, temp={temperature:.1f}°C < -1°C, WMO: Deep Low → heavy snow, no rain sensor)"
+                                )
+                            elif -1 <= temperature <= 4:
+                                # Transition zone → MIXED
+                                current_condition_from_pressure = ATTR_CONDITION_SNOWY_RAINY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → snowy-rainy "
+                                    f"(pressure={pressure:.1f} hPa 970-990, temp={temperature:.1f}°C in transition zone, WMO: Deep Low → heavy mixed, no rain sensor)"
+                                )
+                            else:
+                                # Warm → POURING
+                                current_condition_from_pressure = ATTR_CONDITION_POURING
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → pouring "
+                                    f"(pressure={pressure:.1f} hPa 970-990, temp={temperature:.1f}°C > 4°C, WMO: Deep Low → heavy precipitation, no rain sensor)"
+                                )
+                        else:
+                            # Temperature unknown → default to rain
+                            current_condition_from_pressure = ATTR_CONDITION_POURING
+                            _LOGGER.debug(
+                                f"Weather: PRESSURE → pouring "
+                                f"(pressure={pressure:.1f} hPa 970-990, temp unknown, WMO: Deep Low → heavy precipitation, no rain sensor)"
+                            )
 
                 elif pressure < 1010:  # ✅ WMO STANDARD: Low (990-1010 hPa)
                     # WMO: LOW (990-1010 hPa)
-                    # Cyclonic activity, unsettled
-                    # Precipitation probability: 30-70%
+                    # Cyclonic activity, unsettled weather
+                    # Split at 1000 hPa: below = rain likely, above = unsettled/cloudy
                     if has_rain_sensor:
-                        # Rain sensor will handle precipitation → show cloudiness only
+                        # Rain sensor handles precipitation → show cloudiness only
                         current_condition_from_pressure = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → cloudy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO: Low, rain sensor active → cloudiness only)"
-                        )
-                    elif pressure_change <= -3.0:
-                        # Rapid fall → rain developing
-                        current_condition_from_pressure = ATTR_CONDITION_RAINY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → rainy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid fall {pressure_change:.1f} → rain developing, no rain sensor)"
-                        )
-                    elif pressure_change <= -1.5:
-                        # Moderate fall → cloudy (rain threat)
-                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → cloudy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO falling {pressure_change:.1f} → deteriorating)"
-                        )
-                    elif pressure_change >= 3.5:  # WMO Code 5-8: Rapid rise
-                        # Rapid rise → improving
-                        current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → partlycloudy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO rapid rise {pressure_change:+.1f} → improving)"
+                            f"(pressure={pressure:.1f} hPa 990-1010, WMO: Low, rain sensor active → cloudiness only)"
                         )
                     else:
-                        # Stable → cloudy/unsettled
-                        current_condition_from_pressure = ATTR_CONDITION_CLOUDY
-                        _LOGGER.debug(
-                            f"Weather: PRESSURE → cloudy "
-                            f"(pressure={pressure:.1f} hPa < 1010, WMO: Low → unsettled)"
-                        )
+                        # No rain sensor → split at 1000 hPa
+                        if pressure < 1000:
+                            # 990-1000 hPa → precipitation likely
+                            # Check temperature to determine type
+                            if temperature is not None:
+                                if temperature < -1:
+                                    # Cold → SNOWY
+                                    current_condition_from_pressure = ATTR_CONDITION_SNOWY
+                                    _LOGGER.debug(
+                                        f"Weather: PRESSURE → snowy "
+                                        f"(pressure={pressure:.1f} hPa 990-1000, temp={temperature:.1f}°C < -1°C, WMO: Low → snow likely, no rain sensor)"
+                                    )
+                                elif -1 <= temperature <= 4:
+                                    # Transition zone → MIXED
+                                    current_condition_from_pressure = ATTR_CONDITION_SNOWY_RAINY
+                                    _LOGGER.debug(
+                                        f"Weather: PRESSURE → snowy-rainy "
+                                        f"(pressure={pressure:.1f} hPa 990-1000, temp={temperature:.1f}°C in transition zone, WMO: Low → mixed likely, no rain sensor)"
+                                    )
+                                else:
+                                    # Warm → RAINY
+                                    current_condition_from_pressure = ATTR_CONDITION_RAINY
+                                    _LOGGER.debug(
+                                        f"Weather: PRESSURE → rainy "
+                                        f"(pressure={pressure:.1f} hPa 990-1000, temp={temperature:.1f}°C > 4°C, WMO: Low → rain likely, no rain sensor)"
+                                    )
+                            else:
+                                # Temperature unknown → default to rain
+                                current_condition_from_pressure = ATTR_CONDITION_RAINY
+                                _LOGGER.debug(
+                                    f"Weather: PRESSURE → rainy "
+                                    f"(pressure={pressure:.1f} hPa 990-1000, temp unknown, WMO: Low → rain likely, no rain sensor)"
+                                )
+                        else:
+                            # 1000-1010 hPa → CLOUDY (unsettled, rain possible but not certain)
+                            # Cloudiness: 60-80%
+                            current_condition_from_pressure = ATTR_CONDITION_CLOUDY
+                            _LOGGER.debug(
+                                f"Weather: PRESSURE → cloudy "
+                                f"(pressure={pressure:.1f} hPa 1000-1010, WMO: Low → unsettled/cloudy, no rain sensor)"
+                            )
 
                 elif pressure < 1020:
                     # WMO: NORMAL (1010-1020 hPa)
-                    # Variable conditions
-                    # Cloudiness: 10-50%
-                    if pressure_change <= -2.0:
-                        # Falling → cloudy
+                    # Variable conditions, split at standard atmospheric pressure
+                    # Standard: 1013.25 hPa at sea level
+                    if pressure < 1013:
+                        # Below standard → more clouds
+                        # Cloudiness: 50-70%
                         current_condition_from_pressure = ATTR_CONDITION_CLOUDY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → cloudy "
-                            f"(pressure={pressure:.1f} hPa < 1020, WMO falling {pressure_change:.1f} → deteriorating)"
+                            f"(pressure={pressure:.1f} hPa < 1013, below standard pressure)"
                         )
                     else:
-                        # Stable/rising → partly cloudy
+                        # Above standard → less clouds
+                        # Cloudiness: 20-50%
                         current_condition_from_pressure = ATTR_CONDITION_PARTLYCLOUDY
                         _LOGGER.debug(
                             f"Weather: PRESSURE → partlycloudy "
-                            f"(pressure={pressure:.1f} hPa < 1020, WMO: Normal → variable)"
+                            f"(pressure={pressure:.1f} hPa 1013-1020, near standard pressure)"
                         )
 
                 elif pressure < 1030:  # ✅ NEW WMO BOUNDARY: High (1020-1030 hPa)
@@ -1519,41 +1589,38 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
 
             # ========================================================================
-            # PHASE 3: HUMIDITY FINE-TUNING (After Pressure Mapping)
-            # ========================================================================
-            # Humidity refines/adjusts the pressure-based prediction:
-            # - Can IMPROVE conditions (e.g., rainy → cloudy if RH low)
-            # - Can WORSEN conditions (e.g., cloudy → rainy if RH very high)
+            # PHASE 2/3: DETERMINE CURRENT CONDITION
+            # Two paths:
+            # 1. SOLAR PATH: If solar available → use solar for cloudiness (85% accuracy)
+            # 2. PRESSURE PATH: If no solar → use pressure + humidity for cloudiness (60-70% accuracy)
             #
-            # ⚠️ IMPORTANT: Skip humidity if solar radiation is available!
-            # Solar (85% accuracy) is MORE ACCURATE than humidity (70% accuracy)
-            # Humidity fine-tuning is ONLY for nighttime or when solar is not available
+            # Note: Precipitation already handled by PRIORITY 1 (rain sensor)
+            # Note: Pressure can indicate precipitation if NO rain sensor configured
             # ========================================================================
             condition = None
 
-            if current_condition_from_pressure is not None:
+            # PATH 1: SOLAR (if available) - Direct use, no validation needed
+            if solar_cloudiness is not None:
+                # Solar is REAL OBSERVATION → use it directly for cloudiness
+                condition = solar_cloudiness
+                _LOGGER.debug(
+                    f"Weather: Using SOLAR cloudiness directly: {condition} "
+                    f"(real measurement, 85% accuracy, skipping pressure/humidity)"
+                )
+
+            # PATH 2: PRESSURE + HUMIDITY (fallback if no solar)
+            elif current_condition_from_pressure is not None:
                 # We have pressure-based prediction → use it as baseline
                 condition = current_condition_from_pressure
                 _LOGGER.debug(
-                    f"Weather: PHASE 2 result - Pressure-based current state: {condition}"
+                    f"Weather: Using PRESSURE cloudiness: {condition} (no solar available)"
                 )
 
-                # PHASE 3: Humidity fine-tuning (ONLY if solar NOT available!)
-                # SKIP ENTIRELY if solar radiation is active (more accurate!)
-                if solar_cloudiness is not None:
-                    # Solar radiation available → skip humidity completely
-                    _LOGGER.debug(
-                        f"Weather: PHASE 3 - SKIPPING humidity fine-tuning "
-                        f"(solar active: {solar_cloudiness}, 85% accuracy > 70% humidity). "
-                        f"Solar will validate/override pressure in PHASE 4."
-                    )
-                    # Jump to PHASE 4 (solar validation)
-                    pass
-                else:
-                    # No solar → use humidity fine-tuning
-                    humidity = self.humidity
+                # HUMIDITY FINE-TUNING (only in PRESSURE PATH)
+                # Humidity refines the pressure-based prediction
+                humidity = self.humidity
 
-                    if humidity is not None:
+                if humidity is not None:
                         # VALIDATION: Check if humidity sensor is valid
                         humidity_is_valid = True
 
@@ -1722,93 +1789,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
 
             # ========================================================================
-            # PHASE 4: SOLAR FINAL OVERRIDE (Real Data Wins!)
-            # Solar radiation is REAL OBSERVATION → has PRIORITY over pressure-based estimates
-            # MUST BE LAST because it's the most accurate (85% vs 60-70% pressure)
-            #
-            # CRITICAL LOGIC (v3.1.10):
-            # ⚠️ "condition" here = PRESSURE + HUMIDITY result (NOT Zambretti/Negretti forecast!)
-            # ✅ Solar shows ACTUAL cloudiness NOW (real measurement)
-            # ✅ Pressure shows ESTIMATED cloudiness (statistical correlation)
-            # ✅ Rain sensor shows ACTUAL precipitation NOW (handled in PRIORITY 1)
-            #
-            # CORRECT BEHAVIOR:
-            # - If pressure suggests "cloudy" but solar shows "sunny" → use SOLAR
-            # - If rain sensor > 0 → PRIORITY 1 already returned (we never reach here)
-            # - Solar ALWAYS overrides pressure+humidity for CLOUDINESS determination
-            # ========================================================================
-
-            if condition is not None and solar_cloudiness is not None:
-                # We have both PRESSURE+HUMIDITY result AND solar → validate
-                # Map conditions to cloudiness level for comparison
-                cloudiness_map = {
-                    ATTR_CONDITION_SUNNY: 0,
-                    ATTR_CONDITION_CLEAR_NIGHT: 0,
-                    ATTR_CONDITION_PARTLYCLOUDY: 1,
-                    ATTR_CONDITION_CLOUDY: 2,
-                    ATTR_CONDITION_RAINY: 3,
-                    ATTR_CONDITION_POURING: 3,
-                    ATTR_CONDITION_SNOWY: 3,
-                    ATTR_CONDITION_SNOWY_RAINY: 3,
-                    ATTR_CONDITION_LIGHTNING_RAINY: 3,
-                }
-
-                solar_level = cloudiness_map.get(solar_cloudiness, 1)
-                pressure_level = cloudiness_map.get(condition, 1)
-
-                # CRITICAL: If pressure suggests precipitation (level 3) BUT rain sensor = 0
-                # This can't happen anymore since PRIORITY 5 only returns cloudiness!
-                # But keep this check for safety in case pressure mapping has bugs
-                if pressure_level >= 3:
-                    # Pressure erroneously suggests precipitation, but rain sensor = 0
-                    # This should NOT happen (PRIORITY 5 bug if it does!)
-                    # Solar shows actual cloudiness → OVERRIDE with solar!
-                    _LOGGER.warning(
-                        f"Weather: PHASE 4 - ⚠️ PRESSURE BUG DETECTED! "
-                        f"Pressure suggests precipitation ({condition}), but rain sensor = 0. "
-                        f"Using SOLAR cloudiness ({solar_cloudiness}) for CURRENT state. "
-                        f"(This indicates PRIORITY 5 returned precipitation instead of cloudiness!)"
-                    )
-                    condition = solar_cloudiness
-                elif abs(solar_level - pressure_level) >= 1:
-                    # Solar and pressure disagree on cloudiness → use solar (real data wins!)
-                    _LOGGER.info(
-                        f"Weather: PHASE 4 - ☀️ SOLAR OVERRIDE! "
-                        f"Pressure={condition} (level={pressure_level}) vs "
-                        f"Solar={solar_cloudiness} (level={solar_level}), "
-                        f"difference={abs(solar_level - pressure_level)} ≥ 1. "
-                        f"Using SOLAR (real measurement > pressure estimate)."
-                    )
-                    condition = solar_cloudiness
-                else:
-                    # Solar and pressure perfectly agree (difference=0) → keep pressure
-                    _LOGGER.debug(
-                        f"Weather: PHASE 4 - Solar validation: pressure={condition} (level={pressure_level}), "
-                        f"solar={solar_cloudiness} (level={solar_level}), "
-                        f"difference=0. Perfect agreement!"
-                    )
-            elif condition is None and solar_cloudiness is not None:
-                # No pressure result but have solar → use solar directly
-                condition = solar_cloudiness
-                _LOGGER.info(
-                    f"Weather: No pressure-based condition available, using solar cloudiness directly: {condition}"
-                )
-            elif condition is not None:
-                # Have pressure result but no solar → keep pressure
-                _LOGGER.debug(
-                    f"Weather: PHASE 4 - No solar radiation available, keeping pressure-based condition: {condition}"
-                )
-
-            # ========================================================================
-            # PHASE 5: WIND CONDITIONS CHECK (After pressure+humidity+solar)
+            # PHASE 4: WIND CONDITIONS CHECK
             # Check wind AFTER cloudiness determination for best accuracy
-            # Uses result from pressure+humidity+solar (60-85% accuracy) instead of
-            # simple pressure fallback (55% accuracy) - scientifically correct!
-            #
-            # IMPORTANT: Wind can ONLY override basic cloudiness conditions:
-            # - sunny, clear-night, partlycloudy, cloudy
-            # Wind CANNOT override precipitation/fog (they are more important):
-            # - rainy, snowy, fog, pouring, lightning-rainy
+            # Wind can ONLY override basic cloudiness conditions (sunny/partlycloudy/cloudy)
+            # Wind CANNOT override precipitation/fog (they are more important)
             # ========================================================================
             wind_speed = self.native_wind_speed
             wind_gust = self.native_wind_gust_speed
