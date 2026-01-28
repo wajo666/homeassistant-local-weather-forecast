@@ -1362,7 +1362,11 @@ class HourlyForecastGenerator:
             
             # Determine if it's night
             is_night = self._is_night(future_time)
-            is_current_state = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600 <= 1
+            
+            # For forecasts, is_current_state should always be False
+            # (we want to show predicted precipitation, not just cloudiness)
+            # is_current_state=True is only for weather.entity current condition
+            is_current_state = False
             
             # Map condition code to HA condition
             from .forecast_mapping import ZAMBRETTI_LETTER_TO_CODE
