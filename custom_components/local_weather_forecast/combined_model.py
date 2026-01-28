@@ -390,11 +390,9 @@ def generate_enhanced_hourly_forecast(
     
     Orchestration Strategy (v3.1.12):
     - Hour 0: Persistence (98% accuracy)
-    - Hours 1+: Zambretti/Negretti with TIME DECAY (82% accuracy)
-    
-    Future versions:
-    - v3.3.0: Hours 1-3 will use WMO Simple (90%)
-    - v3.3.0: Hours 4-6 will blend WMO→Zambretti
+    - Hours 1-3: WMO Simple nowcasting (90% accuracy)
+    - Hours 4-6: Blended WMO→TIME DECAY transition
+    - Hours 7+: Zambretti/Negretti with TIME DECAY (84% accuracy)
     
     Args:
         weather_data: Dict with weather sensor data
@@ -444,11 +442,108 @@ def generate_enhanced_hourly_forecast(
                 f"(code={forecast_code}, confidence={confidence:.0%})"
             )
         
+        elif hour <= 3:
+            # ═══════════════════════════════════════
+            # HOURS 1-3: WMO SIMPLE (v3.1.12)
+            # ═══════════════════════════════════════
+            from .wmo_simple import calculate_wmo_simple_forecast
+            from .persistence import get_current_condition_code
+            
+            # Get current condition code
+            current_code = get_current_condition_code(
+                temperature=weather_data.get("temperature", 15.0),
+                pressure=weather_data.get("pressure", 1013.25),
+                humidity=weather_data.get("humidity", 70.0),
+                dewpoint=weather_data.get("dewpoint", 10.0),
+                weather_condition=weather_data.get("condition", "unknown")
+            )
+            
+            # Calculate WMO Simple forecast
+            forecast_result = calculate_wmo_simple_forecast(
+                current_condition_code=current_code,
+                pressure_change_3h=weather_data.get("pressure_change", 0.0),
+                lang_index=lang_index,
+                hours_ahead=hour
+            )
+            
+            forecast_text = forecast_result[0]
+            forecast_code = forecast_result[1]
+            confidence = forecast_result[3]
+            
+            _LOGGER.debug(
+                f"🎯 Hour {hour}: WMO SIMPLE → {forecast_text} "
+                f"(code={forecast_code}, confidence={confidence:.0%})"
+            )
+        
+        elif hour <= 6:
+            # ═══════════════════════════════════════
+            # HOURS 4-6: BLENDED TRANSITION (v3.1.12)
+            # ═══════════════════════════════════════
+            from .wmo_simple import calculate_wmo_simple_forecast
+            from .persistence import get_current_condition_code
+            
+            # Get WMO Simple forecast
+            current_code = get_current_condition_code(
+                temperature=weather_data.get("temperature", 15.0),
+                pressure=weather_data.get("pressure", 1013.25),
+                humidity=weather_data.get("humidity", 70.0),
+                dewpoint=weather_data.get("dewpoint", 10.0),
+                weather_condition=weather_data.get("condition", "unknown")
+            )
+            
+            wmo_result = calculate_wmo_simple_forecast(
+                current_condition_code=current_code,
+                pressure_change_3h=weather_data.get("pressure_change", 0.0),
+                lang_index=lang_index,
+                hours_ahead=hour
+            )
+            
+            # Get TIME DECAY forecast
+            zambretti_result = weather_data.get("zambretti_result", ["", 13])
+            negretti_result = weather_data.get("negretti_result", ["", 13])
+            
+            (
+                td_forecast_code,
+                zambretti_weight,
+                negretti_weight,
+                consensus
+            ) = calculate_combined_forecast_with_time(
+                zambretti_result=zambretti_result,
+                negretti_result=negretti_result,
+                current_pressure=weather_data.get("pressure", 1013.25),
+                pressure_change=weather_data.get("pressure_change", 0.0),
+                hours_ahead=hour,
+                source=f"Enhanced_h{hour}"
+            )
+            
+            # Blend: linear transition from WMO (h4) to TIME DECAY (h6)
+            # h4: 67% WMO, 33% TD
+            # h5: 33% WMO, 67% TD
+            # h6: 0% WMO, 100% TD
+            wmo_weight = max(0.0, (6 - hour) / 3.0)
+            td_weight = 1.0 - wmo_weight
+            
+            # Weighted average of codes
+            wmo_code = wmo_result[1]
+            blended_code = int(wmo_code * wmo_weight + td_forecast_code * td_weight)
+            
+            # Get forecast text
+            from .forecast_mapping import get_forecast_text
+            forecast_text = get_forecast_text(forecast_num=blended_code, lang_index=lang_index)
+            forecast_code = blended_code
+            
+            # Blended confidence
+            confidence = wmo_result[3] * wmo_weight + (0.85 if consensus else 0.78) * td_weight
+            
+            _LOGGER.debug(
+                f"🎯 Hour {hour}: BLEND → {forecast_text} "
+                f"(WMO:{wmo_weight:.0%}, TD:{td_weight:.0%}, confidence={confidence:.0%})"
+            )
+        
         else:
             # ═══════════════════════════════════════
-            # HOURS 1+: TIME DECAY (v3.1.12)
+            # HOURS 7+: TIME DECAY (v3.1.12)
             # ═══════════════════════════════════════
-            # Use existing TIME DECAY implementation
             zambretti_result = weather_data.get("zambretti_result", ["", 13])
             negretti_result = weather_data.get("negretti_result", ["", 13])
             
