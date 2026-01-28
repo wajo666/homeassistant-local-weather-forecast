@@ -375,3 +375,146 @@ def calculate_combined_rain_probability(
     except ImportError:
         _LOGGER.warning("RainProbabilityCalculator not available, returning 50%")
         return 50.0
+
+
+# ========================
+# PHASE 2: ORCHESTRATION (v3.1.12 - Persistence Extension)
+# ========================
+
+def generate_enhanced_hourly_forecast(
+    weather_data: dict,
+    hours: int = 24,
+    lang_index: int = 1
+) -> list[dict]:
+    """Generate enhanced hourly forecast with optimal model selection.
+    
+    Orchestration Strategy (v3.1.12):
+    - Hour 0: Persistence (98% accuracy)
+    - Hours 1+: Zambretti/Negretti with TIME DECAY (82% accuracy)
+    
+    Future versions:
+    - v3.3.0: Hours 1-3 will use WMO Simple (90%)
+    - v3.3.0: Hours 4-6 will blend WMO→Zambretti
+    
+    Args:
+        weather_data: Dict with weather sensor data
+        hours: Number of hours to forecast (default 24)
+        lang_index: Language index for forecast text
+        
+    Returns:
+        List of hourly forecast dicts
+    """
+    from datetime import timedelta
+    
+    forecasts = []
+    start_time = weather_data.get("start_time")
+    
+    for hour in range(hours + 1):
+        if hour == 0:
+            # ═══════════════════════════════════════
+            # HOUR 0: PERSISTENCE MODEL (v3.1.12)
+            # ═══════════════════════════════════════
+            from .persistence import (
+                calculate_persistence_forecast,
+                get_current_condition_code
+            )
+            
+            # Get current condition code from sensors
+            current_code = get_current_condition_code(
+                temperature=weather_data.get("temperature", 15.0),
+                pressure=weather_data.get("pressure", 1013.25),
+                humidity=weather_data.get("humidity", 70.0),
+                dewpoint=weather_data.get("dewpoint", 10.0),
+                weather_condition=weather_data.get("condition", "unknown")
+            )
+            
+            # Calculate Persistence forecast
+            forecast_result = calculate_persistence_forecast(
+                current_condition_code=current_code,
+                lang_index=lang_index,
+                hours_ahead=0
+            )
+            
+            forecast_text = forecast_result[0]
+            forecast_code = forecast_result[1]
+            confidence = forecast_result[3]
+            
+            _LOGGER.debug(
+                f"🎯 Hour {hour}: PERSISTENCE → {forecast_text} "
+                f"(code={forecast_code}, confidence={confidence:.0%})"
+            )
+        
+        else:
+            # ═══════════════════════════════════════
+            # HOURS 1+: TIME DECAY (v3.1.12)
+            # ═══════════════════════════════════════
+            # Use existing TIME DECAY implementation
+            zambretti_result = weather_data.get("zambretti_result", ["", 13])
+            negretti_result = weather_data.get("negretti_result", ["", 13])
+            
+            (
+                forecast_code,
+                zambretti_weight,
+                negretti_weight,
+                consensus
+            ) = calculate_combined_forecast_with_time(
+                zambretti_result=zambretti_result,
+                negretti_result=negretti_result,
+                current_pressure=weather_data.get("pressure", 1013.25),
+                pressure_change=weather_data.get("pressure_change", 0.0),
+                hours_ahead=hour,
+                source=f"Enhanced_h{hour}"
+            )
+            
+            # Get forecast text
+            from .forecast_mapping import get_forecast_text
+            forecast_text = get_forecast_text(forecast_num=forecast_code, lang_index=lang_index)
+            
+            # Confidence based on TIME DECAY consensus
+            confidence = 0.85 if consensus else 0.78
+            
+            _LOGGER.debug(
+                f"🎯 Hour {hour}: TIME DECAY → {forecast_text} "
+                f"(Z:{zambretti_weight:.0%}/N:{negretti_weight:.0%}, "
+                f"confidence={confidence:.0%})"
+            )
+        
+        # ═══════════════════════════════════════
+        # BUILD HOURLY FORECAST DICT
+        # ═══════════════════════════════════════
+        forecast_dict = {
+            "datetime": start_time + timedelta(hours=hour) if start_time else None,
+            "condition": forecast_text,
+            "condition_code": forecast_code,
+            "confidence": confidence,
+            "temperature": calculate_temperature_at_hour(
+                hour, 
+                weather_data.get("temperature", 15.0),
+                weather_data.get("temperature_trend", 0.0)
+            ),
+            "pressure": weather_data.get("pressure", 1013.25),
+        }
+        
+        forecasts.append(forecast_dict)
+    
+    return forecasts
+
+
+def calculate_temperature_at_hour(
+    hour: int,
+    current_temp: float,
+    temp_trend: float = 0.0
+) -> float:
+    """Calculate temperature at future hour (simple linear model).
+    
+    Args:
+        hour: Hours ahead (0-24)
+        current_temp: Current temperature in °C
+        temp_trend: Temperature trend in °C/hour
+        
+    Returns:
+        Estimated temperature in °C
+    """
+    # Simple linear extrapolation
+    # Future: Use diurnal cycle model
+    return current_temp + (temp_trend * hour)

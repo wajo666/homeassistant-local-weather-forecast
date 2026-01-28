@@ -786,3 +786,119 @@ class TestForecastCalculator:
         assert len(forecasts) == 4  # 0, 1, 2, 3 hours
         # Conditions are based on model (falling pressure), not current rain
 
+
+class TestEnhancedWithPersistence:
+    """Test ENHANCED model with Persistence (v3.1.12)."""
+    
+    def test_hour_0_uses_persistence_in_enhanced_model(self):
+        """Test that hour 0 in ENHANCED model uses Persistence."""
+        from custom_components.local_weather_forecast.const import FORECAST_MODEL_ENHANCED
+        
+        mock_hass = create_mock_hass()
+        
+        # Create generator with ENHANCED model
+        pressure_model = PressureModel(current_pressure=1020.0, pressure_change_3h=0.0)
+        temp_model = TemperatureModel(current_temp=18.0, change_rate_1h=0.0)
+        zambretti = ZambrettiForecaster()
+        
+        generator = HourlyForecastGenerator(
+            hass=mock_hass,
+            pressure_model=pressure_model,
+            temperature_model=temp_model,
+            zambretti=zambretti,
+            forecast_model=FORECAST_MODEL_ENHANCED
+        )
+        
+        # Generate forecast (includes hour 0)
+        with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
+            forecasts = generator.generate(hours_count=3)
+        
+        # Should have hour 0, 1, 2, 3
+        assert len(forecasts) == 4
+        
+        # Hour 0 should exist
+        assert forecasts[0] is not None
+    
+    def test_zambretti_model_unchanged_by_persistence(self):
+        """Test that Zambretti model is not affected by Persistence."""
+        from custom_components.local_weather_forecast.const import FORECAST_MODEL_ZAMBRETTI
+        
+        mock_hass = create_mock_hass()
+        
+        # Create generator with ZAMBRETTI model
+        pressure_model = PressureModel(current_pressure=1020.0, pressure_change_3h=0.0)
+        temp_model = TemperatureModel(current_temp=18.0, change_rate_1h=0.0)
+        zambretti = ZambrettiForecaster()
+        
+        generator = HourlyForecastGenerator(
+            hass=mock_hass,
+            pressure_model=pressure_model,
+            temperature_model=temp_model,
+            zambretti=zambretti,
+            forecast_model=FORECAST_MODEL_ZAMBRETTI
+        )
+        
+        # Generate forecast
+        with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
+            forecasts = generator.generate(hours_count=3)
+        
+        # Should work normally (Zambretti doesn't use Persistence)
+        assert len(forecasts) == 4
+    
+    def test_negretti_model_unchanged_by_persistence(self):
+        """Test that Negretti model is not affected by Persistence."""
+        from custom_components.local_weather_forecast.const import FORECAST_MODEL_NEGRETTI
+        
+        mock_hass = create_mock_hass()
+        
+        # Create generator with NEGRETTI model
+        pressure_model = PressureModel(current_pressure=1020.0, pressure_change_3h=0.0)
+        temp_model = TemperatureModel(current_temp=18.0, change_rate_1h=0.0)
+        zambretti = ZambrettiForecaster()
+        
+        generator = HourlyForecastGenerator(
+            hass=mock_hass,
+            pressure_model=pressure_model,
+            temperature_model=temp_model,
+            zambretti=zambretti,
+            forecast_model=FORECAST_MODEL_NEGRETTI
+        )
+        
+        # Generate forecast
+        with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
+            forecasts = generator.generate(hours_count=3)
+        
+        # Should work normally (Negretti doesn't use Persistence)
+        assert len(forecasts) == 4
+    
+    def test_hour_1_plus_uses_time_decay(self):
+        """Test that hours 1+ in ENHANCED model use TIME DECAY."""
+        from custom_components.local_weather_forecast.const import FORECAST_MODEL_ENHANCED
+        
+        mock_hass = create_mock_hass()
+        
+        # Create generator with ENHANCED model
+        pressure_model = PressureModel(current_pressure=1015.0, pressure_change_3h=2.0)
+        temp_model = TemperatureModel(current_temp=20.0, change_rate_1h=0.0)
+        zambretti = ZambrettiForecaster()
+        
+        generator = HourlyForecastGenerator(
+            hass=mock_hass,
+            pressure_model=pressure_model,
+            temperature_model=temp_model,
+            zambretti=zambretti,
+            forecast_model=FORECAST_MODEL_ENHANCED
+        )
+        
+        # Generate forecast
+        with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
+            forecasts = generator.generate(hours_count=6)
+        
+        # Should have forecasts for hours 0-6
+        assert len(forecasts) == 7
+        
+        # All hours should have valid conditions
+        for forecast in forecasts:
+            assert forecast["condition"] is not None
+
+

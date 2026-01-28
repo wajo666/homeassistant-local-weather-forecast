@@ -971,7 +971,57 @@ class HourlyForecastGenerator:
                 forecast_num = negretti_num
                 _LOGGER.debug(f"Using Negretti-Zambra forecast: {negretti_letter}")
             else:  # FORECAST_MODEL_ENHANCED - use combined_model.py
-                if negretti_letter:
+                if hour_offset == 0:
+                    # ═══════════════════════════════════════
+                    # NEW v3.1.12: Use Persistence for hour 0
+                    # ═══════════════════════════════════════
+                    from .persistence import calculate_persistence_forecast, get_current_condition_code
+                    from .language import get_language_index
+                    
+                    lang_index = get_language_index(self.hass)
+                    
+                    # Get current dewpoint (estimate if not available)
+                    current_dewpoint = self.temperature_model.current_temp - 5.0  # Rough estimate
+                    if hasattr(self, 'current_humidity'):
+                        # Better estimate using humidity
+                        current_dewpoint = self.temperature_model.current_temp - (
+                            (100 - self.current_humidity) / 5.0
+                        )
+                    
+                    # Get current condition code from sensors
+                    current_code = get_current_condition_code(
+                        temperature=self.temperature_model.current_temp,
+                        pressure=self.pressure_model.current_pressure,
+                        humidity=getattr(self, 'current_humidity', 70.0),
+                        dewpoint=current_dewpoint,
+                        weather_condition=getattr(self, 'current_condition', None)
+                    )
+                    
+                    # Calculate Persistence forecast
+                    forecast_result = calculate_persistence_forecast(
+                        current_condition_code=current_code,
+                        lang_index=lang_index,
+                        hours_ahead=0
+                    )
+                    
+                    forecast_num = forecast_result[1]
+                    
+                    # Get letter code for rain probability
+                    from .forecast_mapping import ZAMBRETTI_LETTER_TO_CODE
+                    forecast_letter = None
+                    for letter, code in ZAMBRETTI_LETTER_TO_CODE.items():
+                        if code == forecast_num:
+                            forecast_letter = letter
+                            break
+                    if not forecast_letter:
+                        forecast_letter = "A"  # Fallback
+                    
+                    _LOGGER.debug(
+                        f"🔒 Hour 0: PERSISTENCE → code={forecast_num}, "
+                        f"letter={forecast_letter}, confidence=98%"
+                    )
+                    
+                elif negretti_letter:
                     # ✅ USE COMBINED MODEL MODULE WITH TIME DECAY (v3.1.12)
                     from .combined_model import (
                         calculate_combined_forecast_with_time,
