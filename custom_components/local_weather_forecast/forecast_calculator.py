@@ -1129,7 +1129,8 @@ class HourlyForecastGenerator:
             #
             # NOTE: Hourly forecasts use ONLY forecast model (Zambretti/Negretti/Enhanced)
             #       Rain sensor is used ONLY for current weather (weather entity state)
-            is_current_state = (hour_offset <= 1)
+            # For forecasts, is_current_state should be False to show predicted precipitation
+            is_current_state = False
             
             # ✅ SPECIAL CASE: Hour 0 with persistence model - use actual weather condition
             # Persistence model should reflect CURRENT state, not forecast mapping

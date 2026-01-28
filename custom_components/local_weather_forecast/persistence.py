@@ -227,6 +227,14 @@ def get_current_condition_code(
     # PRIORITY 2: Pressure-based classification (fallback)
     # This provides stable baseline when no weather sensor available
     
+    # If no pressure available, use neutral/default condition
+    if pressure is None:
+        unified_code = 12  # Default to "Fairly fine, improving" (neutral condition)
+        _LOGGER.debug(
+            f"🎯 Current state: No pressure/weather sensor → code={unified_code} (DEFAULT - missing sensors)"
+        )
+        return unified_code
+    
     if pressure > 1030:
         # Very high pressure - settled fine
         unified_code = 1  # Settled fine
@@ -252,17 +260,18 @@ def get_current_condition_code(
         # Extremely low pressure - stormy
         unified_code = 24  # Stormy, much rain
     
-    # Adjust based on humidity for fine-tuning
-    if humidity > 85 and unified_code < 15:
-        # High humidity suggests worse conditions
-        unified_code = min(unified_code + 2, 14)
-    elif humidity < 50 and unified_code > 10:
-        # Low humidity suggests better conditions
-        unified_code = max(unified_code - 2, 8)
+    # Adjust based on humidity for fine-tuning (if available)
+    if humidity is not None:
+        if humidity > 85 and unified_code < 15:
+            # High humidity suggests worse conditions
+            unified_code = min(unified_code + 2, 14)
+        elif humidity < 50 and unified_code > 10:
+            # Low humidity suggests better conditions
+            unified_code = max(unified_code - 2, 8)
     
     _LOGGER.debug(
-        f"🎯 Current state: P={pressure:.1f} hPa, T={temperature:.1f}°C, "
-        f"RH={humidity:.0f}% → code={unified_code} (from pressure - no weather sensor)"
+        f"🎯 Current state: P={pressure:.1f} hPa, T={temperature if temperature else 'N/A'}°C, "
+        f"RH={humidity if humidity else 'N/A'}% → code={unified_code} (from pressure - no weather sensor)"
     )
     
     return unified_code
