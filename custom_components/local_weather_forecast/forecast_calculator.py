@@ -864,7 +864,8 @@ class HourlyForecastGenerator:
         latitude: float = 50.0,
         current_rain_rate: float = 0.0,
         forecast_model: str = FORECAST_MODEL_ENHANCED,
-        elevation: float = 0.0
+        elevation: float = 0.0,
+        current_condition: str | None = None
     ):
         """Initialize hourly forecast generator.
 
@@ -874,11 +875,12 @@ class HourlyForecastGenerator:
             temperature_model: Temperature forecasting model
             zambretti: Zambretti forecaster
             wind_direction: Current wind direction in degrees
-            wind_speed: Current wind speed in m/s
+            wind_speed: Current wind_speed in m/s
             latitude: Location latitude
             current_rain_rate: Current precipitation rate in mm/h
             forecast_model: Which model to use (FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED)
             elevation: Elevation in meters above sea level
+            current_condition: Current weather condition from weather entity (e.g., 'snowy', 'rainy', 'cloudy')
         """
         self.hass = hass
         self.pressure_model = pressure_model
@@ -890,6 +892,7 @@ class HourlyForecastGenerator:
         self.current_rain_rate = current_rain_rate
         self.forecast_model = forecast_model
         self.elevation = elevation
+        self.current_condition = current_condition
 
     def generate(
         self,
@@ -994,7 +997,7 @@ class HourlyForecastGenerator:
                         pressure=self.pressure_model.current_pressure,
                         humidity=getattr(self, 'current_humidity', 70.0),
                         dewpoint=current_dewpoint,
-                        weather_condition=getattr(self, 'current_condition', None)
+                        weather_condition=self.current_condition
                     )
                     
                     # Calculate Persistence forecast
@@ -1078,27 +1081,24 @@ class HourlyForecastGenerator:
             # NOTE: Hourly forecasts use ONLY forecast model (Zambretti/Negretti/Enhanced)
             #       Rain sensor is used ONLY for current weather (weather entity state)
             is_current_state = (hour_offset <= 1)
-
-            _LOGGER.debug(
-                f"Forecast for {future_time.strftime('%Y-%m-%d %H:%M')}: "
-                f"hour_offset={hour_offset}h, is_current_state={is_current_state}, "
-                f"hour={future_time.hour:02d}, is_daytime={is_daytime}, is_night={is_night}, "
-                f"forecast_letter={forecast_letter}, forecast_num={forecast_num}, model={self.forecast_model}"
-            )
-
-            # ✅ FIX: Use unified mapping with correct is_current_state parameter
-            # This ensures:
-            # - Codes 15-17 (rain LATER) → always cloudy
-            # - Codes 18-23 (rain NOW) → cloudy for 0-1h, rainy for 2h+
-            # - Codes 24-25 (storms) → cloudy for 0-1h, pouring/lightning for 2h+
-            condition = map_forecast_to_condition(
-                forecast_letter=forecast_letter,
-                forecast_num=forecast_num,
-                is_night_func=lambda: is_night,
-                temperature=future_temp,
-                source=f"HourlyForecast_{self.forecast_model}",
-                is_current_state=is_current_state
-            )
+            
+            # ✅ SPECIAL CASE: Hour 0 with persistence model - use actual weather condition
+            # Persistence model should reflect CURRENT state, not forecast mapping
+            if hour_offset == 0 and self.forecast_model == FORECAST_MODEL_ENHANCED and self.current_condition:
+                condition = self.current_condition
+                _LOGGER.debug(
+                    f"🔒 Hour 0 (PERSISTENCE): Using actual weather condition → {condition}"
+                )
+            else:
+                # Normal forecast mapping
+                condition = map_forecast_to_condition(
+                    forecast_letter=forecast_letter,
+                    forecast_num=forecast_num,
+                    is_night_func=lambda: is_night,
+                    temperature=future_temp,
+                    source=f"HourlyForecast_{self.forecast_model}",
+                    is_current_state=is_current_state
+                )
 
             _LOGGER.debug(
                 f"Final condition for {future_time.strftime('%H:%M')}: "

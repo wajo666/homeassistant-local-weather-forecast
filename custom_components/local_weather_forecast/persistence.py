@@ -91,11 +91,25 @@ def get_current_condition_code(
 ) -> int:
     """Determine current unified condition code from sensor data.
     
-    Maps current weather conditions to unified codes (0-25) using simple
-    pressure-based classification. This provides a stable baseline for
-    Persistence Model without requiring complex calculations.
+    Priority system:
+    1. Use actual weather_condition if available (most accurate)
+    2. Fall back to pressure-based classification
     
-    Classification:
+    Weather condition mapping (complete HA weather conditions):
+    - exceptional: 25 (extreme weather)
+    - lightning/lightning-rainy: 24 (thunderstorms)
+    - hail: 23 (hail storm)
+    - pouring: 21 (heavy rain)
+    - snowy-rainy: 20 (mixed precipitation)
+    - snowy: 19 (snow)
+    - rainy: 18 (rain)
+    - fog: 13 (foggy/low visibility)
+    - cloudy: 13 (overcast)
+    - partlycloudy: 10 (partly cloudy)
+    - windy/windy-variant: 10 (windy conditions)
+    - sunny/clear/clear-night: 2 (fine weather)
+    
+    Pressure-based fallback:
     - P > 1030: Settled fine (0-2)
     - P > 1020: Fine weather (3-7)
     - P > 1010: Fair/partly cloudy (8-11)
@@ -114,8 +128,104 @@ def get_current_condition_code(
     Returns:
         Unified condition code (0-25)
     """
-    # Simple pressure-based classification
-    # This provides stable current state without complex calculations
+    # PRIORITY 1: Use actual weather condition if available
+    if weather_condition and weather_condition != "unknown":
+        condition_lower = weather_condition.lower().replace("-", "_")
+        
+        # Exceptional weather (highest priority)
+        if "exceptional" in condition_lower:
+            unified_code = 25  # Extreme weather
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (EXCEPTIONAL from sensor)"
+            )
+            return unified_code
+        
+        # Storms & Lightning
+        if "lightning" in condition_lower:
+            if "rainy" in condition_lower or "rain" in condition_lower:
+                unified_code = 24  # Thunderstorm with rain
+            else:
+                unified_code = 24  # Dry thunderstorm
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (STORM from sensor)"
+            )
+            return unified_code
+        
+        # Hail
+        elif "hail" in condition_lower:
+            unified_code = 23  # Hail storm
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (HAIL from sensor)"
+            )
+            return unified_code
+        
+        # Precipitation
+        elif "snowy" in condition_lower or "snow" in condition_lower:
+            # Snow detection
+            if "rainy" in condition_lower or "rain" in condition_lower:
+                unified_code = 20  # Mixed precipitation
+            else:
+                unified_code = 19  # Snow
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (SNOW from sensor)"
+            )
+            return unified_code
+        
+        elif "pouring" in condition_lower:
+            unified_code = 21  # Heavy rain
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (HEAVY RAIN from sensor)"
+            )
+            return unified_code
+        
+        elif "rainy" in condition_lower or "rain" in condition_lower:
+            unified_code = 18  # Rain
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (RAIN from sensor)"
+            )
+            return unified_code
+        
+        # Fog
+        elif "fog" in condition_lower:
+            unified_code = 13  # Cloudy/Foggy
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (FOG from sensor)"
+            )
+            return unified_code
+        
+        # Cloudiness
+        elif "cloudy" in condition_lower and "partly" not in condition_lower:
+            unified_code = 13  # Cloudy
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (CLOUDY from sensor)"
+            )
+            return unified_code
+        
+        elif "partlycloudy" in condition_lower or "partly_cloudy" in condition_lower:
+            unified_code = 10  # Partly cloudy
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (PARTLY CLOUDY from sensor)"
+            )
+            return unified_code
+        
+        # Windy (no specific code, treat as partly cloudy)
+        elif "windy" in condition_lower:
+            unified_code = 10  # Partly cloudy (windy)
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (WINDY from sensor)"
+            )
+            return unified_code
+        
+        # Clear/Sunny
+        elif "sunny" in condition_lower or "clear" in condition_lower:
+            unified_code = 2  # Fine
+            _LOGGER.debug(
+                f"🎯 Current state: weather={weather_condition} → code={unified_code} (SUNNY from sensor)"
+            )
+            return unified_code
+    
+    # PRIORITY 2: Pressure-based classification (fallback)
+    # This provides stable baseline when no weather sensor available
     
     if pressure > 1030:
         # Very high pressure - settled fine
@@ -152,7 +262,7 @@ def get_current_condition_code(
     
     _LOGGER.debug(
         f"🎯 Current state: P={pressure:.1f} hPa, T={temperature:.1f}°C, "
-        f"RH={humidity:.0f}% → code={unified_code}"
+        f"RH={humidity:.0f}% → code={unified_code} (from pressure - no weather sensor)"
     )
     
     return unified_code

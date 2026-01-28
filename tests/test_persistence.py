@@ -97,38 +97,134 @@ class TestGetPersistenceConfidence:
 class TestGetCurrentConditionCode:
     """Test get_current_condition_code() function."""
     
-    def test_fine_weather_detection(self):
-        """Test detection of fine weather (high pressure)."""
+    def test_snow_from_weather_sensor(self):
+        """Test that snow is detected from weather_condition sensor."""
         code = get_current_condition_code(
-            temperature=20.0,
-            pressure=1025.0,
-            humidity=60.0,
-            dewpoint=12.0,
-            weather_condition="sunny"
+            temperature=-2.0,
+            pressure=1010.0,
+            humidity=85.0,
+            dewpoint=-4.0,
+            weather_condition="snowy"
         )
         
-        assert 0 <= code <= 7  # Fine weather range
+        assert code == 19  # Snow code
     
-    def test_rainy_weather_detection(self):
-        """Test detection of rainy weather (low pressure)."""
+    def test_mixed_precipitation_from_sensor(self):
+        """Test mixed snow/rain detection."""
         code = get_current_condition_code(
-            temperature=15.0,
-            pressure=995.0,
+            temperature=1.0,
+            pressure=1005.0,
+            humidity=90.0,
+            dewpoint=0.0,
+            weather_condition="snowy-rainy"
+        )
+        
+        assert code == 20  # Mixed precipitation
+    
+    def test_rain_from_weather_sensor(self):
+        """Test that rain is detected from weather_condition sensor."""
+        code = get_current_condition_code(
+            temperature=10.0,
+            pressure=1000.0,
             humidity=85.0,
-            dewpoint=13.0,
+            dewpoint=8.0,
             weather_condition="rainy"
         )
         
-        assert 15 <= code <= 21  # Rainy weather range
+        assert code == 18  # Rain code
     
-    def test_stormy_weather_detection(self):
-        """Test detection of stormy weather (very low pressure)."""
+    def test_heavy_rain_from_sensor(self):
+        """Test heavy rain (pouring) detection."""
+        code = get_current_condition_code(
+            temperature=12.0,
+            pressure=995.0,
+            humidity=90.0,
+            dewpoint=11.0,
+            weather_condition="pouring"
+        )
+        
+        assert code == 21  # Heavy rain
+    
+    def test_storm_from_weather_sensor(self):
+        """Test storm detection from weather_condition sensor."""
         code = get_current_condition_code(
             temperature=12.0,
             pressure=975.0,
             humidity=90.0,
             dewpoint=11.0,
             weather_condition="lightning-rainy"
+        )
+        
+        assert code == 24  # Storm code
+    
+    def test_cloudy_from_weather_sensor(self):
+        """Test cloudy detection from sensor."""
+        code = get_current_condition_code(
+            temperature=15.0,
+            pressure=1010.0,
+            humidity=70.0,
+            dewpoint=10.0,
+            weather_condition="cloudy"
+        )
+        
+        assert code == 13  # Cloudy
+    
+    def test_partly_cloudy_from_sensor(self):
+        """Test partly cloudy detection."""
+        code = get_current_condition_code(
+            temperature=18.0,
+            pressure=1018.0,
+            humidity=60.0,
+            dewpoint=10.0,
+            weather_condition="partlycloudy"
+        )
+        
+        assert code == 10  # Partly cloudy
+    
+    def test_sunny_from_weather_sensor(self):
+        """Test sunny detection from sensor."""
+        code = get_current_condition_code(
+            temperature=22.0,
+            pressure=1025.0,
+            humidity=55.0,
+            dewpoint=12.0,
+            weather_condition="sunny"
+        )
+        
+        assert code == 2  # Fine weather
+    
+    def test_fine_weather_detection(self):
+        """Test detection of fine weather (high pressure) - fallback."""
+        code = get_current_condition_code(
+            temperature=20.0,
+            pressure=1025.0,
+            humidity=60.0,
+            dewpoint=12.0,
+            weather_condition=None  # No weather sensor
+        )
+        
+        assert 0 <= code <= 7  # Fine weather range
+    
+    def test_rainy_weather_detection(self):
+        """Test detection of rainy weather (low pressure) - fallback."""
+        code = get_current_condition_code(
+            temperature=15.0,
+            pressure=995.0,
+            humidity=85.0,
+            dewpoint=13.0,
+            weather_condition=None  # No weather sensor
+        )
+        
+        assert 15 <= code <= 21  # Rainy weather range
+    
+    def test_stormy_weather_detection(self):
+        """Test detection of stormy weather (very low pressure) - fallback."""
+        code = get_current_condition_code(
+            temperature=12.0,
+            pressure=975.0,
+            humidity=90.0,
+            dewpoint=11.0,
+            weather_condition=None  # No weather sensor
         )
         
         assert 22 <= code <= 25  # Storm range
