@@ -209,32 +209,28 @@ def forecast_code_to_condition(
         else:
             condition = "lightning-rainy"  # Future: predicted thunderstorm
 
-    # ❌ DISABLED: Automatic snow/mixed precipitation conversion
+    # ✅ ENABLED: Automatic snow/mixed precipitation conversion FOR FORECASTS ONLY
     #
-    # REASON: Forecast is a PREDICTION (not current state!)
-    # - If rain sensor is ACTIVE → rain sensor handles snow/rain/mixed detection
-    # - If rain sensor is NOT active → forecast should show CLOUDINESS only, not precipitation type
+    # LOGIC:
+    # - For CURRENT state (0h): Skip snow conversion (rain sensor handles it)
+    # - For FUTURE forecast (1-24h): Apply snow conversion based on temperature
     #
-    # This automatic conversion caused false positives:
-    # - Forecast predicts "rainy" (will rain in 1-3h)
-    # - Temperature is 3°C
-    # - Auto-converted to "snowy-rainy" ❌
-    # - But it's NOT raining NOW! (rain sensor = 0)
-    #
-    # CORRECT BEHAVIOR:
-    # - Forecast codes 15-23 should map to "cloudy" for current state (0h)
-    # - Only RAIN SENSOR determines actual precipitation type (rain/snow/mixed)
-    #
-    # if temperature is not None:
-    #     if condition in ("rainy", "pouring"):
-    #         if 2.0 < temperature <= 4.0:
-    #             condition = "snowy-rainy"
-    #         elif temperature <= 2.0:
-    #             condition = "snowy"
+    # This allows:
+    # - Hourly forecasts to show "snowy" when T ≤ 2°C
+    # - Current state to remain "cloudy" (rain sensor determines actual precipitation)
+    if temperature is not None and not is_current_state:
+        if condition in ("rainy", "pouring", "lightning-rainy"):
+            if 2.0 < temperature <= 4.0:
+                condition = "snowy-rainy"
+                _LOGGER.debug(f"Snow conversion: rainy → snowy-rainy (T={temperature:.1f}°C)")
+            elif temperature <= 2.0:
+                condition = "snowy"
+                _LOGGER.debug(f"Snow conversion: rainy → snowy (T={temperature:.1f}°C)")
 
     _LOGGER.debug(
         f"Code→Condition: code={code} → {condition} "
-        f"(night={is_night}, temp={temperature if temperature is not None else 'N/A'}°C)"
+        f"(night={is_night}, temp={temperature if temperature is not None else 'N/A'}°C, "
+        f"current={is_current_state})"
     )
 
     return condition

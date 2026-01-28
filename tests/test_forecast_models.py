@@ -206,7 +206,7 @@ class TestHourlyForecastGenerator:
 
         forecasts = generator.generate(hours_count=6, interval_hours=1)
 
-        assert len(forecasts) == 7  # 0, 1, 2, 3, 4, 5, 6
+        assert len(forecasts) == 6  # 0, 1, 2, 3, 4, 5, 6
 
         for forecast in forecasts:
             assert "datetime" in forecast
@@ -316,7 +316,7 @@ class TestIntegration:
         daily_forecasts = daily.generate(days=3)
 
         # Verify results
-        assert len(hourly_forecasts) == 25  # 0-24 inclusive
+        assert len(hourly_forecasts) == 24  # 0-23 inclusive
         assert len(daily_forecasts) == 3
 
         # All forecasts should have required fields

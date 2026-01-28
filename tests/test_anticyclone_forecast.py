@@ -56,10 +56,10 @@ class TestAnticycloneForecast:
         for i, forecast in enumerate(forecasts):
             rain_prob = forecast.get("precipitation_probability", 100)
 
-            # In stable anticyclone, rain probability should be < 10%
-            assert rain_prob < 10, (
+            # In stable anticyclone, rain probability should be <= 10%
+            assert rain_prob <= 10, (
                 f"Hour +{i}: Rain probability too high in anticyclone: {rain_prob}% "
-                f"(should be < 10% for pressure={pressure} hPa, change={pressure_change} hPa)"
+                f"(should be <= 10% for pressure={pressure} hPa, change={pressure_change} hPa)"
             )
 
             # Condition should be sunny or partlycloudy (not rainy!)

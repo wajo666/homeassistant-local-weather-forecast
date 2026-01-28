@@ -434,7 +434,7 @@ class TestHourlyForecastGenerator:
 
         forecasts = generator.generate(hours_count=6, interval_hours=1)
 
-        assert len(forecasts) == 7  # 0, 1, 2, 3, 4, 5, 6
+        assert len(forecasts) == 6  # 0, 1, 2, 3, 4, 5
 
         for forecast in forecasts:
             assert "datetime" in forecast
@@ -577,7 +577,7 @@ class TestHourlyForecastGenerator:
         forecasts = generator.generate(hours_count=3, interval_hours=1)
 
         # Should have generated forecasts even without sun entity
-        assert len(forecasts) == 4  # 0, 1, 2, 3
+        assert len(forecasts) == 3  # 0, 1, 2
 
         # All forecasts should have is_daytime field
         for forecast in forecasts:
@@ -727,7 +727,7 @@ class TestForecastCalculator:
             hours=24
         )
 
-        assert len(forecasts) == 25  # 0-24 inclusive
+        assert len(forecasts) == 24  # 0-23 inclusive
         assert all("templow" not in f for f in forecasts)  # Hourly doesn't have templow
 
     def test_generate_with_solar_radiation(self):
@@ -755,7 +755,7 @@ class TestForecastCalculator:
             cloud_cover=20.0  # Mostly clear
         )
 
-        assert len(forecasts) == 7
+        assert len(forecasts) == 6
 
     def test_generate_with_rain_override(self):
         """Test that forecasts ignore rain override (only weather.entity uses it)."""
@@ -783,7 +783,7 @@ class TestForecastCalculator:
 
         # Forecasts should use MODEL prediction, NOT rain override
         # Rain override is ONLY for weather.entity
-        assert len(forecasts) == 4  # 0, 1, 2, 3 hours
+        assert len(forecasts) == 3  # 0, 1, 2 hours
         # Conditions are based on model (falling pressure), not current rain
 
 
@@ -813,8 +813,8 @@ class TestEnhancedWithPersistence:
         with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
             forecasts = generator.generate(hours_count=3)
         
-        # Should have hour 0, 1, 2, 3
-        assert len(forecasts) == 4
+        # Should have hour 0, 1, 2
+        assert len(forecasts) == 3
         
         # Hour 0 should exist
         assert forecasts[0] is not None
@@ -894,8 +894,8 @@ class TestEnhancedWithPersistence:
         with patch('custom_components.local_weather_forecast.language.get_language_index', return_value=1):
             forecasts = generator.generate(hours_count=6)
         
-        # Should have forecasts for hours 0-6
-        assert len(forecasts) == 7
+        # Should have forecasts for hours 0-5
+        assert len(forecasts) == 6
         
         # All hours should have valid conditions
         for forecast in forecasts:

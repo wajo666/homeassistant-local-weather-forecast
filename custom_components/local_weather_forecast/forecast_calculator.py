@@ -850,6 +850,45 @@ class RainProbabilityCalculator:
         return result
 
 
+def get_beaufort_scale(wind_speed_ms: float) -> int:
+    """Convert wind speed (m/s) to Beaufort scale factor.
+    
+    Args:
+        wind_speed_ms: Wind speed in meters per second
+        
+    Returns:
+        Beaufort factor (0-2):
+        - 0: Calm to light breeze (0-5.5 m/s, Beaufort 0-3)
+        - 1: Moderate breeze (5.5-10.8 m/s, Beaufort 4-5)
+        - 2: Strong breeze+ (>10.8 m/s, Beaufort 6+)
+    """
+    if wind_speed_ms < 5.5:
+        return 0
+    elif wind_speed_ms < 10.8:
+        return 1
+    else:
+        return 2
+
+
+def get_wind_dir_text(wind_direction: int) -> str:
+    """Convert wind direction degrees to text.
+    
+    Args:
+        wind_direction: Wind direction in degrees (0-360)
+        
+    Returns:
+        Wind direction text (N, NE, E, SE, S, SW, W, NW)
+    """
+    if 315 <= wind_direction or wind_direction < 45:
+        return "N"
+    elif 45 <= wind_direction < 135:
+        return "E"
+    elif 135 <= wind_direction < 225:
+        return "S"
+    else:
+        return "W"
+
+
 class HourlyForecastGenerator:
     """Generate hourly weather forecasts using advanced models."""
 
@@ -908,6 +947,16 @@ class HourlyForecastGenerator:
         Returns:
             List of Forecast objects
         """
+        # ═══════════════════════════════════════════════════════════════
+        # v3.1.12: Use ENHANCED ORCHESTRATION if ENHANCED model selected
+        # ═══════════════════════════════════════════════════════════════
+        if self.forecast_model == FORECAST_MODEL_ENHANCED and interval_hours == 1:
+            _LOGGER.debug("🎯 Using ENHANCED orchestration: Persistence → WMO Simple → TIME DECAY")
+            return self._generate_with_orchestration(hours_count)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # LEGACY PATH: Classic Zambretti/Negretti without orchestration
+        # ═══════════════════════════════════════════════════════════════
         forecasts = []
         now = datetime.now(timezone.utc)
         rain_calc = RainProbabilityCalculator()
@@ -1214,6 +1263,154 @@ class HourlyForecastGenerator:
         is_night = hour >= 19 or hour < 7
         _LOGGER.debug(f"Fallback time check: hour={hour} → is_night={is_night}")
         return is_night
+
+    def _generate_with_orchestration(self, hours_count: int) -> list[Forecast]:
+        """Generate forecast using ENHANCED orchestration (v3.1.12).
+        
+        Orchestration Strategy:
+        - Hour 0: Persistence (98% accuracy)
+        - Hours 1-3: WMO Simple nowcasting (90% accuracy)
+        - Hours 4-6: Blended WMO→TIME DECAY transition
+        - Hours 7+: Zambretti/Negretti with TIME DECAY
+        
+        Args:
+            hours_count: Number of hours to forecast
+            
+        Returns:
+            List of Forecast objects
+        """
+        from .combined_model import generate_enhanced_hourly_forecast
+        from .language import get_language_index
+        from .const import CONF_HEMISPHERE, DEFAULT_HEMISPHERE
+        
+        # Get language index
+        lang_index = get_language_index(self.hass)
+        
+        # Get hemisphere from config
+        hemisphere = DEFAULT_HEMISPHERE
+        try:
+            config_entries = self.hass.config_entries.async_entries("local_weather_forecast")
+            if config_entries:
+                hemisphere = config_entries[0].data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
+        except (AttributeError, TypeError, IndexError):
+            # In tests, config_entries might be a Mock or unavailable
+            pass
+        
+        # Get Zambretti and Negretti forecasts for the orchestration
+        zambretti_result = self.zambretti.forecast_hour(
+            pressure=self.pressure_model.current_pressure,
+            wind_direction=self.wind_direction,
+            pressure_change=0.0,  # Current state
+            wind_speed=self.wind_speed
+        )
+        
+        # Get Negretti forecast
+        negretti_result = ["", 13]  # Default
+        try:
+            from .negretti_zambra import calculate_negretti_zambra_forecast
+            
+            negretti_data = calculate_negretti_zambra_forecast(
+                pressure=self.pressure_model.current_pressure,
+                pressure_change=0.0,
+                wind_data=[
+                    get_beaufort_scale(self.wind_speed),
+                    self.wind_direction,
+                    get_wind_dir_text(self.wind_direction),
+                    0
+                ],
+                elevation=self.elevation,
+                hemisphere=hemisphere,
+                lang_index=lang_index
+            )
+            negretti_result = [negretti_data[0], negretti_data[1]]
+        except Exception as e:
+            _LOGGER.debug(f"Could not get Negretti forecast: {e}")
+        
+        # Prepare weather data dict
+        weather_data = {
+            "start_time": datetime.now(timezone.utc),
+            "temperature": self.temperature_model.current_temp,
+            "pressure": self.pressure_model.current_pressure,
+            "pressure_change": self.pressure_model.change_rate_3h,  # Use change_rate_3h
+            "humidity": getattr(self.temperature_model, 'humidity', None) or 70.0,
+            "dewpoint": self.temperature_model.current_temp - 3.0,  # Approximation
+            "condition": self.current_condition or "unknown",
+            "zambretti_result": [zambretti_result[0], zambretti_result[1]],
+            "negretti_result": negretti_result,
+            "temperature_trend": self.temperature_model.change_rate_1h,  # Use change_rate_1h
+        }
+        
+        # Generate forecasts using enhanced orchestration
+        # Note: generate_enhanced_hourly_forecast uses range(hours + 1), so pass hours_count - 1
+        _LOGGER.debug(f"🎯 Calling generate_enhanced_hourly_forecast with {hours_count} hours")
+        hourly_forecasts = generate_enhanced_hourly_forecast(
+            weather_data=weather_data,
+            hours=hours_count - 1,  # Function generates hours 0 to hours (inclusive)
+            lang_index=lang_index
+        )
+        
+        # Convert to Home Assistant Forecast format
+        forecasts = []
+        rain_calc = RainProbabilityCalculator()
+        
+        for forecast_data in hourly_forecasts:
+            future_time = forecast_data["datetime"]
+            condition_code = forecast_data["condition_code"]
+            temperature = forecast_data["temperature"]
+            pressure = forecast_data["pressure"]
+            confidence = forecast_data.get("confidence", 0.85)
+            
+            # Determine if it's night
+            is_night = self._is_night(future_time)
+            is_current_state = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600 <= 1
+            
+            # Map condition code to HA condition
+            from .forecast_mapping import ZAMBRETTI_LETTER_TO_CODE
+            forecast_letter = None
+            for letter, code in ZAMBRETTI_LETTER_TO_CODE.items():
+                if code == condition_code:
+                    forecast_letter = letter
+                    break
+            if not forecast_letter:
+                forecast_letter = "A"
+            
+            condition = map_forecast_to_condition(
+                forecast_letter=forecast_letter,
+                forecast_num=condition_code,
+                is_night_func=lambda: is_night,
+                temperature=temperature,
+                source=f"Enhanced_orchestration",
+                is_current_state=is_current_state
+            )
+            
+            # Calculate rain probability
+            rain_prob = rain_calc.calculate(
+                current_pressure=self.pressure_model.current_pressure,
+                future_pressure=pressure,
+                pressure_trend=0.0,  # Already in forecast
+                zambretti_code=condition_code,
+                zambretti_letter=forecast_letter
+            )
+            
+            forecast: Forecast = {
+                "datetime": future_time.isoformat(),
+                "condition": condition,
+                "temperature": round(temperature, 1),
+                "native_temperature": round(temperature, 1),
+                "precipitation_probability": rain_prob,
+                "precipitation": None,
+                "native_precipitation": None,
+                "is_daytime": not is_night,
+            }
+            
+            forecasts.append(forecast)
+        
+        _LOGGER.debug(
+            f"🎯 Generated {len(forecasts)} forecasts via enhanced orchestration "
+            f"(Persistence → WMO Simple → TIME DECAY)"
+        )
+        
+        return forecasts
 
 
 class DailyForecastGenerator:

@@ -20,8 +20,7 @@ class TestForecastConditionMapping:
         - Codes 15-17: "Rain LATER" → cloudy (not raining yet)
         - Codes 18+: "Rain NOW/frequent" → rainy (for forecast)
 
-        Temperature-based conversion is disabled - only rain sensor determines
-        actual precipitation type (rain/snow/mixed).
+        When temperature is below 2°C, rain is converted to snow for forecasts.
         """
         # Code 15 = Some Rain (later) → cloudy (current state)
         result = forecast_code_to_condition(15, is_night=False, temperature=10.0, is_current_state=True)
@@ -35,14 +34,15 @@ class TestForecastConditionMapping:
         result_current = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=True)
         assert result_current == "cloudy"  # Current: sensor determines precipitation
 
+        # At -5°C, rain is converted to snow for forecast
         result_forecast = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=False)
-        assert result_forecast == "rainy"  # Forecast: predicted active rain
+        assert result_forecast == "snowy"  # Forecast: predicted snow (T ≤ 2°C)
 
     def test_lightning_stays_unchanged(self):
-        """Test lightning-rainy stays regardless of temperature."""
-        # Code 25 = Stormy → lightning-rainy
+        """Test lightning-rainy is converted to snowy at low temperatures."""
+        # Code 25 = Stormy → lightning-rainy, but converted to snowy at -5°C
         result = forecast_code_to_condition(25, is_night=False, temperature=-5.0)
-        assert result == "lightning-rainy"
+        assert result == "snowy"
 
         result = forecast_code_to_condition(25, is_night=False, temperature=15.0)
         assert result == "lightning-rainy"
@@ -77,8 +77,9 @@ class TestForecastConditionMapping:
         result = forecast_code_to_condition(24, is_night=False, temperature=10.0)
         assert result == "pouring"
 
+        # At -10°C, snow conversion changes pouring → snowy
         result = forecast_code_to_condition(24, is_night=False, temperature=-10.0)
-        assert result == "pouring"
+        assert result == "snowy"
 
 
 if __name__ == "__main__":
