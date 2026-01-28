@@ -1,6 +1,6 @@
-# Implementation Plan: v3.1.13 - Weather-Aware Temperature Model
+# Implementation Plan: v3.1.12 - Weather-Aware Temperature Model Enhancement
 
-**Version:** 3.1.13  
+**Version:** 3.1.12 (Temperature Enhancement)  
 **Status:** 📋 PLANNED  
 **Priority:** 🟡 MEDIUM  
 **Estimated Effort:** 7-10 dní  
@@ -728,13 +728,13 @@ _LOGGER.debug(
 
 #### Krok 4.1: Aktualizovať dokumentáciu
 **Súbory na update:**
-- `CHANGELOG.md` - pridať v3.1.13 sekciu
+- `CHANGELOG.md` - rozšíriť v3.1.12 sekciu o temperature enhancement
 - `README.md` - vysvetliť weather-aware temperature
-- `IMPLEMENTATION_STEPS_COMPLETE.md` - pridať v3.1.13
+- `IMPLEMENTATION_STEPS_COMPLETE.md` - aktualizovať v3.1.12 status
 
 #### Krok 4.2: Release notes
 ```markdown
-## v3.1.13 - Weather-Aware Temperature Model (2026-02-XX)
+## v3.1.12 - Weather-Aware Temperature Enhancement (2026-02-XX)
 
 ### 🌡️ Enhanced Temperature Predictions
 
@@ -742,7 +742,7 @@ _LOGGER.debug(
 - ☀️ Slnečné počasie = realistické oteplenie (+1-2°C)
 - 🌧️ Dažďové počasie = evaporačné chladenie (-1-3°C)
 - ☁️ Oblačnosť = redukované denné výkyvy
-- 🌙 Diurnálny cyklus = max 14:00, min 04:00
+- 🌙 Diurnálny cyklus = závislý od skutočnej pozície slnka
 - 📉 Exponenciálne tlmenie trendu (nie lineárne)
 
 **Presnosť:**
@@ -756,10 +756,10 @@ _LOGGER.debug(
 #### Krok 4.3: Git commit & tag
 ```bash
 git add .
-git commit -m "feat: v3.1.13 - Weather-aware temperature model
+git commit -m "feat: Weather-aware temperature model for v3.1.12
 
 - Add calculate_weather_aware_temperature() with condition-based adjustments
-- Implement diurnal cycle (max 14:00, min 04:00)
+- Implement sun-based diurnal cycle (not fixed hours)
 - Add evaporative cooling for rain (-1-3°C)
 - Add solar warming for sunny conditions (+1-2°C)
 - Exponential damping of temperature trend
@@ -767,8 +767,8 @@ git commit -m "feat: v3.1.13 - Weather-aware temperature model
 
 Accuracy improvement: +3-5% for temperature forecasts"
 
-git tag v3.1.13
-git push origin v3.1.13
+# Tag už existuje (v3.1.12), tento commit je súčasť verzie
+git push origin main
 ```
 
 ---
@@ -854,4 +854,4 @@ git push origin v3.1.13
 
 **Status:** 📋 READY FOR IMPLEMENTATION  
 **Next Action:** Review plan & create feature branch  
-**Expected Release:** v3.1.13 (2026-02-XX)
+**Part of Release:** v3.1.12 (enhancement)
