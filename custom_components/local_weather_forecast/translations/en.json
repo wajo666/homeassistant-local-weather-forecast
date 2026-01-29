@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Local Weather Forecast Setup",
-        "description": "Configure your local weather forecast based on barometric pressure. This integration provides ~94% accurate weather predictions without external API dependencies.",
+        "description": "Configure your local weather forecast based on barometric pressure. This integration provides accurate weather predictions without external API dependencies.",
         "data": {
           "pressure_sensor": "Pressure Sensor (Required)",
           "temperature_sensor": "Temperature Sensor (Optional)",
@@ -60,10 +60,10 @@
           "pressure_sensor": "Barometric pressure sensor (required). Supports hPa, mbar, inHg, mmHg - automatically converted.",
           "humidity_sensor": "Humidity sensor for enhanced fog risk detection, dew point calculation, and precipitation probability. Supports % units (optional)",
           "wind_gust_sensor": "Wind gust sensor. Supports m/s, km/h, mph, ft/s, knots - automatically converted. Used for atmospheric stability detection and severe weather alerts (optional)",
-          "rain_rate_sensor": "Precipitation detection sensor with device_class='precipitation'. Supports mm, in - automatically converted. The integration automatically detects precipitation when sensor value > 0 (Netatmo: increments 0.101, 0.202... / Ecowitt WS90: similar). Do NOT use hourly total sensors (optional)",
+          "rain_rate_sensor": "Precipitation sensor with device_class='precipitation'. Supports mm, in - automatically converted. Integration automatically detects precipitation when sensor value > 0. Do NOT use hourly total sensors (optional)",
           "solar_radiation_sensor": "Solar radiation sensor in W/m² for accurate feels-like temperature and cloudiness detection (optional)",
           "hemisphere": "Your hemisphere for seasonal weather adjustments. Auto-detected from Home Assistant location (latitude >= 0 = North, < 0 = South).",
-          "forecast_model": "Choose forecast algorithm: Enhanced (combines both, recommended ~98% accuracy), Zambretti (classic, optimized for rising/falling pressure), or Negretti-Zambra (slide rule method, conservative).",
+          "forecast_model": "Choose forecast algorithm: Enhanced (combines both, recommended), Zambretti (classic, optimized for rising/falling pressure), or Negretti-Zambra (slide rule method, conservative).",
           "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
       }

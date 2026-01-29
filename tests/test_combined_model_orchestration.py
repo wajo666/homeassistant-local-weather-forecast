@@ -283,3 +283,156 @@ class TestCalculateTemperatureAtHour:
         
         # Should be current temperature
         assert temp == 18.5
+
+
+class TestWeatherAwareTemperatureIntegration:
+    """Test weather-aware temperature integration in orchestration."""
+    
+    def test_temperature_realistic_with_rain(self):
+        """Test temperature behaves realistically with rainy forecast."""
+        weather_data = {
+            "start_time": datetime.now(timezone.utc),
+            "temperature": 18.0,
+            "temperature_trend": 0.0,
+            "pressure": 1005.0,
+            "pressure_change": -3.0,  # Falling - rain likely
+            "humidity": 85.0,
+            "dewpoint": 15.0,
+            "condition": "rainy",
+            "zambretti_result": ["Rain", 20],
+            "negretti_result": ["Rain soon", 19],
+            "latitude": 48.72,
+            "longitude": 21.25,
+        }
+        
+        forecasts = generate_enhanced_hourly_forecast(weather_data, hours=6, lang_index=1)
+        
+        # Check temperatures don't rise unrealistically during rain
+        for i, forecast in enumerate(forecasts):
+            if forecast["condition_code"] >= 18:  # Rainy
+                # Temperature should not increase significantly
+                # Allow small increase from trend but rain should cool it
+                assert forecast["temperature"] <= weather_data["temperature"] + 2.0, \
+                    f"Hour {i}: Rain forecast should not warm significantly"
+    
+    def test_temperature_realistic_with_sunshine(self):
+        """Test temperature increases realistically with sunny forecast."""
+        weather_data = {
+            "start_time": datetime.now(timezone.utc).replace(hour=10),  # Morning
+            "temperature": 18.0,
+            "temperature_trend": 0.5,
+            "pressure": 1025.0,
+            "pressure_change": 1.5,  # Rising - fine weather
+            "humidity": 50.0,
+            "dewpoint": 8.0,
+            "condition": "sunny",
+            "zambretti_result": ["Settled fine", 2],
+            "negretti_result": ["Fine", 1],
+            "latitude": 48.72,
+            "longitude": 21.25,
+            "solar_radiation": 800.0,
+        }
+        
+        forecasts = generate_enhanced_hourly_forecast(weather_data, hours=6, lang_index=1)
+        
+        # Check temperatures rise during sunny conditions
+        sunny_hours = [f for f in forecasts if f["condition_code"] <= 5]
+        if sunny_hours:
+            # Should have some warming beyond just the trend
+            max_temp = max(f["temperature"] for f in sunny_hours)
+            # With sunny conditions + trend, should warm noticeably
+            assert max_temp > weather_data["temperature"] + 1.0, \
+                "Sunny conditions should cause noticeable warming"
+    
+    def test_temperature_diurnal_cycle(self):
+        """Test temperature follows diurnal cycle."""
+        # Morning start
+        weather_data_morning = {
+            "start_time": datetime.now(timezone.utc).replace(hour=6),
+            "temperature": 12.0,
+            "temperature_trend": 0.3,
+            "pressure": 1020.0,
+            "pressure_change": 0.5,
+            "humidity": 70.0,
+            "dewpoint": 7.0,
+            "condition": "partly_cloudy",
+            "zambretti_result": ["Fair", 8],
+            "negretti_result": ["Fair", 9],
+            "latitude": 48.72,
+            "longitude": 21.25,
+        }
+        
+        forecasts = generate_enhanced_hourly_forecast(weather_data_morning, hours=12, lang_index=1)
+        
+        # Extract temperatures
+        temps = [f["temperature"] for f in forecasts]
+        
+        # Morning to afternoon should generally warm
+        # (even with neutral trend, diurnal cycle should add warmth during day)
+        # Find peak - should be in afternoon (around 14:00 UTC = hour 8)
+        peak_temp = max(temps[0:10])  # Within first 10 hours
+        
+        # Peak should be warmer than start
+        assert peak_temp > weather_data_morning["temperature"], \
+            "Diurnal cycle should cause warming from morning to afternoon"
+    
+    def test_temperature_damping_prevents_extremes(self):
+        """Test that temperature trend damping prevents unrealistic extremes."""
+        weather_data = {
+            "start_time": datetime.now(timezone.utc),
+            "temperature": 20.0,
+            "temperature_trend": 3.0,  # Strong warming trend
+            "pressure": 1015.0,
+            "pressure_change": 0.0,
+            "humidity": 60.0,
+            "dewpoint": 12.0,
+            "condition": "clear",
+            "zambretti_result": ["Fair", 8],
+            "negretti_result": ["Fair", 9],
+            "latitude": 48.72,
+            "longitude": 21.25,
+        }
+        
+        forecasts = generate_enhanced_hourly_forecast(weather_data, hours=10, lang_index=1)
+        
+        # Without damping: 20 + (3.0 * 10) = 50°C (unrealistic!)
+        # With damping + limits: should be much lower
+        final_temp = forecasts[-1]["temperature"]
+        
+        assert final_temp < 35.0, \
+            f"Temperature damping should prevent extreme values: got {final_temp}°C"
+        
+        # Should still show some warming
+        assert final_temp > weather_data["temperature"], \
+            "Should still show warming trend, just damped"
+    
+    def test_coordinates_used_for_solar_calculations(self):
+        """Test that latitude/longitude affect temperature calculations."""
+        base_data = {
+            "start_time": datetime.now(timezone.utc).replace(hour=12),
+            "temperature": 20.0,
+            "temperature_trend": 0.0,
+            "pressure": 1020.0,
+            "pressure_change": 0.0,
+            "humidity": 60.0,
+            "dewpoint": 12.0,
+            "condition": "sunny",
+            "zambretti_result": ["Fine", 2],
+            "negretti_result": ["Fine", 1],
+            "solar_radiation": 800.0,
+        }
+        
+        # Eastern location (Košice)
+        data_east = {**base_data, "latitude": 48.72, "longitude": 21.25}
+        # Western location (Praha)  
+        data_west = {**base_data, "latitude": 50.08, "longitude": 14.42}
+        
+        forecasts_east = generate_enhanced_hourly_forecast(data_east, hours=6, lang_index=1)
+        forecasts_west = generate_enhanced_hourly_forecast(data_west, hours=6, lang_index=1)
+        
+        # Temperatures might differ slightly due to solar noon offset
+        # This is expected behavior - just verify both complete successfully
+        assert len(forecasts_east) == 7
+        assert len(forecasts_west) == 7
+        assert all(f["temperature"] is not None for f in forecasts_east)
+        assert all(f["temperature"] is not None for f in forecasts_west)

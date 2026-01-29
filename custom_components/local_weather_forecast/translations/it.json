@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Configurazione previsioni meteo locali",
-        "description": "Configura le previsioni meteo locali basate sulla pressione barometrica. Questa integrazione fornisce previsioni meteo accurate al ~94% senza dipendenze da API esterne.",
+        "description": "Configura le previsioni meteo locali basate sulla pressione barometrica. Questa integrazione fornisce previsioni meteo accurate senza dipendenze da API esterne.",
         "data": {
           "pressure_sensor": "Sensore di pressione (obbligatorio)",
           "temperature_sensor": "Sensore di temperatura (facoltativo)",
@@ -60,10 +60,10 @@
           "pressure_sensor": "Sensore di pressione barometrica (obbligatorio). Supporta hPa, mbar, inHg, mmHg - conversione automatica.",
           "humidity_sensor": "Sensore di umidità per rilevamento avanzato nebbia, calcolo punto di rugiada e probabilità di precipitazioni (opzionale)",
           "wind_gust_sensor": "Sensore raffiche per rilevamento stabilità atmosferica e allerte meteo (opzionale)",
-          "rain_rate_sensor": "Sensore precipitazioni con device_class='precipitation' e unit='mm'. L'integrazione rileva automaticamente precipitazioni quando il valore del sensore > 0 (Netatmo: incrementi 0.101, 0.202... / Ecowitt WS90: simile). NON utilizzare sensori totali orari (opzionale)",
+          "rain_rate_sensor": "Sensore precipitazioni con device_class='precipitation'. Supporta mm, in - conversione automatica. L'integrazione rileva automaticamente precipitazioni quando il valore del sensore > 0. NON utilizzare sensori totali orari (opzionale)",
           "solar_radiation_sensor": "Sensore radiazione solare (W/m² o lux - conversione automatica) per rilevamento accurato nuvolosità e temperatura percepita (opzionale)",
           "hemisphere": "Il tuo emisfero per adattamenti stagionali meteo. Rilevato automaticamente dalla posizione Home Assistant (latitudine >= 0 = Nord, < 0 = Sud).",
-          "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato ~98% precisione), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
+          "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
           "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"
         }
       }

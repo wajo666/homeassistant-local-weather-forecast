@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Lokale Wettervorhersage Einrichtung",
-        "description": "Konfigurieren Sie Ihre lokale Wettervorhersage basierend auf Luftdruck. Diese Integration bietet ~94% genaue Wettervorhersagen ohne externe API-Abhängigkeiten.",
+        "description": "Konfigurieren Sie Ihre lokale Wettervorhersage basierend auf Luftdruck. Diese Integration bietet genaue Wettervorhersagen ohne externe API-Abhängigkeiten.",
         "data": {
           "pressure_sensor": "Drucksensor (Erforderlich)",
           "temperature_sensor": "Temperatursensor (Optional)",
@@ -60,10 +60,10 @@
           "pressure_sensor": "Barometrischer Drucksensor (erforderlich). Unterstützt hPa, mbar, inHg, mmHg - automatisch konvertiert.",
           "humidity_sensor": "Luftfeuchtigkeitssensor für verbesserte Nebelerkennung, Taupunktberechnung und Niederschlagswahrscheinlichkeit (optional)",
           "wind_gust_sensor": "Windböensensor zur Erkennung atmosphärischer Stabilität und Unwetterwarnungen (optional)",
-          "rain_rate_sensor": "Niederschlagssensor mit device_class='precipitation' und unit='mm'. Die Integration erkennt Niederschlag automatisch wenn Sensorwert > 0 (Netatmo: Schritte 0.101, 0.202... / Ecowitt WS90: ähnlich). KEINE stündlichen Gesamtsensoren verwenden (optional)",
+          "rain_rate_sensor": "Niederschlagssensor mit device_class='precipitation'. Unterstützt mm, in - automatisch konvertiert. Integration erkennt Niederschlag automatisch wenn Sensorwert > 0. KEINE stündlichen Gesamtsensoren verwenden (optional)",
           "solar_radiation_sensor": "Solarstrahlungssensor (W/m² oder lux - automatisch konvertiert) für genaue Wolkenerkennung und gefühlte Temperatur (optional)",
           "hemisphere": "Ihre Hemisphäre für saisonale Wetteranpassungen. Automatisch erkannt aus Home Assistant Position (Breitengrad >= 0 = Nord, < 0 = Süd).",
-          "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen ~98% Genauigkeit), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ).",
+          "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ).",
           "enable_weather_entity": "Erstellen Sie eine Wetter-Entität für Wetterkarten und Automatisierungen"
         }
       }

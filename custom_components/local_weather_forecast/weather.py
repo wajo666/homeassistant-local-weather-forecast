@@ -937,14 +937,13 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                                 # RAIN or POURING - Liquid precipitation
                                 # Detect intensity based on sensor value (works for both mm and mm/h)
-                                # WMO: > 10 mm/h = heavy rain (pouring)
+                                # WMO: > 7.5 mm/h = heavy rain (pouring)
                                 # Note: Some sensors report mm but are actually mm/h (Netatmo misconfiguration)
 
                                 # Check for high intensity regardless of unit
                                 is_pouring = False
-                                if current_rain > 10 and temp > 10:
-                                    # High rate + warm temp → POURING
-                                    # Warm temperature (> 10°C) increases likelihood of convective rain
+                                if current_rain > 7.5:
+                                    # High precipitation rate → POURING
                                     is_pouring = True
 
                                 if is_pouring:

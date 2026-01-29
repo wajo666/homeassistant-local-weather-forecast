@@ -966,10 +966,22 @@ class HourlyForecastGenerator:
 
             # Predict atmospheric conditions
             future_pressure = self.pressure_model.predict(hour_offset)
-            future_temp = self.temperature_model.predict(hour_offset)
             pressure_trend = self.pressure_model.get_trend(hour_offset)
+            
+            # ═══════════════════════════════════════════════════════════════
+            # v3.1.12: Use weather-aware temperature model for ALL models
+            # ═══════════════════════════════════════════════════════════════
+            # Calculate pressure change for forecast code determination
+            pressure_change = future_pressure - self.pressure_model.current_pressure
 
-            # Calculate pressure change for Zambretti
+            # Predict atmospheric conditions
+            future_pressure = self.pressure_model.predict(hour_offset)
+            pressure_trend = self.pressure_model.get_trend(hour_offset)
+            
+            # ═══════════════════════════════════════════════════════════════
+            # v3.1.12: Use weather-aware temperature model for ALL models
+            # ═══════════════════════════════════════════════════════════════
+            # Calculate pressure change for forecast code determination
             pressure_change = future_pressure - self.pressure_model.current_pressure
 
             # Get Zambretti forecast for this hour
@@ -1013,7 +1025,7 @@ class HourlyForecastGenerator:
                     negretti_letter = zambretti_letter
                     negretti_num = zambretti_num
 
-            # Select forecast based on model preference
+            # Select forecast code based on model preference
             if self.forecast_model == FORECAST_MODEL_ZAMBRETTI:
                 forecast_letter = zambretti_letter
                 forecast_num = zambretti_num
@@ -1117,6 +1129,30 @@ class HourlyForecastGenerator:
                     forecast_letter = zambretti_letter
                     forecast_num = zambretti_num
                     _LOGGER.debug(f"Combined forecast (Zambretti fallback): {zambretti_letter}")
+
+            # ═══════════════════════════════════════════════════════════════
+            # v3.1.12: Calculate temperature using weather-aware model
+            # NOW available for ALL forecast models (Zambretti/Negretti/Enhanced)
+            # ═══════════════════════════════════════════════════════════════
+            from .combined_model import calculate_weather_aware_temperature
+            
+            future_temp = calculate_weather_aware_temperature(
+                hour=hour_offset,
+                current_temp=self.temperature_model.current_temp,
+                temp_trend=self.temperature_model.change_rate_1h,
+                forecast_code=forecast_num,  # Use selected forecast code
+                current_hour=now.hour,
+                latitude=self.latitude,
+                longitude=getattr(self.hass.config, 'longitude', 21.25) if self.hass and self.hass.config else 21.25,
+                humidity=getattr(self.temperature_model, 'humidity', None),
+                cloud_cover=getattr(self.temperature_model, 'cloud_cover', None),
+                solar_radiation=self.zambretti.solar_radiation if hasattr(self.zambretti, 'solar_radiation') else None,
+            )
+            
+            _LOGGER.debug(
+                f"🌡️ {self.forecast_model} h{hour_offset}: {future_temp:.1f}°C "
+                f"(code={forecast_num}, weather-aware)"
+            )
 
             # Determine if it's daytime using sun entity (if available)
             is_night = self._is_night(future_time)
@@ -1339,6 +1375,10 @@ class HourlyForecastGenerator:
             "zambretti_result": [zambretti_result[0], zambretti_result[1]],
             "negretti_result": negretti_result,
             "temperature_trend": self.temperature_model.change_rate_1h,  # Use change_rate_1h
+            "latitude": self.latitude,  # NEW: For sun-based temperature model
+            "longitude": getattr(self.hass.config, 'longitude', 21.25) if self.hass and self.hass.config else 21.25,  # NEW
+            "solar_radiation": self.zambretti.solar_radiation if hasattr(self.zambretti, 'solar_radiation') else None,  # NEW
+            "cloud_cover": None,  # TODO: Add if available from sensors
         }
         
         # Generate forecasts using enhanced orchestration

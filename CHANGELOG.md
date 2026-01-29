@@ -7,39 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [3.1.12] - 2026-01-28
+## [3.1.12] - 2026-01-29
 
-### ✨ What's New
+### ✨ Added
+- **Weather-Aware Temperature Model** - Temperature predictions now adapt to weather conditions
+  - Solar warming during sunny conditions
+  - Evaporative cooling during rain
+  - Sun-based diurnal cycle using actual solar position
+  - Exponential trend damping to prevent unrealistic extremes
 - **3-Model Orchestration** - Smart model selection by forecast horizon
-  - Hour 0: Persistence (98% accuracy)
-  - Hours 1-3: WMO Simple nowcasting (90% accuracy) ⭐ NEW!
+  - Hour 0: Persistence model (current conditions)
+  - Hours 1-3: WMO Simple nowcasting
   - Hours 4-6: Blended transition
-  - Hours 7+: TIME DECAY (84% accuracy)
-- **WMO Simple Model** - Physics-based nowcasting (NEW!)
-  - Uses pressure trends for 1-3 hour forecasts
-  - 90% accuracy for short-term predictions
-  - Smooth blending with TIME DECAY model
-- **Persistence Model** - Stabilizes current conditions
-  - 98% accuracy for hour 0
-  - Filters sensor noise and fluctuations
-  - Smooth baseline for forecasts
-- **TIME DECAY Weighting** - Dynamic long-term forecasts
-  - Hour 0: Sharp and responsive
-  - 24h: Balanced and reliable
+  - Hours 7+: TIME DECAY weighting
+- **WMO Simple Model** - Physics-based short-term forecasting using pressure trends
+- **Persistence Model** - Stabilizes hour 0 forecasts and filters sensor noise
 
-### 📊 Impact
-- **Hours 1-3 Accuracy:** +6% (84% → 90%) ⭐⭐
-- **Hour 0 Accuracy:** +16% (82% → 98%) ⭐⭐⭐
-- **Overall Accuracy:** +14% (76% → 90%) ⭐⭐⭐
-- **No Breaking Changes:** Everything works as before
-
-### 🔧 Technical Details
-- Added WMO Simple Model (`wmo_simple.py`) for physics-based nowcasting
-- Added TIME DECAY weighting for dynamic model selection
-- Added Persistence Model for hour 0 stabilization
-- Enhanced orchestration: Hour 0 (Persistence) → Hours 1-3 (WMO Simple) → Hours 4-6 (Blend) → Hours 7+ (TIME DECAY)
-- New modules: `wmo_simple.py`, `persistence.py`
-- Integration tests: 29+ tests covering all models and orchestration
+### 🔧 Fixed
+- Temperature forecasts now work correctly for all forecast models (Zambretti, Negretti, Enhanced)
+- Improved accuracy for short-term forecasts (hours 1-3)
+- Better temperature progression throughout the day
 
 ---
 

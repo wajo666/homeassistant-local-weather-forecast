@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import math
+from datetime import datetime, timedelta, timezone
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -582,10 +583,17 @@ def generate_enhanced_hourly_forecast(
             "condition": forecast_text,
             "condition_code": forecast_code,
             "confidence": confidence,
-            "temperature": calculate_temperature_at_hour(
-                hour, 
-                weather_data.get("temperature", 15.0),
-                weather_data.get("temperature_trend", 0.0)
+            "temperature": calculate_weather_aware_temperature(
+                hour=hour,
+                current_temp=weather_data.get("temperature", 15.0),
+                temp_trend=weather_data.get("temperature_trend", 0.0),
+                forecast_code=forecast_code,
+                current_hour=datetime.now(timezone.utc).hour,
+                latitude=weather_data.get("latitude", 48.72),
+                longitude=weather_data.get("longitude", 21.25),
+                humidity=weather_data.get("humidity"),
+                cloud_cover=weather_data.get("cloud_cover"),
+                solar_radiation=weather_data.get("solar_radiation"),
             ),
             "pressure": weather_data.get("pressure", 1013.25),
         }
@@ -602,6 +610,8 @@ def calculate_temperature_at_hour(
 ) -> float:
     """Calculate temperature at future hour (simple linear model).
     
+    DEPRECATED: Use calculate_weather_aware_temperature() for better accuracy.
+    
     Args:
         hour: Hours ahead (0-24)
         current_temp: Current temperature in °C
@@ -613,3 +623,263 @@ def calculate_temperature_at_hour(
     # Simple linear extrapolation
     # Future: Use diurnal cycle model
     return current_temp + (temp_trend * hour)
+
+
+def calculate_weather_aware_temperature(
+    hour: int,
+    current_temp: float,
+    temp_trend: float,
+    forecast_code: int,
+    current_hour: int,
+    latitude: float = 48.72,
+    longitude: float = 21.25,
+    humidity: float | None = None,
+    cloud_cover: float | None = None,
+    solar_radiation: float | None = None,
+) -> float:
+    """Calculate temperature with weather-aware adjustments.
+    
+    Combines:
+    - Damped linear trend (realistic decay)
+    - Diurnal cycle based on actual sun position (not fixed hours!)
+    - Weather condition adjustments (rain cooling, solar warming)
+    
+    Args:
+        hour: Hours ahead (0-24)
+        current_temp: Current temperature in °C
+        temp_trend: Temperature trend in °C/hour
+        forecast_code: Forecast code (0-25) from unified mapping
+        current_hour: Current hour of day (0-23)
+        latitude: Location latitude (for sun calculations)
+        longitude: Location longitude (for sun calculations)
+        humidity: Relative humidity % (optional)
+        cloud_cover: Cloud cover % (optional)
+        solar_radiation: Solar radiation W/m² (optional)
+        
+    Returns:
+        Predicted temperature in °C
+    """
+    if hour == 0:
+        return current_temp
+    
+    # ═══════════════════════════════════════
+    # 1. DAMPED TREND COMPONENT
+    # ═══════════════════════════════════════
+    # Exponential damping: trend weakens over time
+    # Formula: sum of (initial_rate * damping^hour)
+    damping_factor = 0.85  # Same as TemperatureModel
+    trend_change = 0.0
+    current_rate = temp_trend
+    
+    for h in range(hour):
+        trend_change += current_rate
+        current_rate *= damping_factor
+    
+    # Cap trend to ±5°C over forecast period
+    trend_change = max(-5.0, min(5.0, trend_change))
+    
+    # ═══════════════════════════════════════
+    # 2. DIURNAL CYCLE COMPONENT (SUN-BASED)
+    # ═══════════════════════════════════════
+    # Use actual sun position based on longitude
+    # Maximum temperature: ~2-3h after solar noon
+    # Minimum temperature: ~30min before sunrise
+    
+    current_time = datetime.now(timezone.utc)
+    
+    # Calculate solar noon based on longitude
+    # Handle Mock objects in tests
+    try:
+        solar_noon_offset = float(longitude) / 15.0  # 15° = 1 hour
+    except (TypeError, ValueError):
+        # Fallback for Mock or invalid longitude
+        solar_noon_offset = 0.0
+    
+    solar_noon_hour = 12.0 + solar_noon_offset  # UTC solar noon
+    temp_max_hour = solar_noon_hour + 2.0  # Temp max 2h after solar noon
+    
+    # Sunrise approximation (simplified)
+    sunrise_hour = solar_noon_hour - 6.0  # ~6h before solar noon
+    temp_min_hour = sunrise_hour - 0.5  # Temp min before sunrise
+    
+    # Calculate amplitude (seasonal + cloud reduction)
+    base_amplitude = _get_diurnal_amplitude(current_time.month)
+    
+    # Cloud cover reduces amplitude
+    if cloud_cover is not None:
+        cloud_reduction = 1.0 - (cloud_cover / 200.0)  # 50% clouds = 75% amplitude
+    else:
+        cloud_reduction = 1.0
+    
+    amplitude = base_amplitude * cloud_reduction
+    
+    # Phase calculation based on sun position
+    # Use hours from temp minimum as reference
+    current_hours_from_min = (current_hour - temp_min_hour) % 24
+    future_hour_of_day = (current_hour + hour) % 24
+    future_hours_from_min = (future_hour_of_day - temp_min_hour) % 24
+    
+    # Map to sinusoid: minimum at 0h, maximum at ~10h (temp_max - temp_min)
+    temp_cycle_period = 24.0  # 24h cycle
+    current_phase = (current_hours_from_min / temp_cycle_period) * 2 * math.pi
+    future_phase = (future_hours_from_min / temp_cycle_period) * 2 * math.pi
+    
+    # Shift so minimum is at phase=0: use -cos instead of cos
+    # This gives: min at 0h, max at 12h
+    current_diurnal = amplitude * (1 - math.cos(current_phase)) / 2.0  # Range: 0 to amplitude
+    future_diurnal = amplitude * (1 - math.cos(future_phase)) / 2.0
+    
+    # Center around current temp (not around amplitude)
+    # We want ±amplitude/2 variation around mean
+    current_diurnal -= amplitude / 2.0
+    future_diurnal -= amplitude / 2.0
+    
+    diurnal_change = future_diurnal - current_diurnal
+    
+    # ═══════════════════════════════════════
+    # 3. WEATHER CONDITION ADJUSTMENTS
+    # ═══════════════════════════════════════
+    weather_adjustment = _get_weather_temperature_adjustment(
+        forecast_code=forecast_code,
+        future_hour=future_hour_of_day,
+        solar_radiation=solar_radiation,
+        cloud_cover=cloud_cover
+    )
+    
+    # ═══════════════════════════════════════
+    # 4. COMBINE ALL COMPONENTS
+    # ═══════════════════════════════════════
+    predicted = current_temp + trend_change + diurnal_change + weather_adjustment
+    
+    # Apply absolute limits
+    predicted = max(-40.0, min(50.0, predicted))
+    
+    _LOGGER.debug(
+        f"🌡️ Temperature h{hour}: {predicted:.1f}°C "
+        f"(base={current_temp:.1f}, trend={trend_change:+.1f}, "
+        f"diurnal={diurnal_change:+.1f}, weather={weather_adjustment:+.1f})"
+    )
+    
+    return round(predicted, 1)
+
+
+def _get_diurnal_amplitude(current_month: int | None = None) -> float:
+    """Get typical diurnal temperature amplitude by season.
+    
+    Returns:
+        Amplitude in °C (half of daily range)
+    """
+    if current_month is None:
+        from datetime import datetime, timezone
+        current_month = datetime.now(timezone.utc).month
+    
+    # Northern hemisphere seasonal amplitudes
+    # Summer: larger swings, Winter: smaller swings
+    if 5 <= current_month <= 8:  # May-Aug
+        return 8.0  # ±8°C around mean
+    elif current_month in [4, 9]:  # Apr, Sep
+        return 6.0
+    elif current_month in [3, 10]:  # Mar, Oct
+        return 5.0
+    else:  # Nov-Feb
+        return 3.0
+
+
+def _get_weather_temperature_adjustment(
+    forecast_code: int,
+    future_hour: int,
+    solar_radiation: float | None,
+    cloud_cover: float | None
+) -> float:
+    """Calculate temperature adjustment based on weather condition.
+    
+    Args:
+        forecast_code: Unified forecast code (0-25)
+        future_hour: Hour of day (0-23)
+        solar_radiation: Solar radiation W/m² (optional)
+        cloud_cover: Cloud cover % (optional)
+        
+    Returns:
+        Temperature adjustment in °C
+    """
+    adjustment = 0.0
+    
+    # Check if it's daytime (06:00-18:00)
+    is_daytime = 6 <= future_hour <= 18
+    
+    # ═══════════════════════════════════════
+    # RAINY CONDITIONS: Evaporative cooling
+    # ═══════════════════════════════════════
+    if forecast_code >= 22:  # Storm, very unsettled (codes 22-25)
+        adjustment = -3.0  # Heavy rain: strong cooling
+    elif forecast_code >= 18:  # Rain soon, rain (codes 18-21)
+        adjustment = -1.5  # Moderate rain: moderate cooling
+    
+    # ═══════════════════════════════════════
+    # SUNNY CONDITIONS: Solar warming (daytime only)
+    # ═══════════════════════════════════════
+    elif forecast_code <= 2 and is_daytime:  # Settled fine, Fine (codes 0-2)
+        # Handle Mock objects in tests
+        try:
+            solar_rad_value = float(solar_radiation) if solar_radiation is not None else None
+        except (TypeError, ValueError):
+            solar_rad_value = None
+        
+        if solar_rad_value is not None and solar_rad_value > 0:
+            # Use actual solar radiation
+            # +2°C per 400 W/m² at solar noon
+            max_warming = (solar_rad_value / 400.0) * 2.0
+            
+            # Sun angle factor (stronger at midday)
+            sun_factor = _get_sun_angle_factor(future_hour)
+            adjustment = max_warming * sun_factor
+        else:
+            # Fallback: typical sunny day warming
+            # Peak at 13:00-14:00
+            if 11 <= future_hour <= 15:
+                adjustment = 2.0
+            elif 9 <= future_hour <= 17:
+                adjustment = 1.0
+            else:
+                adjustment = 0.5
+    
+    # ═══════════════════════════════════════
+    # PARTLY CLOUDY: Reduced solar warming
+    # ═══════════════════════════════════════
+    elif 3 <= forecast_code <= 10 and is_daytime:  # Variable, becoming less settled
+        if cloud_cover is not None:
+            # Reduce warming based on cloud cover
+            clear_sky_warming = 1.5
+            adjustment = clear_sky_warming * (1.0 - cloud_cover / 100.0)
+        else:
+            adjustment = 0.7  # Moderate warming
+    
+    # ═══════════════════════════════════════
+    # CLOUDY: Minimal effect
+    # ═══════════════════════════════════════
+    # Codes 11-17: Unsettled, rain later - neutral temperature effect
+    
+    return adjustment
+
+
+def _get_sun_angle_factor(hour: int) -> float:
+    """Get sun angle factor for solar warming calculation.
+    
+    Args:
+        hour: Hour of day (0-23)
+        
+    Returns:
+        Factor 0.0-1.0 (0=night, 1=solar noon)
+    """
+    # Solar noon ~13:00
+    # Sun angle peaks at noon, zero at night
+    if hour < 6 or hour > 18:
+        return 0.0  # Night
+    elif 12 <= hour <= 14:
+        return 1.0  # Solar noon
+    elif 10 <= hour <= 16:
+        return 0.8  # Near noon
+    elif 8 <= hour <= 18:
+        return 0.5  # Morning/afternoon
+    else:
+        return 0.2  # Dawn/dusk

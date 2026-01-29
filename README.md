@@ -14,8 +14,8 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 
 ## ✨ Key Features
 
-- 🎯 **94-98% Accuracy** - With basic sensors (pressure + temperature + humidity)
-- 🔌 **100% Offline** - Works without internet connection
+- 🎯 **Accurate Forecasts** - Works with basic sensors (pressure + temperature + humidity)
+- 🔌 **100% Offline** - No internet connection required
 - 📅 **3-Day Forecast** - Hourly (24h) + Daily (3 days)
 - 🌍 **Multi-language** - Auto-detects Home Assistant UI language (EN, DE, SK, IT, EL)
 - 🔄 **Auto Unit Conversion** - Use any units (°F, inHg, mph, km/h, etc.)
@@ -39,14 +39,14 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 - ✅ **Pressure Sensor** (atmospheric_pressure) - The core of weather prediction
 
 ### Highly Recommended
-- ⚠️ **Temperature Sensor** - For snow/frost detection and better accuracy (+5%)
-- ⚠️ **Humidity Sensor** - For fog detection and moisture confirmation (+10%)
+- ⚠️ **Temperature Sensor** - For snow/frost detection and better accuracy
+- ⚠️ **Humidity Sensor** - For fog detection and moisture confirmation
 
 ### Optional (Enhanced Features)
-- ☀️ **Solar Radiation Sensor** (W/m² or lux) - Real-time cloud detection (+15%)
-- 🌧️ **Rain Sensor** - Definitive precipitation detection (+25%)
-- 💨 **Wind Speed + Direction** - Better forecast adjustments (+3%)
-- 💨 **Wind Gust** - Atmospheric stability detection (+3%)
+- ☀️ **Solar Radiation Sensor** (W/m² or lux) - Real-time cloud detection
+- 🌧️ **Rain Sensor** - Definitive precipitation detection
+- 💨 **Wind Speed + Direction** - Better forecast adjustments
+- 💨 **Wind Gust** - Atmospheric stability detection
 
 ### Supported Units (Auto-Converted)
 
@@ -64,125 +64,154 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 
 ## 🎯 How It Works - Simple Explanation
 
-### Weather Detection Priority System
+### 🌡️ Weather Detection Priority System
 
-The integration uses a **6-phase smart system** to determine current weather with maximum accuracy:
+The integration uses a **6-phase intelligent decision system** to determine current weather conditions:
+
+#### 📊 Phase Overview
 
 ```
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 1: HARD OVERRIDES (Return immediately - definitive!)       ║
-╚═══════════════════════════════════════════════════════════════════╝
+┌─────────────────────────────────────────────────────────────────┐
+│                     DECISION FLOW CHART                         │
+└─────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────┐
-│ PRIORITY 0: Exceptional Weather & Hail                  │
-│ Extreme conditions (hurricane, bomb cyclone) ⚠️         │
-│ • Pressure < 920 hPa → "exceptional" (hurricane)        │
-│ • Pressure > 1070 hPa → "exceptional" (extreme high)    │
-│ • Rapid change > 10 hPa/3h → "exceptional" (bomb)       │
-│ • Storm + temp 15-30°C + RH>80% + unstable → "hail"    │
-│ Result: EXCEPTIONAL or HAIL (ends evaluation)           │
-└─────────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────────┐
-│ PRIORITY 1: Rain Sensor (Direct Measurement) 🌧️        │
-│ Active precipitation detected → Show it NOW!            │
-│ • Temp < -1°C → "snowy" ❄️                             │
-│ • Temp -1 to 4°C (transition zone):                     │
-│   - Temp ≤1°C + RH<85% → "snowy" (cold+dry)            │
-│   - Temp ≥3°C + RH>85% → "rainy" (warm+humid)          │
-│   - Otherwise → "snowy-rainy" 🌨️ (mixed)              │
-│ • Temp > 4°C:                                           │
-│   - Rate >10 mm/h + temp >10°C → "pouring" 🌊          │
-│   - Otherwise → "rainy" 🌧️                             │
-│ Result: SNOWY, RAINY, POURING, MIXED (ends evaluation) │
-└─────────────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────────────┐
-│ PRIORITY 2: Fog Detection (Observable Weather) 🌫️      │
-│ Temperature + Humidity + Dewpoint + Wind                │
-│ • Critical: spread <0.5°C + RH>95% → "fog" (always)    │
-│ • Likely: spread <1.0°C + RH>93% + wind<3m/s → "fog"   │
-│ • Likely: spread 1.5-2.5°C + RH>85% + wind<2m/s        │
-│ • Possible: spread 1.0-1.5°C + RH>90% + night + calm   │
-│ Result: FOG (ends evaluation)                           │
-└──���──────────────────────────────────────────────────────┘
-
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 2: SOLAR RADIATION (If available - HIGHEST ACCURACY!)      ║
-╚═══════════════════════════════════════════════════════════════════╝
-
-┌─────────────────────────────────────────────────────────┐
-│ PRIORITY 3: Solar Cloudiness Detection ☀️              │
-│ (Daytime + sun elevation >0° + radiation >10 W/m²)      │
-│ WMO Standards (oktas - eighths of sky):                 │
-│ • Transparency ≥75% (0-2 oktas) → "sunny" ☀️           │
-│ • Transparency 50-75% (3-4 oktas) → "partlycloudy" ⛅   │
-│ • Transparency 12.5-50% (5-7 oktas) → "cloudy" ☁️      │
-│ • Transparency <12.5% (8 oktas) → "cloudy" (overcast)   │
-│ Result: solar_cloudiness (stored for Phase 4)           │
-└─────────────────────────────────────────────────────────┘
-
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 3: PRESSURE-BASED BASELINE (Always calculated)             ║
-╚═══════════════════════════════════════════════════════════════════╝
-
-┌─────────────────────────────────────────────────────────┐
-│ PRIORITY 5: Pressure-Based Current State (NOW - 0h)     │
-│ Direct pressure mapping (NOT forecast prediction!)      │
-│ WMO Meteorological Standards:                           │
-│ • <980 hPa → "lightning-rainy" (deep cyclone)           │
-│ • 980-1000 hPa → "rainy/snowy" (low pressure)           │
-│ • 1000-1010 hPa:                                        │
-│   - Falling >2 hPa/3h → "rainy" (deteriorating)         │
-│   - Otherwise → "cloudy" (stable)                       │
-│ • 1010-1020 hPa → "partlycloudy" (normal)               │
-│ • ≥1020 hPa → "sunny/clear-night" (high pressure)       │
-│ Result: current_condition_from_pressure                 │
-└─────────────────────────────────────────────────────────┘
-
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 4: HUMIDITY FINE-TUNING (If no solar available)            ║
-╚═══════════════════════════════════════════════════════════════════╝
-
-┌─────────────────────────────────────────────────────────┐
-│ Humidity Adjustment (Night or no solar) 💧              │
-│ Adjust pressure-based condition using humidity:         │
-│ • RH >90% + "partlycloudy" → "cloudy" (upgrade)        │
-│ • RH >85% + "sunny/clear" → "partlycloudy" (upgrade)   │
-│ Note: ONLY increases cloudiness (never decreases!)      │
-│ ⚠️ SKIPPED if solar available (solar more accurate!)    │
-│ Result: humidity_adjusted_condition                     │
-└─────────────────────────────────────────────────────────┘
-
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 5: SOLAR VALIDATION (Final override if available)          ║
-╚═══════════════════════════════════════════════════════════════════╝
-
-┌─────────────────────────────────────────────────────────┐
-│ Compare Solar vs Pressure+Humidity Result               │
-│ If difference ≥1 level → Use SOLAR (real measurement!)  │
-│ ⚠️ If pressure suggests "cloudy" but solar shows        │
-│    "sunny" → Use SOLAR (real data wins!)                │
-│ Rain sensor determines precipitation, not pressure!     │
-│ Result: validated_condition                             │
-└─────────────────────────────────────────────────────────┘
-
-╔═══════════════════════════════════════════════════════════════════╗
-║ PHASE 6: WIND OVERRIDE (For high wind speeds)                    ║
-╚═══════════════════════════════════════════════════════════════════╝
-
-┌─────────────────────────────────────────────────────────┐
-│ Wind Speed Check (if wind ≥10.8 m/s = Force 6+) 💨     │
-│ ONLY overrides basic cloudiness conditions:             │
-│ • sunny/clear/partlycloudy + wind ≥10.8 → "windy"      │
-│ • cloudy + wind ≥10.8 → "windy-variant"                │
-│ ⚠️ CANNOT override rain/snow/fog (they have priority!)  │
-│ Result: FINAL condition                                 │
-└──────────────────────────���──────────────────────────────┘
+    PHASE 1: HARD OVERRIDES (Definitive - Returns Immediately)
+    ┌──────────────────────────────────────────────────────────┐
+    │ 0. Exceptional Weather (Hurricane, Bomb Cyclone, Hail)  │
+    │ 1. Rain Sensor (Active precipitation detected)          │
+    │ 2. Fog Detection (Temperature + Humidity + Dewpoint)    │
+    └──────────────────────────────────────────────────────────┘
+                              ↓ (if none detected)
+                              
+    PHASE 2: SOLAR RADIATION (Highest Accuracy - If Available)
+    ┌──────────────────────────────────────────────────────────┐
+    │ 3. Solar Cloudiness (Real-time cloud measurement)       │
+    └──────────────────────────────────────────────────────────┘
+                              ↓ (calculate baseline)
+                              
+    PHASE 3: PRESSURE BASELINE (Always Calculated)
+    ┌──────────────────────────────────────────────────────────┐
+    │ 5. Pressure-Based State (Current atmospheric pressure)  │
+    └──────────────────────────────────────────────────────────┘
+                              ↓ (if no solar)
+                              
+    PHASE 4: HUMIDITY FINE-TUNING (When Solar Not Available)
+    ┌──────────────────────────────────────────────────────────┐
+    │ Adjust cloudiness based on relative humidity            │
+    └──────────────────────────────────────────────────────────┘
+                              ↓ (validate)
+                              
+    PHASE 5: SOLAR VALIDATION (Final Check If Solar Available)
+    ┌──────────────────────────────────────────────────────────┐
+    │ Compare solar vs pressure+humidity (solar wins)          │
+    └──────────────────────────────────────────────────────────┘
+                              ↓ (final check)
+                              
+    PHASE 6: WIND OVERRIDE (High Wind Speed Only)
+    ┌──────────────────────────────────────────────────────────┐
+    │ Convert to "windy" if wind ≥10.8 m/s (Force 6+)         │
+    └──────────────────────────────────────────────────────────┘
+                              ↓
+                         ✅ FINAL CONDITION
 ```
 
-### Universal Post-Processing (Applied to ALL)
-- 🌙 **Night Mode:** Auto-converts "sunny" → "clear-night" after sunset
+---
+
+#### 🔴 PHASE 1: Hard Overrides (Definitive Detection)
+
+**Priority 0: Exceptional Weather** ⚠️
+- Pressure < 920 hPa → `exceptional` (Hurricane)
+- Pressure > 1070 hPa → `exceptional` (Extreme high)  
+- Rapid change > 10 hPa/3h → `exceptional` (Bomb cyclone)
+- Storm conditions + 15-30°C + RH>80% + unstable → `hail`
+
+**Priority 1: Rain Sensor** 🌧️
+- Active precipitation detected → Immediate classification
+- Temp < -1°C → `snowy`
+- Temp -1 to 4°C (transition):
+  - Cold+Dry (≤1°C, RH<85%) → `snowy`
+  - Warm+Humid (≥3°C, RH>85%) → `rainy`
+  - Otherwise → `snowy-rainy`
+- Temp > 4°C:
+  - Rate >7.5 mm/h → `pouring`
+  - Otherwise → `rainy`
+
+**Priority 2: Fog Detection** 🌫️
+- Critical (always): Spread <0.5°C + RH>95%
+- Likely: Spread <1.0°C + RH>93% + Wind<3m/s
+- Likely: Spread 1.5-2.5°C + RH>85% + Wind<2m/s
+- Possible: Spread 1.0-1.5°C + RH>90% + Night + Calm
+
+> **Note:** If any condition in Phase 1 is met, evaluation ends immediately.
+
+---
+
+#### ☀️ PHASE 2: Solar Radiation (Real-Time Measurement)
+
+**Priority 3: Solar Cloudiness Detection**
+- Active during: Daytime + Sun elevation >0° + Radiation >10 W/m²
+- Uses WMO Standards (oktas = eighths of sky):
+  - Transparency ≥75% (0-2 oktas) → `sunny`
+  - Transparency 50-75% (3-4 oktas) → `partlycloudy`
+  - Transparency 12.5-50% (5-7 oktas) → `cloudy`
+  - Transparency <12.5% (8 oktas) → `cloudy` (overcast)
+- Result stored for validation in Phase 5
+
+---
+
+#### 🌪️ PHASE 3: Pressure Baseline (Always Calculated)
+
+**Priority 5: Pressure-Based Current State**
+- Direct atmospheric pressure mapping (WMO Standards):
+  - <980 hPa → `lightning-rainy` (Deep cyclone)
+  - 980-1000 hPa → `rainy/snowy` (Low pressure)
+  - 1000-1010 hPa:
+    - Falling >2 hPa/3h → `rainy` (Deteriorating)
+    - Otherwise → `cloudy` (Stable)
+  - 1010-1020 hPa → `partlycloudy` (Normal)
+  - ≥1020 hPa → `sunny/clear-night` (High pressure)
+
+---
+
+#### 💧 PHASE 4: Humidity Fine-Tuning (No Solar Only)
+
+**Humidity Adjustment**
+- Applied when: Solar sensor not available or nighttime
+- Increases cloudiness based on humidity:
+  - RH >90% + `partlycloudy` → `cloudy`
+  - RH >85% + `sunny/clear` → `partlycloudy`
+- **Note:** Only upgrades cloudiness, never downgrades
+- **Skipped** if solar available (solar data more accurate)
+
+---
+
+#### ✅ PHASE 5: Solar Validation (Final Override)
+
+**Solar vs Pressure Comparison**
+- Compares solar measurement with pressure+humidity result
+- If difference ≥1 cloudiness level → Use SOLAR data
+- Solar measurement overrides pressure-based prediction
+- Example: Pressure suggests `cloudy` but solar shows `sunny` → Use `sunny`
+
+> **Important:** Rain sensor determines precipitation, not pressure!
+
+---
+
+#### 💨 PHASE 6: Wind Override (High Wind Only)
+
+**Wind Speed Check**
+- Activates when: Wind ≥10.8 m/s (Beaufort Force 6+)
+- Overrides only basic cloudiness:
+  - `sunny/clear/partlycloudy` → `windy`
+  - `cloudy` → `windy-variant`
+- **Cannot override:** Rain, snow, fog (they have priority)
+
+---
+
+#### 🌙 Universal Post-Processing
+
+Applied to all final conditions:
+- **Night Mode:** Auto-converts `sunny` → `clear-night` after sunset
 
 ### Real-World Examples
 
@@ -194,7 +223,7 @@ PHASE 1: Hard Overrides
 ✅ Humidity 60%, spread 5°C → No fog, skip Priority 2
 
 PHASE 2: Solar Radiation
-✅ Solar active: 900 W/m² (max 1100) → 82% transparency
+✅ Solar active: 900 W/m² (max 1100) → High transparency
 ✅ Solar (Priority 3): "sunny" (WMO: 0-2 oktas)
 
 PHASE 3: Pressure Baseline
@@ -204,12 +233,12 @@ PHASE 4: Humidity Fine-tuning
 ✅ Solar available → SKIP humidity (solar more accurate)
 
 PHASE 5: Solar Validation
-✅ Solar "sunny" vs Pressure "sunny" → Agreement (0 levels difference)
+✅ Solar "sunny" vs Pressure "sunny" → Agreement
 
 PHASE 6: Wind Check
 ✅ Wind 3.5 m/s (< 10.8) → No wind override
 
-Result: SUNNY ☀️ (from solar radiation - 85% accuracy)
+Result: SUNNY ☀️ (from solar radiation)
 ```
 
 **Example 2: Afternoon - Light rain, temp 3°C, RH 88%**
@@ -247,7 +276,7 @@ PHASE 3: Pressure Baseline
 
 PHASE 4: Humidity Fine-tuning
 ✅ No solar → Use humidity fine-tuning
-✅ RH 92% >90% + "partlycloudy" → Upgrade to "cloudy"
+✅ RH 92% (high) + "partlycloudy" → Upgrade to "cloudy"
 
 PHASE 5: Solar Validation
 ✅ No solar → Skip validation
@@ -288,7 +317,7 @@ PHASE 1: Hard Overrides
 ✅ No exceptional weather, no rain, no fog
 
 PHASE 2: Solar Radiation
-✅ Solar = 450 W/m² (max 700) → 64% transparency
+✅ Solar = 450 W/m² (max 700) → Moderate transparency
 ✅ Solar (Priority 3): "partlycloudy" (WMO: 3-4 oktas)
 
 PHASE 3: Pressure Baseline
@@ -344,9 +373,9 @@ Result: WINDY 💨 (wind override of cloudiness condition)
    - Elevation (auto-detected from HA)
    - Hemisphere (auto-detected)
 4. **Choose Forecast Model:**
-   - **Enhanced Dynamic** (recommended) - 98% accuracy
-   - Zambretti - 94% accuracy
-   - Negretti & Zambra - 92% accuracy
+   - **Enhanced Dynamic** (recommended) - Most accurate
+   - Zambretti - Traditional algorithm
+   - Negretti & Zambra - Classic method
 5. Done! ✅
 
 ### Options (Can Change Anytime)
