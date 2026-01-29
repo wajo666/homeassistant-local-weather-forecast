@@ -343,10 +343,15 @@ def calculate_rain_probability_enhanced(
     Returns:
         Tuple of (probability %, confidence level)
     """
-    # Base probability from models
-    base_prob = (zambretti_prob + negretti_prob) / 2
+    # ✅ FIXED v3.1.12: Base probability from WEIGHTED models
+    # Weighted probabilities already account for model weights (0.0-1.0)
+    # Example 1 (Zambretti only): Z=40×1.0=40, N=60×0.0=0 → base=40+0=40 ✅
+    # Example 2 (Negretti only): Z=40×0.0=0, N=60×1.0=60 → base=0+60=60 ✅
+    # Example 3 (Enhanced 0.5/0.5): Z=40×0.5=20, N=60×0.5=30 → base=20+30=50 ✅
+    # OLD BUG: Divided by 2, causing half the expected probability!
+    base_prob = zambretti_prob + negretti_prob
     _LOGGER.debug(
-        f"RainCalc: Input - Zambretti={zambretti_prob}%, Negretti={negretti_prob}%, "
+        f"RainCalc: Input - Zambretti={zambretti_prob}%, Negretti={negretti_prob}% (already weighted), "
         f"humidity={humidity}, dewpoint_spread={dewpoint_spread}"
     )
     _LOGGER.debug(f"RainCalc: Base probability = {base_prob}%")
