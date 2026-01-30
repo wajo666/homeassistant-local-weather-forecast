@@ -1235,10 +1235,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 _LOGGER.debug(
                                     f"Weather: Solar cloudiness={solar_cloudiness} (transparency={sky_transparency*100:.0f}%)"
                                 )
-            elif solar_radiation is not None and solar_radiation <= 10:
+            elif solar_radiation is not None and solar_radiation <= 0:
                 _LOGGER.debug(
-                    f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 10), "
-                    f"skipping cloud detection (twilight or night)"
+                    f"Weather: Solar radiation is zero ({solar_radiation:.0f} W/m² = 0), "
+                    f"skipping cloud detection (complete darkness)"
                 )
 
             # ========================================================================
