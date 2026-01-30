@@ -491,65 +491,48 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
     @property
     def cloud_coverage(self) -> int | None:
-        """Return the cloud coverage in %.
-
-        Reuses existing solar radiation calculation from condition() method.
-        Returns percentage (0-100) where 0 = clear sky, 100 = overcast.
-
-        This uses the same WMO-standard calculation as weather condition determination,
-        ensuring consistency between condition and cloud_coverage values.
+        """Return cloud coverage percentage (0-100) based on solar radiation.
+        
+        Only available when solar sensor configured and sun is above horizon.
+        Returns transparency-based cloud coverage (100% - transparency%).
         """
         if not self.hass:
             return None
 
         solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
-        if not solar_sensor_id:
+        if not solar_sensor_id or not self.hass.states.is_state('sun.sun', 'above_horizon'):
             return None
 
         solar_state = self.hass.states.get(solar_sensor_id)
-        if not solar_state or solar_state.state in ("unknown", "unavailable"):
+        sun_state = self.hass.states.get("sun.sun")
+        
+        if not solar_state or not sun_state or solar_state.state in ("unknown", "unavailable"):
             return None
 
         try:
-            # Get solar radiation value with unit conversion
+            from .unit_conversion import UnitConverter
+            from .calculations import calculate_theoretical_max_solar_radiation
+            
+            # Get measured solar radiation
             raw_value = float(solar_state.state)
             unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
             solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
-
-            # Get sun elevation directly from sun.sun entity
-            sun_state = self.hass.states.get("sun.sun")
-            if not sun_state:
-                return None
-
-            solar_elevation_deg = sun_state.attributes.get("elevation", 0)
-
-            # Only calculate during daytime (sun above horizon)
-            if solar_elevation_deg <= 0:
-                return None
-
-            # Get elevation from Home Assistant config
-            elevation = self.hass.config.elevation or 0
-
-            # Use centralized calculation function
-            from .calculations import calculate_theoretical_max_solar_radiation
             
+            # Calculate theoretical maximum
+            solar_elevation_deg = sun_state.attributes.get("elevation", 0)
+            elevation = self.hass.config.elevation or 0
             theoretical_max = calculate_theoretical_max_solar_radiation(
                 solar_elevation_deg=solar_elevation_deg,
                 elevation_m=elevation,
-                linke_turbidity=3.0  # Standard urban value
+                linke_turbidity=3.0
             )
-
-            # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
+            
+            # Cache for attributes
             self._theoretical_max_solar = theoretical_max
-
-            # WMO: Use any positive solar radiation value (not just >50 W/m²)
-            # This allows accurate cloudiness detection even in low-light conditions
-            if theoretical_max > 0 and solar_radiation is not None:  # Avoid division by zero
-                # Calculate sky transparency (same as in condition())
-                sky_transparency = solar_radiation / theoretical_max
-                # Cloud coverage = 100% - transparency%
-                cloud_percent = int(max(0, min(100, (1 - sky_transparency) * 100)))
-                return cloud_percent
+            
+            if theoretical_max >= 10 and solar_radiation >= 0:
+                transparency = solar_radiation / theoretical_max
+                return int(max(0, min(100, (1 - transparency) * 100)))
 
         except (ValueError, TypeError, ZeroDivisionError):
             pass
@@ -1115,131 +1098,59 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         f"(WMO code 30: mist, visibility 1-5km, show as CLOUDY)"
                     )
 
-            # PRIORITY 3: SOLAR RADIATION BASED CLOUD DETECTION
-            # Solar radiation reveals actual cloud cover - determines cloudiness ONLY
-            # Does NOT check precipitation (rain is handled by PRIORITY 1)
-            # Provides real-time cloudiness hint for SECTION 2 (forecast determination)
-            solar_radiation = None
-            solar_cloudiness = None  # Will store solar-determined cloudiness hint
+            # PRIORITY 3: SOLAR RADIATION CLOUD DETECTION (WMO oktas)
+            # Real-time cloudiness from solar sensor - highest accuracy
+            solar_cloudiness = None
             solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
-            if solar_sensor_id:
-                solar_state = _cache['solar']  # Use cached value
-                if solar_state and solar_state.state not in ("unknown", "unavailable", None):
+            
+            if solar_sensor_id and self.hass.states.is_state('sun.sun', 'above_horizon'):
+                solar_state = _cache['solar']
+                sun_state = _cache['sun']
+                
+                if solar_state and sun_state and solar_state.state not in ("unknown", "unavailable", None):
                     try:
                         from .unit_conversion import UnitConverter
-                        raw_value = float(solar_state.state)
-                        unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
-                        # Convert to W/m² (from lux if needed)
-                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
-                    except (ValueError, TypeError):
-                        pass
-
-            # Use solar radiation during daytime (transparency ratio approach)
-            # Check if we can use solar (daytime with sun above horizon)
-            can_use_solar = (solar_radiation is not None
-                and self.hass.states.is_state('sun.sun', 'above_horizon')
-                and solar_radiation > 0)
-            
-            if not can_use_solar and solar_sensor_id:
-                # Solar sensor configured but cannot be used (night or no sun)
-                _LOGGER.debug(
-                    f"Weather: Solar sensor configured but not usable "
-                    f"(sun below horizon or radiation=0). "
-                    f"Will use PRESSURE + HUMIDITY for cloudiness determination."
-                )
-            
-            if can_use_solar:
-                import math
-                sun_state = _cache['sun']
-                if not sun_state:
-                    _LOGGER.debug("Weather: sun.sun entity not available, skipping solar radiation")
-                else:
-                    solar_elevation_deg = sun_state.attributes.get("elevation", 0)
-
-                    # Only use solar during daytime (sun above horizon)
-                    if solar_elevation_deg <= 0:
-                        _LOGGER.debug(f"Weather: Sun below horizon (elevation={solar_elevation_deg:.1f}°), skipping solar")
-                    else:
-                        # Get elevation from Home Assistant config
-                        elevation = self.hass.config.elevation or 0
-
-                        # Use centralized calculation function
                         from .calculations import calculate_theoretical_max_solar_radiation
                         
+                        # Get measured solar radiation
+                        raw_value = float(solar_state.state)
+                        unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
+                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        
+                        # Calculate theoretical maximum
+                        solar_elevation_deg = sun_state.attributes.get("elevation", 0)
+                        elevation = self.hass.config.elevation or 0
                         theoretical_max = calculate_theoretical_max_solar_radiation(
                             solar_elevation_deg=solar_elevation_deg,
                             elevation_m=elevation,
-                            linke_turbidity=3.0  # Standard urban value
+                            linke_turbidity=3.0
                         )
-
-                        # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
+                        
+                        # Cache for attributes
                         self._theoretical_max_solar = theoretical_max
-
-                        _LOGGER.debug(
-                            f"Weather: Solar calculation - sun_elevation={solar_elevation_deg:.1f}°, "
-                            f"elevation={elevation}m, theoretical_max={theoretical_max:.0f} W/m²"
-                        )
-
-                        # WMO: Use any positive solar radiation value (not just >50 W/m²)
-                        # This allows accurate cloudiness detection even in low-light conditions
-                        if theoretical_max > 0 and solar_radiation is not None:  # Avoid division by zero
-                            # Calculate sky transparency ratio (how much sunlight reaches ground)
-                            # This ratio is independent of time/position - compares actual vs expected
-                            sky_transparency = solar_radiation / theoretical_max
-                            cloud_percent = max(0, min(100, (1 - sky_transparency) * 100))
-
-                            _LOGGER.debug(
-                                f"Weather: Solar radiation analysis - "
-                                f"measured={solar_radiation:.0f} W/m², theoretical_max={theoretical_max:.0f} W/m², "
-                                f"sky_transparency={sky_transparency:.2f} ({sky_transparency*100:.0f}% of expected), "
-                                f"cloud_cover={cloud_percent:.0f}%"
-                            )
-
-                            # WMO cloud coverage (oktas): 0-2 FEW (>75%), 3-4 SCT (50-75%), 5-7 BKN (12.5-50%), 8 OVC (<12.5%)
-                            solar_cloudiness = None
-                            if sky_transparency >= 0.75:
-                                # WMO: 0-2 oktas (FEW clouds) - sky allows >75% of expected sunlight
+                        
+                        # Only use solar if sun is high enough (theoretical_max >= 10 W/m²)
+                        if theoretical_max >= 10 and solar_radiation >= 0:
+                            # Calculate transparency: actual / theoretical
+                            transparency = solar_radiation / theoretical_max
+                            
+                            # WMO oktas mapping: 0-2=sunny, 3-4=partly_cloudy, 5-7=cloudy, 8=overcast
+                            if transparency >= 0.75:  # >75% = 0-2 oktas (clear)
                                 solar_cloudiness = ATTR_CONDITION_SUNNY
-                                _LOGGER.debug(
-                                    f"Weather: Solar HIGH CONFIDENCE → clear skies (FEW clouds) "
-                                    f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 0-2 oktas)"
-                                )
-                            elif sky_transparency >= 0.50:
-                                # WMO: 3-4 oktas (SCT - scattered clouds) - sky allows 50-75% of expected sunlight
+                            elif transparency >= 0.50:  # 50-75% = 3-4 oktas (scattered)
                                 solar_cloudiness = ATTR_CONDITION_PARTLYCLOUDY
-                                _LOGGER.debug(
-                                    f"Weather: Solar MEDIUM CONFIDENCE → scattered clouds (SCT) "
-                                    f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 3-4 oktas)"
-                                )
-                            elif sky_transparency >= 0.125:
-                                # WMO: 5-7 oktas (BKN - broken clouds) - sky allows 12.5-50% of expected sunlight
+                            elif transparency >= 0.25:  # 25-50% = 5-6 oktas (broken)
                                 solar_cloudiness = ATTR_CONDITION_CLOUDY
-                                _LOGGER.debug(
-                                    f"Weather: Solar LOW CONFIDENCE → mostly cloudy (BKN) "
-                                    f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 5-7 oktas)"
-                                )
-                            else:
-                                # WMO: 8 oktas (OVC - overcast) - sky allows <12.5% of expected sunlight
-                                # Overcast = still CLOUDY (87.5-100% cloud cover)
-                                # Solar still shows cloudiness accurately - trust it!
-                                # Rain sensor or pressure will determine if it's rainy/snowy
+                            else:  # <25% = 7-8 oktas (overcast)
                                 solar_cloudiness = ATTR_CONDITION_CLOUDY
-                                _LOGGER.debug(
-                                    f"Weather: Solar OVERCAST (OVC) → cloudy "
-                                    f"(transparency={sky_transparency*100:.0f}%, cloud_cover={cloud_percent:.0f}%, WMO: 8 oktas). "
-                                    f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
-                                )
-
-                            # Solar cloudiness determined (85% accuracy)
-                            if solar_cloudiness is not None:
-                                _LOGGER.debug(
-                                    f"Weather: Solar cloudiness={solar_cloudiness} (transparency={sky_transparency*100:.0f}%)"
-                                )
-            elif solar_radiation is not None and solar_radiation <= 0:
-                _LOGGER.debug(
-                    f"Weather: Solar radiation is zero ({solar_radiation:.0f} W/m² = 0), "
-                    f"skipping cloud detection (complete darkness)"
-                )
+                            
+                            _LOGGER.debug(
+                                f"Weather: SOLAR → {solar_cloudiness} "
+                                f"(measured={solar_radiation:.0f} W/m², max={theoretical_max:.0f} W/m², "
+                                f"transparency={transparency:.1%}, sun_elevation={solar_elevation_deg:.1f}°)"
+                            )
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug(f"Weather: Solar calculation error: {e}")
 
             # ========================================================================
             # PHASE 2: PRESSURE-BASED CURRENT STATE
