@@ -91,6 +91,36 @@ TEMPERATURE_MIN_RECORDS: Final = 12  # Minimum records to keep (even if older th
 PRESSURE_TREND_RISING: Final = 1.6
 PRESSURE_TREND_FALLING: Final = -1.6
 
+# Exceptional weather thresholds
+PRESSURE_HURRICANE_THRESHOLD: Final = 950.0  # hPa - Hurricane-force low pressure
+PRESSURE_EXTREME_HIGH_THRESHOLD: Final = 1050.0  # hPa - Extreme anticyclone
+PRESSURE_BOMB_CYCLONE_CHANGE: Final = 24.0  # hPa/3h - Rapid pressure drop (bomb cyclone)
+
+# Hail detection thresholds
+HAIL_TEMP_MIN: Final = 10.0  # °C - Minimum temperature for hail
+HAIL_TEMP_MAX: Final = 25.0  # °C - Maximum temperature for hail
+HAIL_HUMIDITY_MIN: Final = 60.0  # % - Minimum humidity for hail
+HAIL_GUST_RATIO_MIN: Final = 1.5  # ratio - Minimum gust/wind ratio for hail
+
+# Fog detection thresholds (WMO compliant)
+FOG_DEWPOINT_CRITICAL: Final = 0.5  # °C - Dense fog (vis <400m)
+FOG_DEWPOINT_LIKELY: Final = 1.0  # °C - Fog (vis 400-1000m)
+FOG_DEWPOINT_POSSIBLE: Final = 1.5  # °C - Light fog (night only)
+FOG_DEWPOINT_MIST: Final = 4.0  # °C - Mist (vis 1-5km)
+FOG_HUMIDITY_CRITICAL: Final = 95.0  # % - Dense fog threshold
+FOG_HUMIDITY_HIGH: Final = 90.0  # % - Fog threshold
+FOG_HUMIDITY_MEDIUM: Final = 90.0  # % - Fog/mist threshold
+FOG_HUMIDITY_MIST: Final = 85.0  # % - Mist threshold
+FOG_WIND_CALM: Final = 1.0  # m/s - Very calm (fog forms easily)
+FOG_WIND_LIGHT: Final = 3.0  # m/s - Light wind (fog dissipates)
+
+# Precipitation type thresholds
+PRECIP_SNOW_TEMP_MAX: Final = -1.0  # °C - Maximum temp for pure snow
+PRECIP_MIXED_TEMP_MIN: Final = -1.0  # °C - Minimum temp for mixed precip
+PRECIP_MIXED_TEMP_MAX: Final = 4.0  # °C - Maximum temp for mixed precip
+PRECIP_MIXED_HUMIDITY: Final = 85.0  # % - Humidity threshold for mixed precip
+PRECIP_POURING_THRESHOLD: Final = 7.5  # mm/h - Heavy rain threshold
+
 # Barometric constants
 LAPSE_RATE: Final = 0.0065  # K/m
 GRAVITY_CONSTANT: Final = 5.257

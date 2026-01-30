@@ -188,7 +188,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
         sensor_id: str,
         default: float | None = 0.0,
         use_history: bool = True,
-        sensor_type: str = None
+        sensor_type: str | None = None
     ) -> float | None:
         """Get sensor value with automatic unit conversion and fallback to history if unavailable.
 
@@ -246,8 +246,8 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
     async def _get_historical_value(
         self,
         sensor_id: str,
-        default: float = 0.0
-    ) -> float:
+        default: float | None = 0.0
+    ) -> float | None:
         """Get last known good value from entity registry or return default."""
         try:
             # Try to get the entity from entity registry
@@ -362,16 +362,16 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
         # Get sensor values with automatic unit conversion
         pressure = await self._get_sensor_value(
-            config.get(CONF_PRESSURE_SENSOR), default=1013.25, sensor_type="pressure"
+            config.get(CONF_PRESSURE_SENSOR) or "", default=1013.25, sensor_type="pressure"
         )
         temperature = await self._get_sensor_value(
-            config.get(CONF_TEMPERATURE_SENSOR), default=15.0, sensor_type="temperature"
+            config.get(CONF_TEMPERATURE_SENSOR) or "", default=15.0, sensor_type="temperature"
         )
         wind_direction = await self._get_sensor_value(
-            config.get(CONF_WIND_DIRECTION_SENSOR), default=0.0
+            config.get(CONF_WIND_DIRECTION_SENSOR) or "", default=0.0
         )
         wind_speed = await self._get_sensor_value(
-            config.get(CONF_WIND_SPEED_SENSOR), default=0.0, sensor_type="wind_speed"
+            config.get(CONF_WIND_SPEED_SENSOR) or "", default=0.0, sensor_type="wind_speed"
         )
 
         elevation = config.get(CONF_ELEVATION, DEFAULT_ELEVATION)
@@ -383,10 +383,10 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             p0 = pressure
         else:
             # Sensor provides station pressure (QFE) - need to convert
-            p0 = self._calculate_sea_level_pressure(pressure, temperature, elevation)
+            p0 = self._calculate_sea_level_pressure(pressure or 1013.25, temperature or 15.0, elevation)
 
         # Calculate wind factors
-        wind_data = self._calculate_wind_data(wind_direction, wind_speed)
+        wind_data = self._calculate_wind_data(wind_direction or 0.0, wind_speed or 0.0)
 
         # Get pressure change from statistics sensor
         pressure_change = await self._get_sensor_value(
@@ -397,17 +397,17 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
         # Calculate current conditions based on pressure
         # This is kept in sensor for reference/debugging, but NOT used in weather.py priority chain
-        current_condition = self._get_current_condition(p0, lang_index)
+        current_condition = self._get_current_condition(p0 or 1013.25, lang_index)
 
         # Calculate Zambretti forecast
         zambretti_forecast = calculate_zambretti_forecast(
-            p0, pressure_change, wind_data, lang_index
+            p0 or 1013.25, pressure_change or 0.0, wind_data, lang_index
         )
 
         # Calculate Negretti & Zambra forecast
         hemisphere = self.config_entry.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
         neg_zam_forecast = calculate_negretti_zambra_forecast(
-            p0, pressure_change, wind_data, lang_index, elevation, hemisphere
+            p0 or 1013.25, pressure_change or 0.0, wind_data, lang_index, elevation, hemisphere
         )
 
         # Calculate pressure trend
@@ -430,8 +430,8 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         # Keep original list/array formats for full compatibility with original YAML code
         self._attributes = {
             "language": lang_index,
-            "temperature": round(temperature, 1),
-            "p0": round(p0, 1),
+            "temperature": round(temperature, 1) if temperature is not None else None,
+            "p0": round(p0, 1) if p0 is not None else 1013.2,
             "wind_direction": wind_data,  # List: [wind_fak, dir, dir_text, speed_fak]
             "forecast_short_term": current_condition,  # List: [condition, pressure_system] - kept for reference, not used in weather.py
             "forecast_zambretti": zambretti_forecast,  # ✅ SIMPLIFIED: [text, code]
@@ -2035,12 +2035,12 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Fallback: use configured sensors if weather entity not available
         if temp is None:
             temp = await self._get_sensor_value(
-                self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0, sensor_type="temperature"
+                self.config_entry.data.get(CONF_TEMPERATURE_SENSOR) or "", 15.0, sensor_type="temperature"
             )
             _LOGGER.debug(f"Enhanced: Fallback - temperature from configured sensor: {temp}°C")
 
         if humidity is None:
-            humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+            humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR) or ""
             if humidity_sensor:
                 _LOGGER.debug(f"Enhanced: Fallback - fetching humidity from {humidity_sensor}")
                 humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
@@ -2065,17 +2065,17 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
         # Get wind gust ratio
         wind_speed = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR), 0.0, use_history=True, sensor_type="wind_speed"
+            self.config_entry.data.get(CONF_WIND_SPEED_SENSOR) or "", 0.0, use_history=True, sensor_type="wind_speed"
         )
         # Enhanced sensors are in options, not data!
-        wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR)
+        wind_gust_sensor_id = self.config_entry.options.get(CONF_WIND_GUST_SENSOR) or self.config_entry.data.get(CONF_WIND_GUST_SENSOR) or ""
         _LOGGER.debug(f"Enhanced: Config wind gust sensor = {wind_gust_sensor_id}, wind_speed = {wind_speed} m/s")
         gust_ratio = None
         wind_gust = None
-        if wind_gust_sensor_id and wind_speed > 0.1:
+        if wind_gust_sensor_id and wind_speed and wind_speed > 0.1:
             _LOGGER.debug(f"Enhanced: Fetching wind gust from {wind_gust_sensor_id}, wind_speed={wind_speed} m/s")
             wind_gust = await self._get_sensor_value(wind_gust_sensor_id, None, use_history=True, sensor_type="wind_speed")
-            if wind_gust is not None and isinstance(wind_gust, (int, float)) and wind_speed > 0.1:
+            if wind_gust is not None and isinstance(wind_gust, (int, float)) and wind_speed is not None and wind_speed > 0.1:
                 gust_ratio = wind_gust / wind_speed
                 _LOGGER.debug(f"Enhanced: Calculated gust_ratio={gust_ratio:.2f} (gust={wind_gust} m/s, speed={wind_speed} m/s)")
             else:
@@ -2087,11 +2087,11 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed} m/s), skipping gust ratio")
 
         # Determine wind type based on Beaufort scale
-        wind_type = self._get_beaufort_wind_type(wind_speed)
-        wind_beaufort_number = self._get_beaufort_number(wind_speed)
+        wind_type = self._get_beaufort_wind_type(wind_speed or 0.0)
+        wind_beaufort_number = self._get_beaufort_number(wind_speed or 0.0)
 
         # Determine atmospheric stability based on gust ratio and wind speed
-        atmosphere_stability = self._get_atmosphere_stability(wind_speed, gust_ratio)
+        atmosphere_stability = self._get_atmosphere_stability(wind_speed or 0.0, gust_ratio)
 
         # Calculate adjustments
         adjustments = []
@@ -2123,7 +2123,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         # Only evaluate for significant wind speeds (>3 m/s)
         # Low wind speeds naturally have higher gust ratios without indicating instability
         # Example: 0.8 m/s wind with 1.1 m/s gusts = ratio 1.375 = NORMAL, not unstable
-        if gust_ratio is not None and wind_speed > 3.0:
+        if gust_ratio is not None and wind_speed is not None and wind_speed > 3.0:
             if gust_ratio > 2.0:
                 adjustments.append("very_unstable")
                 adjustment_details.append(get_adjustment_text(self.hass, "very_unstable", f"{gust_ratio:.2f}"))
@@ -2517,11 +2517,11 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
         # Get sensor values for enhancements
         temp = await self._get_sensor_value(
-            self.config_entry.data.get(CONF_TEMPERATURE_SENSOR), 15.0, sensor_type="temperature"
+            self.config_entry.data.get(CONF_TEMPERATURE_SENSOR) or "", 15.0, sensor_type="temperature"
         )
 
         # Enhanced sensors are in options, not data!
-        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR)
+        humidity_sensor = self.config_entry.options.get(CONF_HUMIDITY_SENSOR) or self.config_entry.data.get(CONF_HUMIDITY_SENSOR) or ""
         _LOGGER.debug(f"RainProb: Config humidity sensor = {humidity_sensor}")
         humidity = None
         if humidity_sensor:
@@ -2560,8 +2560,8 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         # Use enhanced calculation with WEIGHTED probabilities
         # This applies humidity and dewpoint enhancements on top of the weighted base
         probability, confidence = calculate_rain_probability_enhanced(
-            weighted_zambretti,
-            weighted_negretti,
+            int(weighted_zambretti),
+            int(weighted_negretti),
             humidity,
             dewpoint_spread,
             temp,

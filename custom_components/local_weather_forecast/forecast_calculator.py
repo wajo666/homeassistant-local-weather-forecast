@@ -1008,8 +1008,8 @@ class HourlyForecastGenerator:
 
                     # Get hemisphere from config
                     hemisphere = DEFAULT_HEMISPHERE
-                    if hasattr(self, 'config_entry') and self.config_entry:
-                        hemisphere = self.config_entry.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
+                    if hasattr(self, 'config_entry') and hasattr(self, 'config_entry') and getattr(self, 'config_entry', None):
+                        hemisphere = getattr(self, 'config_entry').data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
 
                     negretti_result = calculate_negretti_zambra_forecast(
                         future_pressure,
@@ -1046,10 +1046,11 @@ class HourlyForecastGenerator:
                     
                     # Get current dewpoint (estimate if not available)
                     current_dewpoint = self.temperature_model.current_temp - 5.0  # Rough estimate
-                    if hasattr(self, 'current_humidity'):
+                    current_humidity = getattr(self, 'current_humidity', None)
+                    if current_humidity is not None:
                         # Better estimate using humidity
                         current_dewpoint = self.temperature_model.current_temp - (
-                            (100 - self.current_humidity) / 5.0
+                            (100 - current_humidity) / 5.0
                         )
                     
                     # Get current condition code from sensors
@@ -1140,7 +1141,7 @@ class HourlyForecastGenerator:
                 hour=hour_offset,
                 current_temp=self.temperature_model.current_temp,
                 temp_trend=self.temperature_model.change_rate_1h,
-                forecast_code=forecast_num,  # Use selected forecast code
+                forecast_code=forecast_num if forecast_num is not None else 13,  # Use selected forecast code
                 current_hour=now.hour,
                 latitude=self.latitude,
                 longitude=getattr(self.hass.config, 'longitude', 21.25) if self.hass and self.hass.config else 21.25,
@@ -1199,7 +1200,7 @@ class HourlyForecastGenerator:
                 current_pressure=self.pressure_model.current_pressure,
                 future_pressure=future_pressure,
                 pressure_trend=pressure_trend,
-                zambretti_code=forecast_num,
+                zambretti_code=forecast_num if forecast_num is not None else 13,
                 zambretti_letter=forecast_letter
             )
 
@@ -1347,7 +1348,7 @@ class HourlyForecastGenerator:
             from .negretti_zambra import calculate_negretti_zambra_forecast
             
             negretti_data = calculate_negretti_zambra_forecast(
-                pressure=self.pressure_model.current_pressure,
+                p0=self.pressure_model.current_pressure,
                 pressure_change=0.0,
                 wind_data=[
                     get_beaufort_scale(self.wind_speed),
@@ -1432,7 +1433,7 @@ class HourlyForecastGenerator:
             rain_prob = rain_calc.calculate(
                 current_pressure=self.pressure_model.current_pressure,
                 future_pressure=pressure,
-                pressure_trend=0.0,  # Already in forecast
+                pressure_trend="steady",  # Already in forecast
                 zambretti_code=condition_code,
                 zambretti_letter=forecast_letter
             )
@@ -1500,14 +1501,14 @@ class DailyForecastGenerator:
             # Get hourly forecasts for this day
             day_hours = [
                 f for f in hourly_forecasts
-                if datetime.fromisoformat(f["datetime"]).date() == day_start.date()
+                if f.get("datetime") and datetime.fromisoformat(f.get("datetime", "")).date() == day_start.date()
             ]
 
             if not day_hours:
                 continue
 
             # Aggregate temperature: use maximum as daily high, minimum as daily low
-            temps = [f["temperature"] for f in day_hours]
+            temps = [f.get("temperature", 0.0) for f in day_hours]
             daily_temp_max = round(max(temps), 1)
             daily_temp_min = round(min(temps), 1)
 
@@ -1515,10 +1516,10 @@ class DailyForecastGenerator:
             # If tie, select the worst (highest priority) condition
             daytime_hours = [
                 f for f in day_hours
-                if 7 <= datetime.fromisoformat(f["datetime"]).hour <= 19
+                if f.get("datetime") and 7 <= datetime.fromisoformat(f.get("datetime", "")).hour <= 19
             ]
             if daytime_hours:
-                conditions = [f["condition"] for f in daytime_hours]
+                conditions = [f.get("condition", "cloudy") for f in daytime_hours]
 
                 # Priority system: precipitation > cloudiness > clear
                 # Higher number = worse weather = higher priority
@@ -1571,7 +1572,7 @@ class DailyForecastGenerator:
                         f"selected worst with priority={CONDITION_PRIORITY.get(daily_condition, 0)})"
                     )
             else:
-                daily_condition = day_hours[len(day_hours) // 2]["condition"]
+                daily_condition = day_hours[len(day_hours) // 2].get("condition", "cloudy")
 
             # Convert clear-night to sunny for daily forecasts (daily forecasts are always daytime)
             if daily_condition == "clear-night":
@@ -1582,7 +1583,9 @@ class DailyForecastGenerator:
                 f.get("precipitation_probability", 0)
                 for f in day_hours
             ]
-            daily_rain_prob = round(sum(rain_probs) / len(rain_probs))
+            # Filter None values before sum
+            valid_probs = [p for p in rain_probs if p is not None]
+            daily_rain_prob = round(sum(valid_probs) / len(valid_probs)) if valid_probs else 0
 
             # SNOW CONVERSION for daily forecasts
             # Convert rainy/pouring to snowy when daily average temperature is at or below freezing

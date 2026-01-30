@@ -119,13 +119,13 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if temp_sensor and not temp_state:
                         _LOGGER.error("Temperature sensor not found: %s", temp_sensor)
                         errors[CONF_TEMPERATURE_SENSOR] = "sensor_not_found"
-                    else:
+                    elif temp_state:
                         unit = temp_state.attributes.get("unit_of_measurement")
                         _LOGGER.info(
                             "Temperature sensor: %s | Value: %s %s | "
                             "Will be converted to °C for calculations",
                             temp_sensor,
-                            temp_state.state if temp_state else None,
+                            temp_state.state,
                             unit
                         )
                 except Exception as e:
@@ -155,13 +155,13 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if wind_speed_sensor and not wind_speed_state:
                         _LOGGER.error("Wind speed sensor not found: %s", wind_speed_sensor)
                         errors[CONF_WIND_SPEED_SENSOR] = "sensor_not_found"
-                    else:
+                    elif wind_speed_state:
                         unit = wind_speed_state.attributes.get("unit_of_measurement")
                         _LOGGER.info(
                             "Wind speed sensor: %s | Value: %s %s | "
                             "Will be converted to m/s for calculations",
                             wind_speed_sensor,
-                            wind_speed_state.state if wind_speed_state else None,
+                            wind_speed_state.state,
                             unit
                         )
                 except Exception as e:
@@ -438,13 +438,13 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     if humidity_sensor and not humidity_state:
                         _LOGGER.error("Humidity sensor not found: %s", humidity_sensor)
                         errors[CONF_HUMIDITY_SENSOR] = "sensor_not_found"
-                    else:
+                    elif humidity_state:
                         unit = humidity_state.attributes.get("unit_of_measurement")
                         _LOGGER.info(
                             "Humidity sensor: %s | Value: %s %s | "
                             "Enables fog detection and enhanced forecasts",
                             humidity_sensor,
-                            humidity_state.state if humidity_state else None,
+                            humidity_state.state,
                             unit
                         )
                 except Exception as e:
@@ -458,13 +458,13 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     if wind_gust_sensor and not wind_gust_state:
                         _LOGGER.error("Wind gust sensor not found: %s", wind_gust_sensor)
                         errors[CONF_WIND_GUST_SENSOR] = "sensor_not_found"
-                    else:
+                    elif wind_gust_state:
                         unit = wind_gust_state.attributes.get("unit_of_measurement")
                         _LOGGER.info(
                             "Wind gust sensor: %s | Value: %s %s | "
                             "Will be converted to m/s for calculations",
                             wind_gust_sensor,
-                            wind_gust_state.state if wind_gust_state else None,
+                            wind_gust_state.state,
                             unit
                         )
                 except Exception as e:
@@ -478,13 +478,13 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                     if rain_rate_sensor and not rain_rate_state:
                         _LOGGER.error("Rain rate sensor not found: %s", rain_rate_sensor)
                         errors[CONF_RAIN_RATE_SENSOR] = "sensor_not_found"
-                    else:
+                    elif rain_rate_state:
                         unit = rain_rate_state.attributes.get("unit_of_measurement")
                         _LOGGER.info(
                             "Rain rate sensor: %s | Value: %s %s | "
                             "Supported units: mm/h, mm, in/h, in (will be converted to mm)",
                             rain_rate_sensor,
-                            rain_rate_state.state if rain_rate_state else None,
+                            rain_rate_state.state,
                             unit
                         )
                 except Exception as e:

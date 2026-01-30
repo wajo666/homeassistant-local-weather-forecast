@@ -544,9 +544,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
             # WMO: Use any positive solar radiation value (not just >50 W/m²)
             # This allows accurate cloudiness detection even in low-light conditions
-            if theoretical_max > 0:  # Avoid division by zero
+            if theoretical_max > 0 and solar_radiation is not None:  # Avoid division by zero
                 # Calculate sky transparency (same as in condition())
-                sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
+                sky_transparency = solar_radiation / theoretical_max
                 # Cloud coverage = 100% - transparency%
                 cloud_percent = int(max(0, min(100, (1 - sky_transparency) * 100)))
                 return cloud_percent
@@ -594,7 +594,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         # Further reduce visibility if fog conditions detected
         dewpoint = self.native_dew_point
 
-        if dewpoint is not None:
+        if dewpoint is not None and visibility_km is not None:
             spread = temp - dewpoint
 
             # Critical fog (spread < 0.5°C) = very low visibility
@@ -608,7 +608,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 visibility_km = min(visibility_km, 1.0)  # < 1km
 
         # Return km (Home Assistant auto-converts to miles for imperial users)
-        return round(visibility_km, 1)
+        if visibility_km is not None:
+            return round(visibility_km, 1)
+        return None
 
     @property
     def uv_index(self) -> float | None:
@@ -637,7 +639,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             from .calculations import calculate_uv_index_from_solar_radiation
             uv = calculate_uv_index_from_solar_radiation(solar_radiation)
 
-            return round(uv, 1)
+            return round(uv, 1) if uv is not None else None
 
         except (ValueError, TypeError):
             pass
@@ -664,7 +666,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
         cache['solar'] = self.hass.states.get(self._get_config(CONF_SOLAR_RADIATION_SENSOR))
         cache['sun'] = self.hass.states.get("sun.sun")
         cache['rain_prob'] = self.hass.states.get("sensor.local_forecast_rain_probability")
-        cache['rain_sensor'] = self.hass.states.get(self._get_config(CONF_RAIN_SENSOR))
         
         # Cache native values (from properties that don't call hass.states.get)
         cache['temp'] = self.native_temperature
@@ -771,6 +772,20 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if not self.hass:
                 return ATTR_CONDITION_PARTLYCLOUDY
             
+            # Import fog thresholds once at start (used in multiple places)
+            from .const import (
+                FOG_DEWPOINT_CRITICAL,
+                FOG_DEWPOINT_LIKELY,
+                FOG_DEWPOINT_POSSIBLE,
+                FOG_DEWPOINT_MIST,
+                FOG_HUMIDITY_CRITICAL,
+                FOG_HUMIDITY_HIGH,
+                FOG_HUMIDITY_MEDIUM,
+                FOG_HUMIDITY_MIST,
+                FOG_WIND_CALM,
+                FOG_WIND_LIGHT,
+            )
+            
             # PERFORMANCE: Cache all sensor values once at start
             # Reduces sensor reads from ~25 to ~8 (~68% reduction)
             _cache = self._cache_sensor_values()
@@ -852,40 +867,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 wind_speed = _cache['wind_speed'] or 0.0  # Use cached value
 
                                 # Check fog conditions (same logic as PRIORITY 2)
-                                from .const import (
-                                    FOG_DEWPOINT_CRITICAL,
-                                    FOG_DEWPOINT_LIKELY,
-                                    FOG_DEWPOINT_POSSIBLE,
-                                    FOG_DEWPOINT_MIST,
-                                    FOG_HUMIDITY_CRITICAL,
-                                    FOG_HUMIDITY_HIGH,
-                                    FOG_HUMIDITY_MIST,
-                                    FOG_WIND_CALM,
-                                    FOG_WIND_LIGHT,
-                                )
-                                
                                 if (dewpoint_spread < FOG_DEWPOINT_CRITICAL and humidity > FOG_HUMIDITY_CRITICAL) or \
                                    (dewpoint_spread < FOG_DEWPOINT_LIKELY and humidity > FOG_HUMIDITY_HIGH and wind_speed < FOG_WIND_LIGHT) or \
                                    (FOG_DEWPOINT_LIKELY <= dewpoint_spread < FOG_DEWPOINT_MIST and humidity > FOG_HUMIDITY_MIST and wind_speed < FOG_WIND_CALM):
                                     fog_also_present = True
 
-                            # Determine precipitation type based on temperature and humidity
-                            # Scientific meteorological standards (WMO, NOAA):
-                            #
-                            # Mixed precipitation occurs when air temperature is near freezing
-                            # but conditions allow both snow and rain to coexist.
-                            #
-                            # Key factors:
-                            # 1. Temperature (air temperature)
-                            # 2. Humidity (affects wet bulb temperature)
-                            # 3. Atmospheric conditions
-                            #
-                            # Boundaries (simplified without wet bulb sensor):
-                            # - Pure snow: temp < -1°C (always frozen)
-                            # - Mixed zone: -1°C ≤ temp ≤ 4°C (depends on humidity)
-                            #   * High humidity (>85%): snow melts partially → mixed
-                            #   * Low humidity (<85%): depends on temp
-                            # - Pure rain: temp > 4°C (always liquid)
+                            # Precipitation type: <-1°C snow, -1 to 4°C mixed, >4°C rain
 
                             if temp is not None:
                                 from .const import (
@@ -1067,16 +1054,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (AttributeError, KeyError, TypeError):
                         pass
 
-                # SNOW CONDITIONS - REMOVED FROM PRIORITY 2
-                # Snow risk is a PREDICTION, not current observation!
-                # PRIORITY 2 is for observable weather (fog, active precipitation from sensor)
-                # Snow risk will be handled in PRIORITY 3 (forecast conversion)
-                #
-                # This prevents showing "snowy" when it's actually sunny with just high snow RISK
-                # Example: -11.8°C, sunny, 81% humidity, snow_risk=medium, rain_prob=63%
-                #          → Should show SUNNY, not SNOWY (no active precipitation!)
-
-                # Log snow risk for debugging, but don't return SNOWY here
+                # Snow risk is prediction, not current observation - logged only
                 if snow_risk in ("high", "medium", "Vysoké riziko snehu", "Stredné riziko snehu"):
                     _LOGGER.debug(
                         f"Weather: Snow risk detected ({snow_risk}) with rain_prob={rain_prob}% - "
@@ -1086,43 +1064,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     )
 
 
-                # FOG CONDITIONS (WMO/NOAA/MetOffice compliant model):
-                #
-                # WMO DEFINITION (WMO-No. 8, Manual of Codes):
-                # FOG: Visibility < 1000m, RH > 90%, dewpoint spread < 1.5°C
-                # MIST: Visibility 1-5km, RH 85-95%, dewpoint spread 1.5-4°C
-                #
-                # Fog requires:
-                # 1. Very low dewpoint spread (< 1.5°C per WMO)
-                # 2. High humidity (> 90% per WMO)
-                # 3. Calm weather (fog dissipates with wind > 3 m/s)
-                # 4. Night factor (fog forms easier at night, dissipates during day)
-                #
-                # Three-level WMO-compliant model (100% WMO compliance):
-                # - CRITICAL: spread < 0.5°C + RH > 95% → dense fog (vis < 400m, WMO code 12)
-                # - LIKELY: spread < 1.0°C + RH > 90% + calm → fog (vis 400-1000m, WMO code 11)
-                # - POSSIBLE (night): spread 1.0-1.5°C + RH > 90% + night + calm → light fog (WMO code 10)
-                # - MIST: spread 1.5-4°C + RH > 85% → show CLOUDY, not FOG (WMO code 30)
+                # FOG: WMO thresholds - spread <1.5°C, RH >90%, calm winds
+                # Three levels: CRITICAL (<0.5°C), LIKELY (<1.0°C), POSSIBLE (<1.5°C night)
 
                 # Get wind speed for fog dissipation check - from cache
                 wind_speed = _cache['wind_speed'] or 0.0
 
                 # Determine if night (fog forms easier, less likely to dissipate)
                 is_night = current_hour < 6 or current_hour >= 20
-
-                # Import fog thresholds
-                from .const import (
-                    FOG_DEWPOINT_CRITICAL,
-                    FOG_DEWPOINT_LIKELY,
-                    FOG_DEWPOINT_POSSIBLE,
-                    FOG_DEWPOINT_MIST,
-                    FOG_HUMIDITY_CRITICAL,
-                    FOG_HUMIDITY_HIGH,
-                    FOG_HUMIDITY_MEDIUM,
-                    FOG_HUMIDITY_MIST,
-                    FOG_WIND_CALM,
-                    FOG_WIND_LIGHT,
-                )
 
                 # LEVEL 1: CRITICAL FOG (WMO Code 12 - Dense fog)
                 # Dense fog, visibility < 400m
@@ -1185,22 +1134,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (ValueError, TypeError):
                         pass
 
-            # Only use solar radiation during daytime with sufficient sunlight
-            # IMPORTANT: Check both sun position AND actual solar radiation value!
-            # - sun.sun above_horizon: Prevents use at night
-            # - solar_radiation > 0 W/m²: Any positive value is valid (prevents division by zero)
-            #
-            # Why 0 W/m² threshold (changed from 10 W/m²)?
-            # WMO UNIVERSAL APPROACH: Use transparency ratio (actual/theoretical) instead of absolute threshold
-            # - Works for ANY sensor (weak or strong)
-            # - Works in ANY conditions (twilight, winter, overcast)
-            # - Accurate even at low light: 5 W/m² actual vs 20 W/m² theoretical = 25% transparency → cloudy ✓
-            # - Old 10 W/m² threshold skipped valid measurements during:
-            #   * Civil twilight: 5-20 W/m² (sun 0-6° below horizon)
-            #   * Winter afternoon: 15-50 W/m²
-            #   * Overcast morning: 20-100 W/m²
-            # - Night (0 W/m²): Correctly skipped by sun.sun check + theoretical_max > 0 check
-            
+            # Use solar radiation during daytime (transparency ratio approach)
             # Check if we can use solar (daytime with sun above horizon)
             can_use_solar = (solar_radiation is not None
                 and self.hass.states.is_state('sun.sun', 'above_horizon')
@@ -1215,12 +1149,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 )
             
             if can_use_solar:
-
-                # Use sun.sun entity for accurate solar elevation - no manual calculations needed!
-                # This is simpler and more accurate than manual latitude/longitude/time calculations
                 import math
-
-                sun_state = _cache['sun']  # Use cached value
+                sun_state = _cache['sun']
                 if not sun_state:
                     _LOGGER.debug("Weather: sun.sun entity not available, skipping solar radiation")
                 else:
@@ -1252,10 +1182,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                         # WMO: Use any positive solar radiation value (not just >50 W/m²)
                         # This allows accurate cloudiness detection even in low-light conditions
-                        if theoretical_max > 0:  # Avoid division by zero
+                        if theoretical_max > 0 and solar_radiation is not None:  # Avoid division by zero
                             # Calculate sky transparency ratio (how much sunlight reaches ground)
                             # This ratio is independent of time/position - compares actual vs expected
-                            sky_transparency = solar_radiation / theoretical_max if theoretical_max > 0 else 0
+                            sky_transparency = solar_radiation / theoretical_max
                             cloud_percent = max(0, min(100, (1 - sky_transparency) * 100))
 
                             _LOGGER.debug(
@@ -1265,36 +1195,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 f"cloud_cover={cloud_percent:.0f}%"
                             )
 
-                            # HYBRID LOGIC: Solar radiation measures CLOUDINESS, forecast predicts PRECIPITATION
-                            # Strategy:
-                            # 1. Solar determines cloud cover (sunny/partlycloudy/cloudy)
-                            # 2. Forecast checked for precipitation warnings
-                            # 3. Rain sensor has final say if actively precipitating
-                            #
-                            # Night behavior: Solar radiation = 0 W/m² → skips to forecast (correct)
-
-                            # Store solar-determined cloudiness for later use
+                            # WMO cloud coverage (oktas): 0-2 FEW (>75%), 3-4 SCT (50-75%), 5-7 BKN (12.5-50%), 8 OVC (<12.5%)
                             solar_cloudiness = None
-
-                            # WMO (World Meteorological Organization) Cloud Coverage Standards:
-                            # Based on oktas (eighths of sky covered):
-                            # - 0-2 oktas (0-25% clouds): FEW clouds → SUNNY/CLEAR (>75% transparency)
-                            # - 3-4 oktas (25-50% clouds): SCT (scattered) → PARTLY CLOUDY (50-75% transparency)
-                            # - 5-7 oktas (50-87.5% clouds): BKN (broken) → CLOUDY (12.5-50% transparency)
-                            # - 8 oktas (87.5-100% clouds): OVC (overcast) → OVERCAST (<12.5% transparency)
-                            #
-                            # IMPORTANT: Thresholds based on sky_transparency (how much light reaches ground)
-                            # NOT on absolute W/m² values which vary with sun position!
-                            #
-                            # These thresholds align with international aviation (METAR) and meteorological standards.
-                            #
-                            # REFERENCES:
-                            # - WMO-No. 8, Vol I, Part A: "Guide to Instruments and Methods of Observation"
-                            # - METAR/TAF standards: FEW (0-2 oktas), SCT (3-4), BKN (5-7), OVC (8)
-                            # - Noia et al. (2015): "Cloud cover influence on solar radiation"
-                            # - Long & Ackerman (2000): "Identification of clear skies" → 75-80% threshold
-
-                            # WMO standard thresholds (universal, independent of sun position)
                             if sky_transparency >= 0.75:
                                 # WMO: 0-2 oktas (FEW clouds) - sky allows >75% of expected sunlight
                                 solar_cloudiness = ATTR_CONDITION_SUNNY
@@ -1328,19 +1230,11 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     f"Solar accurately shows cloudiness - will check rain sensor/pressure for precipitation."
                                 )
 
-                            # Solar cloudiness determined
-                            # If solar is available, use it directly for cloudiness (85% accuracy)
-                            # No need to compare with pressure - solar is real observation!
-                            # NOTE: Rain sensor is handled in PRIORITY 1 (already checked above)
-                            # Solar ONLY determines cloudiness, NOT precipitation
+                            # Solar cloudiness determined (85% accuracy)
                             if solar_cloudiness is not None:
                                 _LOGGER.debug(
-                                    f"Weather: Solar cloudiness={solar_cloudiness} (transparency={sky_transparency*100:.0f}%). "
-                                    f"Using solar directly - real measurement (85% accuracy) > pressure estimate (60-70%). "
-                                    f"Rain/snow handled by PRIORITY 1 (rain sensor)."
+                                    f"Weather: Solar cloudiness={solar_cloudiness} (transparency={sky_transparency*100:.0f}%)"
                                 )
-
-                            # Fall through to PHASE 2 (will use solar if available)
             elif solar_radiation is not None and solar_radiation <= 10:
                 _LOGGER.debug(
                     f"Weather: Solar radiation too low ({solar_radiation:.0f} W/m² ≤ 10), "
@@ -1348,44 +1242,13 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 )
 
             # ========================================================================
-            # PHASE 2: PRESSURE-BASED CURRENT STATE (For NOW - 0h)
-            # Use DIRECT pressure mapping for current conditions
-            #
-            # ⚠️ WHY NOT FORECAST ALGORITHMS (Zambretti/Negretti)?
-            # - Zambretti (1915) designed for 6-12h PREDICTION, not current state
-            # - Uses pressure TREND to predict FUTURE weather
-            # - Example: Falling pressure → predicts "rain later" (but NOW may be clear!)
-            # - Result: Often shows "cloudy" when actually sunny
-            #
-            # ✅ DIRECT PRESSURE MAPPING (ABSOLUTE VALUES ONLY):
-            # - Based on WMO/NOAA meteorological thresholds
-            # - Reflects CURRENT atmospheric cloudiness
-            # - More accurate for immediate state (0h)
-            # - Uses ABSOLUTE pressure only (NO TREND!)
-            # - Pressure trend reserved for FORECAST (Zambretti/Negretti, hours 1-24)
-            #
-            # ⚠️ CRITICAL: Maps to CLOUDINESS ONLY if rain sensor exists!
-            # - Rain sensor (PRIORITY 1) determines if it's raining
-            # - This mapping shows cloud conditions based on pressure
-            # - Low pressure = cloudy (rain LIKELY), not "rainy" (rain NOW)
-            #
-            # WMO pressure thresholds (absolute values):
-            # - < 970 hPa: Intense Low → CLOUDY (storm clouds)
-            # - 970-990 hPa: Deep Low → CLOUDY (strong cyclone)
-            # - 990-1010 hPa: Low → CLOUDY (unsettled)
-            # - 1010-1013 hPa: Below normal → CLOUDY
-            # - 1013-1020 hPa: Normal → PARTLY CLOUDY
-            # - 1020-1030 hPa: High → SUNNY/CLEAR
-            # - ≥ 1030 hPa: Very High → SUNNY/CLEAR
+            # PHASE 2: PRESSURE-BASED CURRENT STATE
+            # Direct pressure mapping (absolute values) - WMO thresholds
+            # Forecast algorithms (Zambretti/Negretti) use trend for 6-12h prediction
             # ========================================================================
 
-            # 🚨 CRITICAL: Check if we have rain sensor AVAILABLE and WORKING
-            # If rain sensor exists AND is available, it is ABSOLUTE AUTHORITY for precipitation
-            # Pressure and humidity can only determine CLOUDINESS, not rain presence
-            #
-            # IMPORTANT: Check actual sensor availability, not just configuration!
-            # - Configured but offline/unavailable → treat as NO sensor (pressure can indicate rain)
-            # - Configured and available → treat as HAS sensor (pressure shows only cloudiness)
+
+            # Check rain sensor availability for precipitation authority
             rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
             has_rain_sensor = False
             if rain_sensor_id:
@@ -1412,30 +1275,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 temperature = _cache['temp']
 
 
-                # ========================================================================
-                # PRESSURE → WEATHER MAPPING (WMO Guide No. 8, 2018)
-                # ========================================================================
-                # 100% WMO COMPLIANT PRESSURE THRESHOLDS:
-                #
-                # Based on: WMO Guide No. 8 (2018), WMO-No. 100 (Manual on Codes)
-                #
-                # Pressure ranges (WMO official classification):
-                # - < 970 hPa: INTENSE LOW (severe storms, hurricane-force)
-                # - 970-990 hPa: DEEP LOW (strong cyclone, heavy precipitation)
-                # - 990-1010 hPa: LOW (cyclonic activity, unsettled)
-                # - 1010-1020 hPa: NORMAL (variable conditions)
-                # - 1020-1030 hPa: HIGH (anticyclonic, fair weather)
-                # - > 1030 hPa: VERY HIGH (strong anticyclone, settled)
-                #
-                # Pressure change (WMO Code for pressure tendency):
-                # - ≤ -3.5 hPa/3h: Rapid fall (WMO Code 0-3)
-                # - ≥ +3.5 hPa/3h: Rapid rise (WMO Code 5-8)
-                #
-                # ⚠️ RAIN SENSOR OVERRIDE:
-                # - If rain sensor is configured → pressure shows CLOUDINESS only
-                # - If no rain sensor → pressure can predict PRECIPITATION
-                # - Rain sensor = PRIORITY 0 (absolute authority)
-                # ========================================================================
+                # WMO pressure thresholds: <970 intense low, 970-990 deep low, 990-1010 low,
+                # 1010-1020 normal, 1020-1030 high, >1030 very high
+
 
                 if pressure < 970:
                     # WMO: INTENSE LOW (< 970 hPa)
@@ -1634,21 +1476,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         )
 
 
-
-
-
             # ========================================================================
-            # PHASE 2/3: DETERMINE CURRENT CONDITION
-            # Two paths:
-            # 1. SOLAR PATH: If solar available → use solar for cloudiness (85% accuracy)
-            # 2. PRESSURE PATH: If no solar → use pressure + humidity for cloudiness (60-70% accuracy)
-            #
-            # Note: Precipitation already handled by PRIORITY 1 (rain sensor)
-            # Note: Pressure can indicate precipitation if NO rain sensor configured
+            # PHASE 3: DETERMINE CURRENT CONDITION
+            # Priority: 0.Exceptional 1.Solar 2.Pressure 3.Humidity
+            # Forecast models (trend-based) reserved for 6-12h predictions
             # ========================================================================
             condition = None
 
-            # PATH 1: SOLAR (if available) - Direct use, no validation needed
+            # PATH 1: SOLAR (if available) - Highest priority, real observation
             if solar_cloudiness is not None:
                 # Solar is REAL OBSERVATION → use it directly for cloudiness
                 condition = solar_cloudiness
@@ -1657,12 +1492,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     f"(real measurement, 85% accuracy, skipping pressure/humidity)"
                 )
 
-            # PATH 2: PRESSURE + HUMIDITY (fallback if no solar)
+            # PATH 2: DIRECT PRESSURE + HUMIDITY (fallback if no solar)
             elif current_condition_from_pressure is not None:
                 # We have pressure-based prediction → use it as baseline
                 condition = current_condition_from_pressure
                 _LOGGER.debug(
-                    f"Weather: Using PRESSURE cloudiness: {condition} (no solar available)"
+                    f"Weather: Using PRESSURE cloudiness: {condition} (no solar or forecast model available)"
                 )
 
                 # HUMIDITY FINE-TUNING (only in PRESSURE PATH)
@@ -1689,7 +1524,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             "windy-variant",
                         ):
                             _LOGGER.debug(
-                                f"Weather: PHASE 3 - Skipping humidity for hard override: {condition}"
+                                f"Weather: PHASE 4 - Skipping humidity for hard override: {condition}"
                             )
                             humidity_is_valid = False
 
@@ -1699,14 +1534,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 f"humidity={humidity:.1f}%, condition={condition}"
                             )
 
-                            # ================================================================
-                            # HUMIDITY-BASED WEATHER REFINEMENT
-                            # Can IMPROVE (dry air → less severe) or WORSEN (wet air → more severe)
-                            #
-                            # ⚠️ RAIN SENSOR OVERRIDE:
-                            # If rain sensor is configured → humidity can only refine CLOUDINESS
-                            # Rain sensor has absolute authority for precipitation determination
-                            # ================================================================
+                            # HUMIDITY REFINEMENT: improve (dry) or worsen (wet) conditions
 
 
                             original_condition = condition
@@ -1867,7 +1695,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         if condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT, ATTR_CONDITION_PARTLYCLOUDY):
                             # Clear/partly cloudy → windy
                             _LOGGER.info(
-                                f"Weather: PHASE 5 - Wind override → windy "
+                                f"Weather: PHASE 4 - Wind override → windy "
                                 f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
                                 f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
                                 f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s, "
@@ -1877,7 +1705,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         else:  # cloudy
                             # Cloudy → windy-variant
                             _LOGGER.info(
-                                f"Weather: PHASE 5 - Wind override → windy-variant "
+                                f"Weather: PHASE 4 - Wind override → windy-variant "
                                 f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
                                 f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
                                 f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s, "
@@ -1888,7 +1716,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # Precipitation/fog - wind CANNOT override!
                         # Rain, snow, fog are more important than wind
                         _LOGGER.debug(
-                            f"Weather: PHASE 5 - Strong wind detected "
+                            f"Weather: PHASE 4 - Strong wind detected "
                             f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
                             f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
                             f"effective={effective_wind:.1f} m/s ≥ 10.8 m/s) "
@@ -1897,7 +1725,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         )
 
             # ========================================================================
-            # PHASE 6: ABSOLUTE FINAL FALLBACK (Only if pressure sensor missing)
+            # PHASE 5: ABSOLUTE FINAL FALLBACK (Only if pressure sensor missing)
             # This should NEVER happen in normal operation (pressure is REQUIRED sensor!)
             # If we reach here during startup, sensors may not be ready yet
             # ========================================================================
@@ -2091,7 +1919,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             from .calculations import get_snow_risk, get_frost_risk
 
             # Calculate snow risk (pass dewpoint, not spread - function calculates spread internally)
-            snow_risk = get_snow_risk(temp, humidity, dewpoint, rain_prob)
+            snow_risk = get_snow_risk(temp, humidity, dewpoint, int(rain_prob) if rain_prob else None)
             attrs["snow_risk"] = snow_risk
             _LOGGER.debug(
                 f"Weather: Snow risk={snow_risk}, temp={temp:.1f}°C, "
@@ -2136,8 +1964,11 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     unit = wind_gust_state.attributes.get("unit_of_measurement")
                     wind_gust = UnitConverter.convert_sensor_value(value, "wind_speed", unit) if unit else value
                     attrs["wind_gust"] = round(wind_gust, 2)
-                    gust_ratio = wind_gust / wind_speed
-                    attrs["gust_ratio"] = round(gust_ratio, 2)
+                    if wind_speed and wind_speed > 0:
+                        gust_ratio = wind_gust / wind_speed
+                        attrs["gust_ratio"] = round(gust_ratio, 2)
+                    else:
+                        gust_ratio = 1.0  # Default if wind_speed is 0 or None
                     stability = self._get_atmosphere_stability(wind_speed, gust_ratio)
                     attrs["atmosphere_stability"] = stability
                     _LOGGER.debug(
