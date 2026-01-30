@@ -2543,75 +2543,34 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.warning(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
-        # ✅ FIXED v3.1.12: Apply weights BEFORE calling calculation
-        # For Enhanced model, use calculate_combined_rain_probability (letter-based)
-        # For other models, use calculate_rain_probability_enhanced (probability-based)
+        # ✅ FIXED v3.1.13: Use rain_prob from sensors (not LETTER_RAIN_PROB) for consistency
+        # All models should use the same rain probability source (rain_prob attribute)
+        # which already includes pressure adjustments from RainProbabilityCalculator
         
-        if forecast_model == FORECAST_MODEL_ENHANCED:
-            # Enhanced model: Use letter-based calculation (more sophisticated)
-            # Get letter codes from sensors
-            zambretti_letter = "A"  # Default
-            negretti_letter = "A"  # Default
-            
-            if zambretti_sensor and zambretti_sensor.state not in ("unknown", "unavailable"):
-                zambretti_attrs = zambretti_sensor.attributes or {}
-                zambretti_letter = zambretti_attrs.get("forecast_letter", "A")
-                
-            if negretti_sensor and negretti_sensor.state not in ("unknown", "unavailable"):
-                negretti_attrs = negretti_sensor.attributes or {}
-                negretti_letter = negretti_attrs.get("forecast_letter", "A")
-            
-            _LOGGER.debug(
-                f"RainProb: [ENHANCED] Using letter-based calculation - "
-                f"Zambretti letter={zambretti_letter}, Negretti letter={negretti_letter}, "
-                f"weights: Z={zambretti_weight:.2f}, N={negretti_weight:.2f}"
-            )
-            
-            # Use Combined model's sophisticated rain probability calculation
-            from .combined_model import calculate_combined_rain_probability
-            base_probability = calculate_combined_rain_probability(
-                zambretti_letter=zambretti_letter,
-                negretti_letter=negretti_letter,
-                zambretti_weight=zambretti_weight,
-                negretti_weight=negretti_weight
-            )
-            
-            # Apply enhanced adjustments (humidity, dewpoint)
-            probability, confidence = calculate_rain_probability_enhanced(
-                base_probability,  # Already weighted by combined_model
-                0,  # Don't pass negretti (already combined)
-                humidity,
-                dewpoint_spread,
-                temp,
-            )
-            _LOGGER.debug(
-                f"RainProb: [ENHANCED] Letter-based result - "
-                f"base={base_probability:.0f}%, final={probability}% (confidence={confidence})"
-            )
-            
-        else:
-            # Zambretti or Negretti model: Use probability-based calculation
-            weighted_zambretti = zambretti_prob * zambretti_weight
-            weighted_negretti = negretti_prob * negretti_weight
-            
-            _LOGGER.debug(
-                f"RainProb: Applying weights - "
-                f"Z: {zambretti_prob}% × {zambretti_weight:.2f} = {weighted_zambretti:.1f}%, "
-                f"N: {negretti_prob}% × {negretti_weight:.2f} = {weighted_negretti:.1f}%"
-            )
+        # Apply weights to the rain probabilities loaded earlier
+        weighted_zambretti = zambretti_prob * zambretti_weight
+        weighted_negretti = negretti_prob * negretti_weight
+        
+        _LOGGER.debug(
+            f"RainProb: [{forecast_model}] Applying weights - "
+            f"Z: {zambretti_prob}% × {zambretti_weight:.2f} = {weighted_zambretti:.1f}%, "
+            f"N: {negretti_prob}% × {negretti_weight:.2f} = {weighted_negretti:.1f}%"
+        )
 
-            # Use enhanced calculation with WEIGHTED probabilities
-            probability, confidence = calculate_rain_probability_enhanced(
-                weighted_zambretti,
-                weighted_negretti,
-                humidity,
-                dewpoint_spread,
-                temp,
-            )
-            _LOGGER.debug(
-                f"RainProb: Probability-based result - "
-                f"probability={probability}%, confidence={confidence}"
-            )
+        # Use enhanced calculation with WEIGHTED probabilities
+        # This applies humidity and dewpoint enhancements on top of the weighted base
+        probability, confidence = calculate_rain_probability_enhanced(
+            weighted_zambretti,
+            weighted_negretti,
+            humidity,
+            dewpoint_spread,
+            temp,
+        )
+        _LOGGER.debug(
+            f"RainProb: [{forecast_model}] Result - "
+            f"base={weighted_zambretti + weighted_negretti:.0f}%, "
+            f"final={probability}% (confidence={confidence})"
+        )
 
         # Get current rain rate
         rain_rate_sensor_id = self.config_entry.options.get(CONF_RAIN_RATE_SENSOR) or self.config_entry.data.get(CONF_RAIN_RATE_SENSOR)
