@@ -7,7 +7,14 @@ from homeassistant.const import (
     UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
+    UnitOfLength,
     PERCENTAGE,
+)
+from homeassistant.util.unit_conversion import (
+    PressureConverter,
+    TemperatureConverter,
+    SpeedConverter,
+    DistanceConverter,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,7 +35,7 @@ class UnitConverter:
 
     @staticmethod
     def convert_pressure(value: float, from_unit: str) -> float:
-        """Convert pressure to hPa.
+        """Convert pressure to hPa using Home Assistant's official converter.
 
         Args:
             value: Pressure value
@@ -37,31 +44,30 @@ class UnitConverter:
         Returns:
             Pressure in hPa
         """
-        if from_unit in (UnitOfPressure.HPA, UnitOfPressure.MBAR, "hPa", "mbar"):
-            _LOGGER.debug(f"Pressure conversion: {value} {from_unit} (no conversion needed)")
+        try:
+            # Normalize unit names for HA converter
+            unit_map = {
+                "hPa": UnitOfPressure.HPA,
+                "mbar": UnitOfPressure.MBAR,
+                "inHg": UnitOfPressure.INHG,
+                "mmHg": UnitOfPressure.MMHG,
+                "kPa": UnitOfPressure.KPA,
+                "Pa": UnitOfPressure.PA,
+                "psi": UnitOfPressure.PSI,
+            }
+            normalized_unit = unit_map.get(from_unit, from_unit)
+            
+            # Use Home Assistant's official PressureConverter for better precision
+            result = PressureConverter.convert(value, normalized_unit, UnitOfPressure.HPA)
+            _LOGGER.debug(f"Pressure conversion: {value} {from_unit} → {result:.2f} hPa")
+            return result
+        except Exception as e:
+            _LOGGER.warning(f"Pressure conversion error for {value} {from_unit}: {e}, assuming hPa")
             return value
-
-        result = value
-        if from_unit in (UnitOfPressure.INHG, "inHg"):
-            result = value * 33.8639  # inHg to hPa
-        elif from_unit in (UnitOfPressure.MMHG, "mmHg"):
-            result = value * 1.33322  # mmHg to hPa
-        elif from_unit in (UnitOfPressure.KPA, "kPa"):
-            result = value * 10.0  # kPa to hPa
-        elif from_unit in (UnitOfPressure.PA, "Pa"):
-            result = value / 100.0  # Pa to hPa
-        elif from_unit in (UnitOfPressure.PSI, "psi"):
-            result = value * 68.9476  # psi to hPa
-        else:
-            _LOGGER.warning(f"Unknown pressure unit: {from_unit}, assuming hPa")
-            return value
-
-        _LOGGER.debug(f"Pressure conversion: {value} {from_unit} → {result:.2f} hPa")
-        return result
 
     @staticmethod
     def convert_temperature(value: float, from_unit: str) -> float:
-        """Convert temperature to Celsius.
+        """Convert temperature to Celsius using Home Assistant's official converter.
 
         Args:
             value: Temperature value
@@ -70,25 +76,28 @@ class UnitConverter:
         Returns:
             Temperature in °C
         """
-        if from_unit in (UnitOfTemperature.CELSIUS, "°C", "C"):
-            _LOGGER.debug(f"Temperature conversion: {value} {from_unit} (no conversion needed)")
+        try:
+            # Normalize unit names for HA converter
+            unit_map = {
+                "C": UnitOfTemperature.CELSIUS,
+                "°C": UnitOfTemperature.CELSIUS,
+                "F": UnitOfTemperature.FAHRENHEIT,
+                "°F": UnitOfTemperature.FAHRENHEIT,
+                "K": UnitOfTemperature.KELVIN,
+            }
+            normalized_unit = unit_map.get(from_unit, from_unit)
+            
+            # Use Home Assistant's official TemperatureConverter for consistency
+            result = TemperatureConverter.convert(value, normalized_unit, UnitOfTemperature.CELSIUS)
+            _LOGGER.debug(f"Temperature conversion: {value} {from_unit} → {result:.2f} °C")
+            return result
+        except Exception as e:
+            _LOGGER.warning(f"Temperature conversion error for {value} {from_unit}: {e}, assuming °C")
             return value
-
-        result = value
-        if from_unit in (UnitOfTemperature.FAHRENHEIT, "°F", "F"):
-            result = (value - 32) * 5 / 9  # °F to °C
-        elif from_unit in (UnitOfTemperature.KELVIN, "K"):
-            result = value - 273.15  # K to °C
-        else:
-            _LOGGER.warning(f"Unknown temperature unit: {from_unit}, assuming °C")
-            return value
-
-        _LOGGER.debug(f"Temperature conversion: {value} {from_unit} → {result:.2f} °C")
-        return result
 
     @staticmethod
     def convert_wind_speed(value: float, from_unit: str) -> float:
-        """Convert wind speed to m/s.
+        """Convert wind speed to m/s using Home Assistant's official converter.
 
         Args:
             value: Wind speed value
@@ -97,29 +106,31 @@ class UnitConverter:
         Returns:
             Wind speed in m/s
         """
-        if from_unit in (UnitOfSpeed.METERS_PER_SECOND, "m/s"):
-            _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} (no conversion needed)")
+        try:
+            # Normalize unit names for HA converter
+            unit_map = {
+                "m/s": UnitOfSpeed.METERS_PER_SECOND,
+                "km/h": UnitOfSpeed.KILOMETERS_PER_HOUR,
+                "kmh": UnitOfSpeed.KILOMETERS_PER_HOUR,
+                "mph": UnitOfSpeed.MILES_PER_HOUR,
+                "kn": UnitOfSpeed.KNOTS,
+                "kt": UnitOfSpeed.KNOTS,
+                "ft/s": UnitOfSpeed.FEET_PER_SECOND,
+                "fps": UnitOfSpeed.FEET_PER_SECOND,
+            }
+            normalized_unit = unit_map.get(from_unit, from_unit)
+            
+            # Use Home Assistant's official SpeedConverter for consistency
+            result = SpeedConverter.convert(value, normalized_unit, UnitOfSpeed.METERS_PER_SECOND)
+            _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} → {result:.2f} m/s")
+            return result
+        except Exception as e:
+            _LOGGER.warning(f"Wind speed conversion error for {value} {from_unit}: {e}, assuming m/s")
             return value
-
-        result = value
-        if from_unit in (UnitOfSpeed.KILOMETERS_PER_HOUR, "km/h", "kmh"):
-            result = value / 3.6  # km/h to m/s
-        elif from_unit in (UnitOfSpeed.MILES_PER_HOUR, "mph"):
-            result = value * 0.44704  # mph to m/s
-        elif from_unit in (UnitOfSpeed.KNOTS, "kn", "kt"):
-            result = value * 0.514444  # knots to m/s
-        elif from_unit in ("ft/s", "fps"):
-            result = value * 0.3048  # ft/s to m/s
-        else:
-            _LOGGER.warning(f"Unknown wind speed unit: {from_unit}, assuming m/s")
-            return value
-
-        _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} → {result:.2f} m/s")
-        return result
 
     @staticmethod
     def convert_precipitation(value: float, from_unit: str) -> float:
-        """Convert precipitation/rain rate to mm or mm/h.
+        """Convert precipitation/rain rate to mm or mm/h using Home Assistant's official converter.
 
         Args:
             value: Precipitation value
@@ -128,23 +139,37 @@ class UnitConverter:
         Returns:
             Precipitation in mm or mm/h (same time unit as input)
         """
-        if from_unit in ("mm", "mm/h"):
-            _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} (no conversion needed)")
+        try:
+            # Normalize unit names for HA DistanceConverter
+            # Handle rate units (mm/h, in/h) by converting distance part only
+            is_rate = "/h" in from_unit
+            base_unit = from_unit.replace("/h", "") if is_rate else from_unit
+            
+            # Map common aliases to UnitOfLength constants
+            unit_map = {
+                "mm": UnitOfLength.MILLIMETERS,
+                "in": UnitOfLength.INCHES,
+            }
+            
+            normalized_unit = unit_map.get(base_unit, base_unit)
+            
+            # Use Home Assistant's official DistanceConverter
+            result = DistanceConverter.convert(value, normalized_unit, UnitOfLength.MILLIMETERS)
+            
+            target_unit = "mm/h" if is_rate else "mm"
+            _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} → {result:.2f} {target_unit}")
+            return result
+        except Exception as e:
+            _LOGGER.warning(f"Precipitation conversion error for {value} {from_unit}: {e}, assuming mm")
             return value
-
-        result = value
-        if from_unit in ("in", "in/h"):
-            result = value * 25.4  # inches to mm (1 inch = 25.4 mm)
-            _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} → {result:.2f} mm")
-        else:
-            _LOGGER.warning(f"Unknown precipitation unit: {from_unit}, assuming mm")
-            return value
-
-        return result
 
     @staticmethod
     def convert_solar_radiation(value: float, from_unit: str) -> float:
         """Convert solar radiation to W/m².
+        
+        Note: Home Assistant core doesn't provide a solar radiation converter
+        because the lux→W/m² relationship is highly spectrum-dependent.
+        This custom implementation uses a conservative factor suitable for direct sunlight.
 
         Args:
             value: Solar radiation value
@@ -276,7 +301,7 @@ class UnitConverter:
         user_unit: str | None = None,
         precision: int = 1,
     ) -> str:
-        """Format value for UI display in user's preferred unit.
+        """Format value for UI display in user's preferred unit using HA converters.
 
         Args:
             value: Value in internal unit (SI: hPa, °C, m/s, %)
@@ -298,44 +323,37 @@ class UnitConverter:
             elif sensor_type == "humidity":
                 return f"{value:.0f}%"
 
-        # Reverse conversion: SI units → user's preferred unit
-        converted_value = value
+        # Reverse conversion: SI units → user's preferred unit using HA converters
+        # Type guard: user_unit is guaranteed to be str here (not None) due to check above
+        assert user_unit is not None
+        
+        try:
+            if sensor_type == "pressure":
+                # Value is in hPa, convert to user's unit using PressureConverter
+                converted_value = PressureConverter.convert(value, UnitOfPressure.HPA, user_unit)
+            elif sensor_type == "temperature":
+                # Value is in °C, convert to user's unit using TemperatureConverter
+                converted_value = TemperatureConverter.convert(value, UnitOfTemperature.CELSIUS, user_unit)
+            elif sensor_type == "wind_speed":
+                # Value is in m/s, convert to user's unit using SpeedConverter
+                converted_value = SpeedConverter.convert(value, UnitOfSpeed.METERS_PER_SECOND, user_unit)
+            elif sensor_type == "precipitation":
+                # Value is in mm, convert to user's unit using DistanceConverter
+                base_unit = user_unit.replace("/h", "") if "/h" in user_unit else user_unit
+                unit_map = {
+                    "mm": UnitOfLength.MILLIMETERS,
+                    "in": UnitOfLength.INCHES,
+                }
+                target_unit = unit_map.get(base_unit, base_unit)
+                converted_value = DistanceConverter.convert(value, UnitOfLength.MILLIMETERS, target_unit)
+            else:
+                # Fallback for unknown types
+                converted_value = value
 
-        if sensor_type == "pressure":
-            # Value is in hPa, convert to user's unit
-            if user_unit in (UnitOfPressure.INHG, "inHg"):
-                converted_value = value / 33.8639  # hPa to inHg
-            elif user_unit in (UnitOfPressure.MMHG, "mmHg"):
-                converted_value = value / 1.33322  # hPa to mmHg
-            elif user_unit in (UnitOfPressure.KPA, "kPa"):
-                converted_value = value / 10.0  # hPa to kPa
-            elif user_unit in (UnitOfPressure.PSI, "psi"):
-                converted_value = value / 68.9476  # hPa to psi
-
-        elif sensor_type == "temperature":
-            # Value is in °C, convert to user's unit
-            if user_unit in (UnitOfTemperature.FAHRENHEIT, "°F", "F"):
-                converted_value = (value * 9 / 5) + 32  # °C to °F
-            elif user_unit in (UnitOfTemperature.KELVIN, "K"):
-                converted_value = value + 273.15  # °C to K
-
-        elif sensor_type == "wind_speed":
-            # Value is in m/s, convert to user's unit
-            if user_unit in (UnitOfSpeed.KILOMETERS_PER_HOUR, "km/h", "kmh"):
-                converted_value = value * 3.6  # m/s to km/h
-            elif user_unit in (UnitOfSpeed.MILES_PER_HOUR, "mph"):
-                converted_value = value / 0.44704  # m/s to mph
-            elif user_unit in (UnitOfSpeed.KNOTS, "kn", "kt"):
-                converted_value = value / 0.514444  # m/s to knots
-            elif user_unit in ("ft/s", "fps"):
-                converted_value = value / 0.3048  # m/s to ft/s
-
-        elif sensor_type == "precipitation":
-            # Value is in mm, convert to user's unit
-            if user_unit in ("in", "in/h"):
-                converted_value = value / 25.4  # mm to inches
-
-        return f"{converted_value:.{precision}f} {user_unit}"
+            return f"{converted_value:.{precision}f} {user_unit}"
+        except Exception as e:
+            _LOGGER.warning(f"UI formatting error for {sensor_type} {value} → {user_unit}: {e}")
+            return f"{value:.{precision}f} {user_unit}"
 
 
 # Convenience functions

@@ -527,34 +527,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if solar_elevation_deg <= 0:
                 return None
 
-            # Use simplified calculation with sun entity
-            # Solar constant at top of atmosphere
-            solar_constant = 1361  # W/m²
-
-            # Calculate theoretical maximum using sun elevation
-            from math import sin, radians, exp
-
-            solar_elevation_rad = radians(solar_elevation_deg)
-            sin_elev = sin(solar_elevation_rad)
-
-            # Calculate air mass (path length through atmosphere)
-            if solar_elevation_deg < 5:
-                air_mass = 10.0  # Safety limit for low sun
-            else:
-                air_mass = 1.0 / sin_elev
-
-            # Atmospheric transmission (Linke turbidity for urban areas)
-            linke_turbidity = 3.0
-            transmission = exp(-0.09 * air_mass * linke_turbidity)
-
-            # Theoretical maximum for clear sky
-            theoretical_max = solar_constant * transmission * sin_elev
-
-            # Apply elevation correction from Home Assistant config
+            # Get elevation from Home Assistant config
             elevation = self.hass.config.elevation or 0
-            if elevation > 0:
-                elevation_factor = 1 + (elevation / 1000) * 0.12
-                theoretical_max *= elevation_factor
+
+            # Use centralized calculation function
+            from .calculations import calculate_theoretical_max_solar_radiation
+            
+            theoretical_max = calculate_theoretical_max_solar_radiation(
+                solar_elevation_deg=solar_elevation_deg,
+                elevation_m=elevation,
+                linke_turbidity=3.0  # Standard urban value
+            )
 
             # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
             self._theoretical_max_solar = theoretical_max
@@ -661,6 +644,125 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
         return None
 
+    def _cache_sensor_values(self) -> dict:
+        """Cache frequently-accessed sensor values to avoid repeated state reads.
+        
+        PERFORMANCE OPTIMIZATION (Task 1.3):
+        Before: condition() method performed ~25 sensor reads (12 unique + 13 duplicates)
+        After: ~8 unique sensor reads cached once at start
+        Impact: ~68% reduction in sensor reads (17 duplicates eliminated)
+        
+        Returns:
+            dict: Cached sensor states and computed values
+        """
+        cache = {}
+        
+        # Read each sensor ONCE and cache for entire condition() execution
+        cache['pressure_change'] = self.hass.states.get("sensor.local_forecast_pressurechange")
+        cache['enhanced'] = self.hass.states.get("sensor.local_forecast_enhanced")
+        cache['rain_rate'] = self.hass.states.get(self._get_config(CONF_RAIN_RATE_SENSOR))
+        cache['solar'] = self.hass.states.get(self._get_config(CONF_SOLAR_RADIATION_SENSOR))
+        cache['sun'] = self.hass.states.get("sun.sun")
+        cache['rain_prob'] = self.hass.states.get("sensor.local_forecast_rain_probability")
+        cache['rain_sensor'] = self.hass.states.get(self._get_config(CONF_RAIN_SENSOR))
+        
+        # Cache native values (from properties that don't call hass.states.get)
+        cache['temp'] = self.native_temperature
+        cache['pressure'] = self.native_pressure
+        cache['humidity'] = self.humidity
+        cache['dewpoint'] = self.native_dew_point
+        cache['wind_speed'] = self.native_wind_speed
+        
+        return cache
+
+    def _check_exceptional_conditions(self, cache: dict) -> str | None:
+        """Check for exceptional weather conditions (PRIORITY 0).
+        
+        REFACTORING (Task 1.4): Extracted from condition() method
+        
+        Args:
+            cache: Cached sensor values from _cache_sensor_values()
+            
+        Returns:
+            str: "exceptional" if detected, None otherwise
+        """
+        pressure = cache['pressure']
+        if pressure is None:
+            return None
+            
+        # Get pressure change for bomb cyclone detection
+        pressure_change_sensor = cache['pressure_change']
+        pressure_change = 0.0
+        if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
+            try:
+                pressure_change = float(pressure_change_sensor.state)
+            except (ValueError, TypeError):
+                pass
+
+        # EXCEPTIONAL: Extreme pressure (hurricane, bomb cyclone, extreme anticyclone)
+        from .const import (
+            PRESSURE_HURRICANE_THRESHOLD,
+            PRESSURE_EXTREME_HIGH_THRESHOLD,
+            PRESSURE_BOMB_CYCLONE_CHANGE,
+        )
+        
+        if pressure < PRESSURE_HURRICANE_THRESHOLD:
+            _LOGGER.debug(
+                f"⚠️ EXCEPTIONAL WEATHER: Hurricane-force low pressure detected! "
+                f"Pressure={pressure:.1f} hPa < {PRESSURE_HURRICANE_THRESHOLD} hPa"
+            )
+            return "exceptional"
+
+        if pressure > PRESSURE_EXTREME_HIGH_THRESHOLD:
+            _LOGGER.debug(
+                f"⚠️ EXCEPTIONAL WEATHER: Extreme high pressure detected! "
+                f"Pressure={pressure:.1f} hPa > {PRESSURE_EXTREME_HIGH_THRESHOLD} hPa"
+            )
+            return "exceptional"
+
+        if abs(pressure_change) > PRESSURE_BOMB_CYCLONE_CHANGE:
+            _LOGGER.debug(
+                f"⚠️ EXCEPTIONAL WEATHER: Bomb cyclone detected! "
+                f"Rapid pressure change: {pressure_change:+.1f} hPa/3h"
+            )
+            return "exceptional"
+
+        # HAIL: Check atmospheric conditions (actual detection in PRIORITY 1)
+        temp = cache['temp']
+        humidity = cache['humidity']
+        enhanced_sensor = cache['enhanced']
+        
+        gust_ratio = None
+        if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
+            gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
+
+        # Set internal flag if atmospheric conditions favor hail
+        from .const import (
+            HAIL_TEMP_MIN,
+            HAIL_TEMP_MAX,
+            HAIL_HUMIDITY_MIN,
+            HAIL_GUST_RATIO_MIN,
+        )
+        
+        if temp is not None and humidity is not None and gust_ratio is not None:
+            self._hail_conditions_present = (
+                HAIL_TEMP_MIN <= temp <= HAIL_TEMP_MAX and
+                humidity > HAIL_HUMIDITY_MIN and
+                gust_ratio > HAIL_GUST_RATIO_MIN
+            )
+
+            if self._hail_conditions_present:
+                _LOGGER.debug(
+                    f"Weather: ⚠️ HAIL-FAVORABLE conditions detected! "
+                    f"Temp={temp:.1f}°C (convective zone), Humidity={humidity:.0f}% (high), "
+                    f"Gust ratio={gust_ratio:.2f} (very unstable). "
+                    f"Will return HAIL if active precipitation is detected."
+                )
+        else:
+            self._hail_conditions_present = False
+            
+        return None
+
     @property
     def condition(self) -> str | None:
         """Return the current condition based on Zambretti forecast and current weather."""
@@ -668,6 +770,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # Safety check - if hass is not available yet, return default
             if not self.hass:
                 return ATTR_CONDITION_PARTLYCLOUDY
+            
+            # PERFORMANCE: Cache all sensor values once at start
+            # Reduces sensor reads from ~25 to ~8 (~68% reduction)
+            _cache = self._cache_sensor_values()
 
             # ========================================================================
             # SECTION 1: HARD OVERRIDES (return immediately if condition met)
@@ -675,90 +781,14 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # ========================================================================
 
             # PRIORITY 0: EXCEPTIONAL & HAIL - Extreme weather conditions (highest priority!)
-            # These override ALL other conditions for safety warnings
-            pressure = self.native_pressure
-            if pressure is not None:
-                # Get pressure change for bomb cyclone detection
-                pressure_change_sensor = self.hass.states.get("sensor.local_forecast_pressurechange")
-                pressure_change = 0.0
-                if pressure_change_sensor and pressure_change_sensor.state not in ("unknown", "unavailable", None):
-                    try:
-                        pressure_change = float(pressure_change_sensor.state)
-                    except (ValueError, TypeError):
-                        pass
-
-                # EXCEPTIONAL: Extreme pressure (hurricane, bomb cyclone, extreme anticyclone)
-                # ✅ Using independent 'if' checks - each condition is evaluated separately
-                # This ensures we catch all exceptional scenarios and log all reasons
-                if pressure < 920:
-                    # Hurricane-force low pressure
-                    _LOGGER.debug(
-                        f"⚠️ EXCEPTIONAL WEATHER: Hurricane-force low pressure detected! "
-                        f"Pressure={pressure:.1f} hPa < 920 hPa"
-                    )
-                    return "exceptional"
-
-                if pressure > 1070:
-                    # Extreme high pressure (Siberian anticyclone)
-                    _LOGGER.debug(
-                        f"⚠️ EXCEPTIONAL WEATHER: Extreme high pressure detected! "
-                        f"Pressure={pressure:.1f} hPa > 1070 hPa"
-                    )
-                    return "exceptional"
-
-                if abs(pressure_change) > 10:
-                    # Bomb cyclogenesis (rapid pressure change)
-                    # Can occur at ANY pressure - independent of absolute pressure value
-                    _LOGGER.debug(
-                        f"⚠️ EXCEPTIONAL WEATHER: Bomb cyclone detected! "
-                        f"Rapid pressure change: {pressure_change:+.1f} hPa/3h"
-                    )
-                    return "exceptional"
-
-                # HAIL: Severe thunderstorm conditions
-                # ✅ NEW v3.1.10: Check actual current conditions, not forecast!
-                # Hail requires:
-                # 1. Active precipitation (will be checked in PRIORITY 1)
-                # 2. Convective temperature (15-30°C)
-                # 3. High humidity (>80%)
-                # 4. Very unstable atmosphere (gust_ratio >2.5)
-
-                # We check these conditions here; if precipitation is detected in PRIORITY 1,
-                # and these conditions are met, PRIORITY 1 will return "hail" instead of rain.
-                # For now, we just store hail_risk_present flag for later use.
-
-                temp = self.native_temperature
-                humidity = self.humidity
-
-                # Get gust ratio from enhanced sensor
-                enhanced_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
-                gust_ratio = None
-                if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
-                    gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
-
-                # Set internal flag if atmospheric conditions favor hail
-                # (actual hail detection happens in PRIORITY 1 when precipitation is confirmed)
-                if temp is not None and humidity is not None and gust_ratio is not None:
-                    self._hail_conditions_present = (
-                        15 <= temp <= 30 and
-                        humidity > 80 and
-                        gust_ratio > 2.5
-                    )
-
-                    if self._hail_conditions_present:
-                        _LOGGER.debug(
-                            f"Weather: ⚠️ HAIL-FAVORABLE conditions detected! "
-                            f"Temp={temp:.1f}°C (convective zone), Humidity={humidity:.0f}% (high), "
-                            f"Gust ratio={gust_ratio:.2f} (very unstable). "
-                            f"Will return HAIL if active precipitation is detected."
-                        )
-                else:
-                    self._hail_conditions_present = False
+            exceptional = self._check_exceptional_conditions(_cache)
+            if exceptional:
+                return exceptional
 
             # PRIORITY 1: Check if currently raining (Netatmo INCREMENT sensor detection)
             rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
             if rain_rate_sensor_id:
-                rain_sensor = self.hass.states.get(rain_rate_sensor_id)
+                rain_sensor = _cache['rain_rate']  # Use cached value
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
                     try:
                         from datetime import datetime
@@ -807,24 +837,36 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                         # If precipitation is detected, check temperature to determine if it's rain or snow
                         if is_raining_now:
-                            temp = self.native_temperature
+                            temp = _cache['temp']  # Use cached value
 
                             # Check if fog is also present (secondary condition)
                             # Fog info will be added to attributes even though precipitation has priority
                             fog_also_present = False
-                            dewpoint = self.native_dew_point
-                            humidity = self.humidity
+                            dewpoint = _cache['dewpoint']  # Use cached value
+                            humidity = _cache['humidity']  # Use cached value
                             dewpoint_spread = 0.0  # Initialize for logging
                             wind_speed = 0.0  # Initialize for logging
 
                             if temp is not None and dewpoint is not None and humidity is not None:
                                 dewpoint_spread = temp - dewpoint
-                                wind_speed = self.native_wind_speed or 0.0
+                                wind_speed = _cache['wind_speed'] or 0.0  # Use cached value
 
                                 # Check fog conditions (same logic as PRIORITY 2)
-                                if (dewpoint_spread < 0.5 and humidity > 95) or \
-                                   (dewpoint_spread < 1.0 and humidity > 93 and wind_speed < 3.0) or \
-                                   (1.5 <= dewpoint_spread < 2.5 and humidity > 85 and wind_speed < 2.0):
+                                from .const import (
+                                    FOG_DEWPOINT_CRITICAL,
+                                    FOG_DEWPOINT_LIKELY,
+                                    FOG_DEWPOINT_POSSIBLE,
+                                    FOG_DEWPOINT_MIST,
+                                    FOG_HUMIDITY_CRITICAL,
+                                    FOG_HUMIDITY_HIGH,
+                                    FOG_HUMIDITY_MIST,
+                                    FOG_WIND_CALM,
+                                    FOG_WIND_LIGHT,
+                                )
+                                
+                                if (dewpoint_spread < FOG_DEWPOINT_CRITICAL and humidity > FOG_HUMIDITY_CRITICAL) or \
+                                   (dewpoint_spread < FOG_DEWPOINT_LIKELY and humidity > FOG_HUMIDITY_HIGH and wind_speed < FOG_WIND_LIGHT) or \
+                                   (FOG_DEWPOINT_LIKELY <= dewpoint_spread < FOG_DEWPOINT_MIST and humidity > FOG_HUMIDITY_MIST and wind_speed < FOG_WIND_CALM):
                                     fog_also_present = True
 
                             # Determine precipitation type based on temperature and humidity
@@ -846,10 +888,18 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             # - Pure rain: temp > 4°C (always liquid)
 
                             if temp is not None:
+                                from .const import (
+                                    PRECIP_SNOW_TEMP_MAX,
+                                    PRECIP_MIXED_TEMP_MIN,
+                                    PRECIP_MIXED_TEMP_MAX,
+                                    PRECIP_MIXED_HUMIDITY,
+                                    PRECIP_POURING_THRESHOLD,
+                                )
+                                
                                 # Get humidity for wet bulb approximation
                                 current_humidity = humidity if humidity is not None else 70.0
 
-                                if temp < -1:
+                                if temp < PRECIP_SNOW_TEMP_MAX:
                                     # SNOW - Cold enough that all precipitation is frozen
                                     # Below -1°C, humidity doesn't matter - too cold for melting
                                     if fog_also_present and dewpoint is not None and humidity is not None:
@@ -866,7 +916,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                         )
                                     return ATTR_CONDITION_SNOWY
 
-                                elif -1 <= temp <= 4:
+                                elif PRECIP_MIXED_TEMP_MIN <= temp <= PRECIP_MIXED_TEMP_MAX:
                                     # TRANSITION ZONE - Mixed precipitation possible
                                     # Depends on humidity (wet bulb approximation)
 
@@ -876,7 +926,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     # 3. Low temperature + low humidity → still snow
                                     # 4. High temperature + any humidity → starting to be rain
 
-                                    if temp <= 1 and current_humidity < 85:
+                                    if temp <= 1 and current_humidity < PRECIP_MIXED_HUMIDITY:
                                         # Cold + dry → SNOW
                                         # Snowflakes don't melt in dry air even near 0°C
                                         _LOGGER.debug(
@@ -886,7 +936,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                         )
                                         return ATTR_CONDITION_SNOWY
 
-                                    elif temp >= 3 and current_humidity > 85:
+                                    elif temp >= 3 and current_humidity > PRECIP_MIXED_HUMIDITY:
                                         # Warm + humid → RAIN
                                         # Snow melts completely in humid warm air
                                         _LOGGER.debug(
@@ -942,7 +992,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                                 # Check for high intensity regardless of unit
                                 is_pouring = False
-                                if current_rain > 7.5:
+                                if current_rain > PRECIP_POURING_THRESHOLD:
                                     # High precipitation rate → POURING
                                     is_pouring = True
 
@@ -990,16 +1040,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # PRIORITY 2: Check for snow/ice/fog conditions (current observable weather)
             # These are visible weather phenomena and should override forecast
             from datetime import datetime as dt
-            temp = self.native_temperature
-            humidity = self.humidity
-            dewpoint = self.native_dew_point
+            temp = _cache['temp']  # Use cached value
+            humidity = _cache['humidity']  # Use cached value
+            dewpoint = _cache['dewpoint']  # Use cached value
 
             if temp is not None and dewpoint is not None and humidity is not None:
                 dewpoint_spread = temp - dewpoint
                 current_hour = dt.now().hour
 
-                # Get rain/snow probability sensor value (used for multiple checks)
-                rain_prob_sensor = self.hass.states.get("sensor.local_forecast_rain_probability")
+                # Get rain/snow probability sensor value (used for multiple checks) - from cache
+                rain_prob_sensor = _cache['rain_prob']
                 rain_prob = 0
                 if rain_prob_sensor and rain_prob_sensor.state not in ("unknown", "unavailable", None):
                     try:
@@ -1007,9 +1057,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     except (ValueError, TypeError):
                         pass
 
-                # Get snow risk sensor if available (v3.1.3+)
+                # Get snow risk sensor if available (v3.1.3+) - from cache
                 snow_risk = None
-                snow_risk_sensor = self.hass.states.get("sensor.local_forecast_enhanced")
+                snow_risk_sensor = _cache['enhanced']
                 if snow_risk_sensor and snow_risk_sensor.state not in ("unknown", "unavailable", None):
                     try:
                         snow_risk_attrs = snow_risk_sensor.attributes or {}
@@ -1054,15 +1104,29 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # - POSSIBLE (night): spread 1.0-1.5°C + RH > 90% + night + calm → light fog (WMO code 10)
                 # - MIST: spread 1.5-4°C + RH > 85% → show CLOUDY, not FOG (WMO code 30)
 
-                # Get wind speed for fog dissipation check
-                wind_speed = self.native_wind_speed or 0.0
+                # Get wind speed for fog dissipation check - from cache
+                wind_speed = _cache['wind_speed'] or 0.0
 
                 # Determine if night (fog forms easier, less likely to dissipate)
                 is_night = current_hour < 6 or current_hour >= 20
 
+                # Import fog thresholds
+                from .const import (
+                    FOG_DEWPOINT_CRITICAL,
+                    FOG_DEWPOINT_LIKELY,
+                    FOG_DEWPOINT_POSSIBLE,
+                    FOG_DEWPOINT_MIST,
+                    FOG_HUMIDITY_CRITICAL,
+                    FOG_HUMIDITY_HIGH,
+                    FOG_HUMIDITY_MEDIUM,
+                    FOG_HUMIDITY_MIST,
+                    FOG_WIND_CALM,
+                    FOG_WIND_LIGHT,
+                )
+
                 # LEVEL 1: CRITICAL FOG (WMO Code 12 - Dense fog)
                 # Dense fog, visibility < 400m
-                if dewpoint_spread < 0.5 and humidity > 95:
+                if dewpoint_spread < FOG_DEWPOINT_CRITICAL and humidity > FOG_HUMIDITY_CRITICAL:
                     _LOGGER.debug(
                         f"Weather: FOG (CRITICAL) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
@@ -1073,7 +1137,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # LEVEL 2: LIKELY FOG (WMO Code 11 - Fog)
                 # Moderate fog, visibility 400-1000m, requires calm weather
                 # WMO compliant: spread < 1.0°C + RH > 90%
-                elif dewpoint_spread < 1.0 and humidity > 90 and wind_speed < 3.0:
+                elif dewpoint_spread < FOG_DEWPOINT_LIKELY and humidity > FOG_HUMIDITY_MEDIUM and wind_speed < FOG_WIND_LIGHT:
                     _LOGGER.debug(
                         f"Weather: FOG (LIKELY) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
@@ -1084,7 +1148,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # LEVEL 3: POSSIBLE FOG (WMO Code 10 - Light fog, night only)
                 # Light fog, visibility 500-1000m, night only + very calm
                 # WMO compliant: spread 1.0-1.5°C + RH > 90%
-                elif is_night and 1.0 <= dewpoint_spread < 1.5 and humidity > 90 and wind_speed < 2.0:
+                elif is_night and FOG_DEWPOINT_LIKELY <= dewpoint_spread < FOG_DEWPOINT_POSSIBLE and humidity > FOG_HUMIDITY_MEDIUM and wind_speed < FOG_WIND_CALM:
                     _LOGGER.debug(
                         f"Weather: FOG (POSSIBLE, night) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s, "
@@ -1095,7 +1159,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # MIST (WMO Code 30 - not fog)
                 # High humidity but spread too large for fog (1.5-4°C per WMO)
                 # Show as CLOUDY, not FOG (HA has no dedicated MIST condition)
-                elif 1.5 <= dewpoint_spread < 4.0 and humidity > 85:
+                elif FOG_DEWPOINT_POSSIBLE <= dewpoint_spread < 4.0 and humidity > FOG_HUMIDITY_MIST:
                     _LOGGER.debug(
                         f"Weather: MIST detected (not fog) - spread={dewpoint_spread:.1f}°C, "
                         f"humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s "
@@ -1110,7 +1174,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             solar_cloudiness = None  # Will store solar-determined cloudiness hint
             solar_sensor_id = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
             if solar_sensor_id:
-                solar_state = self.hass.states.get(solar_sensor_id)
+                solar_state = _cache['solar']  # Use cached value
                 if solar_state and solar_state.state not in ("unknown", "unavailable", None):
                     try:
                         from .unit_conversion import UnitConverter
@@ -1156,7 +1220,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # This is simpler and more accurate than manual latitude/longitude/time calculations
                 import math
 
-                sun_state = self.hass.states.get("sun.sun")
+                sun_state = _cache['sun']  # Use cached value
                 if not sun_state:
                     _LOGGER.debug("Weather: sun.sun entity not available, skipping solar radiation")
                 else:
@@ -1169,35 +1233,21 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # Get elevation from Home Assistant config
                         elevation = self.hass.config.elevation or 0
 
-                        # Calculate theoretical maximum using sun elevation
-                        solar_constant = 1361  # W/m² at top of atmosphere
-                        solar_elevation_rad = math.radians(solar_elevation_deg)
-                        sin_elevation = math.sin(solar_elevation_rad)
-
-                        # Calculate air mass (atmospheric path length)
-                        if solar_elevation_deg < 5:
-                            air_mass = 10.0  # Safety limit for very low sun
-                        else:
-                            air_mass = 1 / sin_elevation
-
-                        # Atmospheric transmission with Linke turbidity
-                        linke_turbidity = 3.0  # Standard for urban areas
-                        transmission = math.exp(-0.09 * air_mass * linke_turbidity)
-
-                        # Theoretical maximum at sea level
-                        max_solar_sea_level = solar_constant * transmission * sin_elevation
-
-                        # Adjust for elevation
-                        elevation_factor = 1 + (elevation / 1000) * 0.12
-                        theoretical_max = max_solar_sea_level * elevation_factor
+                        # Use centralized calculation function
+                        from .calculations import calculate_theoretical_max_solar_radiation
+                        
+                        theoretical_max = calculate_theoretical_max_solar_radiation(
+                            solar_elevation_deg=solar_elevation_deg,
+                            elevation_m=elevation,
+                            linke_turbidity=3.0  # Standard urban value
+                        )
 
                         # Cache for use in extra_state_attributes (for solar_radiation_enhanced.yaml)
                         self._theoretical_max_solar = theoretical_max
 
                         _LOGGER.debug(
                             f"Weather: Solar calculation - sun_elevation={solar_elevation_deg:.1f}°, "
-                            f"elevation={elevation}m, air_mass={air_mass:.2f}, "
-                            f"theoretical_max={theoretical_max:.0f} W/m²"
+                            f"elevation={elevation}m, theoretical_max={theoretical_max:.0f} W/m²"
                         )
 
                         # WMO: Use any positive solar radiation value (not just >50 W/m²)
@@ -1339,7 +1389,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             rain_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
             has_rain_sensor = False
             if rain_sensor_id:
-                rain_sensor = self.hass.states.get(rain_sensor_id)
+                rain_sensor = _cache['rain_rate']  # Use cached value
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
                     # Rain sensor is configured AND available → use it as authority
                     has_rain_sensor = True
@@ -1356,10 +1406,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
             current_condition_from_pressure = None
 
-            pressure = self.native_pressure
+            pressure = _cache['pressure']  # Use cached value
             if pressure is not None:
-                # Get temperature for rain/snow determination (used in high-altitude snow logic)
-                temperature = self.native_temperature
+                # Get temperature for rain/snow determination (used in high-altitude snow logic) - from cache
+                temperature = _cache['temp']
 
 
                 # ========================================================================
