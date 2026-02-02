@@ -444,7 +444,7 @@ def map_forecast_to_condition(
         _LOGGER.debug(f"Unified[{source}]: num={forecast_num} → code={code}")
     else:
         # No input - fallback
-        _LOGGER.warning(f"Unified[{source}]: No input, using default code=3")
+        _LOGGER.debug(f"Unified[{source}]: No input, using default code=3")
         code = 3
 
     # Step 2: Determine night status
@@ -509,7 +509,7 @@ def get_forecast_text(
         _LOGGER.debug(f"get_forecast_text: num={forecast_num} → code={code}")
     else:
         # No input - default
-        _LOGGER.warning("get_forecast_text: No input, using default code=0")
+        _LOGGER.debug("get_forecast_text: No input, using default code=0")
         code = 0
 
     # Get text from FORECAST_TEXTS

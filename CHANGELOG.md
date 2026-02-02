@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.13] - 2026-02-02
+
+### 🔧 Changed
+- **Logger Levels** - Reduced verbosity by changing most info/warning logs to debug level
+  - Only critical errors and actual failures are logged as error/critical
+  - Improves Home Assistant log readability and reduces noise
+  - Enable debug logging to see detailed diagnostics when needed
+
+---
+
 ## [3.1.12] - 2026-01-30
 
 ### ✨ Added

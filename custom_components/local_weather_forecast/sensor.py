@@ -147,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.12",
+            "sw_version": "3.1.13",
         }
 
     async def _wait_for_entity(
@@ -180,7 +180,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             await asyncio.sleep(retry_interval)
             elapsed += retry_interval
 
-        _LOGGER.warning(f"Entity {entity_id} did not become available after {timeout}s")
+        _LOGGER.debug(f"Entity {entity_id} did not become available after {timeout}s")
         return False
 
     async def _get_sensor_value(
@@ -236,7 +236,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             sensor_label = "sensor"
             if "wind" in sensor_id.lower():
                 sensor_label = "optional wind sensor"
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"Could not convert {sensor_label} {sensor_id} state '{state.state}' to float, using default {default}"
             )
             if use_history:
@@ -283,7 +283,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
                                 except (ValueError, TypeError):
                                     continue
 
-            _LOGGER.warning(
+            _LOGGER.debug(
                 f"No historical data found for {sensor_id}, using default {default}"
             )
         except Exception as e:
@@ -536,7 +536,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                     )
                     return [round(predicted_temp, 1), 0]
                 else:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         f"first_time has negative minutes: {minutes_to_first}. "
                         f"This indicates old forecast data. Detail sensor needs to update."
                     )
@@ -562,14 +562,14 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                     )
                     return [round(predicted_temp, 1), 1]
                 else:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         f"second_time has negative minutes: {minutes_to_second}. "
                         f"This indicates old forecast data. Detail sensor needs to update."
                     )
             except (ValueError, TypeError, IndexError) as e:
                 _LOGGER.debug(f"Error calculating from second_time: {e}")
 
-        _LOGGER.warning(
+        _LOGGER.debug(
             "No valid time intervals found for temperature forecast. "
             "Check that detail sensors are updating correctly."
         )
@@ -2046,7 +2046,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
                 _LOGGER.debug(f"Enhanced: Fallback - humidity value = {humidity}")
             else:
-                _LOGGER.warning("Enhanced: No humidity sensor configured!")
+                _LOGGER.debug("Enhanced: No humidity sensor configured!")
 
         # Calculate dewpoint if not available from weather entity
         if dewpoint is None and temp is not None and humidity is not None:
@@ -2061,7 +2061,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             dewpoint_spread = temp - dewpoint
             _LOGGER.debug(f"Enhanced: ✓ SPREAD: {temp}°C - {dewpoint}°C = {dewpoint_spread:.1f}°C")
         else:
-            _LOGGER.warning(f"Enhanced: ✗ Cannot calculate spread - temp={temp}, dewpoint={dewpoint}, humidity={humidity}")
+            _LOGGER.debug(f"Enhanced: ✗ Cannot calculate spread - temp={temp}, dewpoint={dewpoint}, humidity={humidity}")
 
         # Get wind gust ratio
         wind_speed = await self._get_sensor_value(
@@ -2079,10 +2079,10 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 gust_ratio = wind_gust / wind_speed
                 _LOGGER.debug(f"Enhanced: Calculated gust_ratio={gust_ratio:.2f} (gust={wind_gust} m/s, speed={wind_speed} m/s)")
             else:
-                _LOGGER.warning(f"Enhanced: Wind gust sensor returned None")
+                _LOGGER.debug(f"Enhanced: Wind gust sensor returned None")
         else:
             if not wind_gust_sensor_id:
-                _LOGGER.warning("Enhanced: No wind gust sensor configured!")
+                _LOGGER.debug("Enhanced: No wind gust sensor configured!")
             else:
                 _LOGGER.debug(f"Enhanced: Wind speed too low ({wind_speed} m/s), skipping gust ratio")
 
@@ -2505,7 +2505,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 )
             except Exception as e:
                 # Fallback to balanced if combined_model fails
-                _LOGGER.warning(f"RainProb: Failed to get dynamic weights, using balanced: {e}")
+                _LOGGER.debug(f"RainProb: Failed to get dynamic weights, using balanced: {e}")
                 zambretti_weight = 0.5
                 negretti_weight = 0.5
 
@@ -2529,7 +2529,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             humidity = await self._get_sensor_value(humidity_sensor, None, use_history=True, sensor_type="humidity")
             _LOGGER.debug(f"RainProb: Humidity value = {humidity}")
         else:
-            _LOGGER.warning("RainProb: No humidity sensor configured!")
+            _LOGGER.debug("RainProb: No humidity sensor configured!")
 
         # Calculate dewpoint spread
         dewpoint_spread = None
@@ -2541,7 +2541,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                     dewpoint_spread = temp - dewpoint
                     _LOGGER.debug(f"RainProb: Calculated dewpoint_spread={dewpoint_spread}")
         else:
-            _LOGGER.warning(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
+            _LOGGER.debug(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
         # ✅ FIXED v3.1.13: Use rain_prob from sensors (not LETTER_RAIN_PROB) for consistency
         # All models should use the same rain probability source (rain_prob attribute)
@@ -2588,7 +2588,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             if rain_state:
                 _LOGGER.debug(f"RainProb: Rain sensor state={rain_state.state}, attributes={rain_state.attributes}")
             else:
-                _LOGGER.warning(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not found in HA registry!")
+                _LOGGER.debug(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not found in HA registry!")
 
             _LOGGER.debug(f"RainProb: Fetching rain rate from {rain_rate_sensor_id}")
             current_rain_value = await self._get_sensor_value(rain_rate_sensor_id, 0.0, use_history=False, sensor_type="precipitation")
@@ -2596,9 +2596,9 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
                 current_rain = current_rain_value
                 _LOGGER.debug(f"RainProb: Current rain rate = {current_rain} mm/h")
             else:
-                _LOGGER.warning(f"RainProb: Rain rate sensor returned None (state={rain_state.state if rain_state else 'NOT_FOUND'})")
+                _LOGGER.debug(f"RainProb: Rain rate sensor returned None (state={rain_state.state if rain_state else 'NOT_FOUND'})")
         else:
-            _LOGGER.warning("RainProb: No rain rate sensor configured!")
+            _LOGGER.debug("RainProb: No rain rate sensor configured!")
 
         # If currently raining, override probability to HIGH
         if current_rain > 0.01:  # More than 0.01 mm/h = active precipitation (lowered from 0.1)

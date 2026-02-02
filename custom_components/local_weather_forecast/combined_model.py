@@ -374,7 +374,7 @@ def calculate_combined_rain_probability(
         return combined_rain
 
     except ImportError:
-        _LOGGER.warning("RainProbabilityCalculator not available, returning 50%")
+        _LOGGER.debug("RainProbabilityCalculator not available, returning 50%")
         return 50.0
 
 

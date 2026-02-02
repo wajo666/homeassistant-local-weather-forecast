@@ -60,13 +60,13 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             latitude = self.hass.config.latitude
             if latitude >= 0:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Hemisphere auto-detected: Northern (latitude=%.2f°)",
                     latitude
                 )
                 return HEMISPHERE_NORTH
             else:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Hemisphere auto-detected: Southern (latitude=%.2f°)",
                     latitude
                 )
@@ -103,7 +103,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_PRESSURE_SENSOR] = "sensor_not_found"
             else:
                 unit = pressure_state.attributes.get("unit_of_measurement")
-                _LOGGER.info(
+                _LOGGER.debug(
                     "Pressure sensor: %s | Value: %s %s | "
                     "Will be converted to hPa for calculations",
                     pressure_sensor,
@@ -121,7 +121,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors[CONF_TEMPERATURE_SENSOR] = "sensor_not_found"
                     elif temp_state:
                         unit = temp_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Temperature sensor: %s | Value: %s %s | "
                             "Will be converted to °C for calculations",
                             temp_sensor,
@@ -157,7 +157,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors[CONF_WIND_SPEED_SENSOR] = "sensor_not_found"
                     elif wind_speed_state:
                         unit = wind_speed_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Wind speed sensor: %s | Value: %s %s | "
                             "Will be converted to m/s for calculations",
                             wind_speed_sensor,
@@ -179,10 +179,10 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 latitude = self.hass.config.latitude
                 if latitude < 0:
                     user_input[CONF_HEMISPHERE] = HEMISPHERE_SOUTH
-                    _LOGGER.info("Auto-detected Southern hemisphere from HA latitude: %s", latitude)
+                    _LOGGER.debug("Auto-detected Southern hemisphere from HA latitude: %s", latitude)
                 else:
                     user_input[CONF_HEMISPHERE] = HEMISPHERE_NORTH
-                    _LOGGER.info("Auto-detected Northern hemisphere from HA latitude: %s", latitude)
+                    _LOGGER.debug("Auto-detected Northern hemisphere from HA latitude: %s", latitude)
 
             if not errors:
                 # Create unique ID based on pressure sensor
@@ -199,7 +199,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if old_value:
                             _LOGGER.debug("Cleaned sensor config: %s: %s -> None", key, old_value)
 
-                _LOGGER.info("Creating config entry with data: %s", cleaned_input)
+                _LOGGER.debug("Creating config entry with data: %s", cleaned_input)
                 return self.async_create_entry(
                     title=f"Local Weather Forecast",
                     data=cleaned_input,
@@ -440,7 +440,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         errors[CONF_HUMIDITY_SENSOR] = "sensor_not_found"
                     elif humidity_state:
                         unit = humidity_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Humidity sensor: %s | Value: %s %s | "
                             "Enables fog detection and enhanced forecasts",
                             humidity_sensor,
@@ -460,7 +460,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         errors[CONF_WIND_GUST_SENSOR] = "sensor_not_found"
                     elif wind_gust_state:
                         unit = wind_gust_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Wind gust sensor: %s | Value: %s %s | "
                             "Will be converted to m/s for calculations",
                             wind_gust_sensor,
@@ -480,7 +480,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         errors[CONF_RAIN_RATE_SENSOR] = "sensor_not_found"
                     elif rain_rate_state:
                         unit = rain_rate_state.attributes.get("unit_of_measurement")
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Rain rate sensor: %s | Value: %s %s | "
                             "Supported units: mm/h, mm, in/h, in (will be converted to mm)",
                             rain_rate_sensor,
@@ -537,7 +537,7 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                             _LOGGER.debug("Cleaned sensor config: %s: %s -> None", key, old_value)
 
                 try:
-                    _LOGGER.info("Updating config entry with data: %s", cleaned_input)
+                    _LOGGER.debug("Updating config entry with data: %s", cleaned_input)
                     # Update config entry with new data
                     self.hass.config_entries.async_update_entry(
                         self.config_entry,

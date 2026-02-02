@@ -62,7 +62,7 @@ class UnitConverter:
             _LOGGER.debug(f"Pressure conversion: {value} {from_unit} → {result:.2f} hPa")
             return result
         except Exception as e:
-            _LOGGER.warning(f"Pressure conversion error for {value} {from_unit}: {e}, assuming hPa")
+            _LOGGER.debug(f"Pressure conversion error for {value} {from_unit}: {e}, assuming hPa")
             return value
 
     @staticmethod
@@ -92,7 +92,7 @@ class UnitConverter:
             _LOGGER.debug(f"Temperature conversion: {value} {from_unit} → {result:.2f} °C")
             return result
         except Exception as e:
-            _LOGGER.warning(f"Temperature conversion error for {value} {from_unit}: {e}, assuming °C")
+            _LOGGER.debug(f"Temperature conversion error for {value} {from_unit}: {e}, assuming °C")
             return value
 
     @staticmethod
@@ -125,7 +125,7 @@ class UnitConverter:
             _LOGGER.debug(f"Wind speed conversion: {value} {from_unit} → {result:.2f} m/s")
             return result
         except Exception as e:
-            _LOGGER.warning(f"Wind speed conversion error for {value} {from_unit}: {e}, assuming m/s")
+            _LOGGER.debug(f"Wind speed conversion error for {value} {from_unit}: {e}, assuming m/s")
             return value
 
     @staticmethod
@@ -160,7 +160,7 @@ class UnitConverter:
             _LOGGER.debug(f"Precipitation conversion: {value} {from_unit} → {result:.2f} {target_unit}")
             return result
         except Exception as e:
-            _LOGGER.warning(f"Precipitation conversion error for {value} {from_unit}: {e}, assuming mm")
+            _LOGGER.debug(f"Precipitation conversion error for {value} {from_unit}: {e}, assuming mm")
             return value
 
     @staticmethod
@@ -190,7 +190,7 @@ class UnitConverter:
             result = value * 0.0079
             _LOGGER.debug(f"Solar radiation conversion: {value} {from_unit} → {result:.2f} W/m²")
         else:
-            _LOGGER.warning(f"Unknown solar radiation unit: {from_unit}, assuming W/m²")
+            _LOGGER.debug(f"Unknown solar radiation unit: {from_unit}, assuming W/m²")
             return value
 
         return result
@@ -249,7 +249,7 @@ class UnitConverter:
         elif sensor_type == "solar_radiation":
             return cls.convert_solar_radiation(value, from_unit)
         else:
-            _LOGGER.warning(f"Unknown sensor type: {sensor_type}")
+            _LOGGER.debug(f"Unknown sensor type: {sensor_type}")
             return value
 
     @classmethod
@@ -352,7 +352,7 @@ class UnitConverter:
 
             return f"{converted_value:.{precision}f} {user_unit}"
         except Exception as e:
-            _LOGGER.warning(f"UI formatting error for {sensor_type} {value} → {user_unit}: {e}")
+            _LOGGER.debug(f"UI formatting error for {sensor_type} {value} → {user_unit}: {e}")
             return f"{value:.{precision}f} {user_unit}"
 
 

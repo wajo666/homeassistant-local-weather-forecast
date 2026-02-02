@@ -54,7 +54,7 @@ async def async_migrate_entities(hass: HomeAssistant, entry: ConfigEntry) -> Non
         )
 
         if entity_id:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Migrating entity %s from unique_id '%s' to '%s'",
                 entity_id,
                 old_unique_id,
@@ -108,7 +108,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     for key in sensor_keys:
         if old_data.get(key) != new_data.get(key):
             sensors_changed = True
-            _LOGGER.info(f"Sensor configuration changed: {key}")
+            _LOGGER.debug(f"Sensor configuration changed: {key}")
             break
 
     # Check if critical settings changed
@@ -117,12 +117,12 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     for key in critical_keys:
         if old_data.get(key) != new_data.get(key):
             critical_changed = True
-            _LOGGER.info(f"Critical setting changed: {key}")
+            _LOGGER.debug(f"Critical setting changed: {key}")
             break
 
     # Only reload if something actually changed
     if sensors_changed or critical_changed:
-        _LOGGER.info("Configuration changed, reloading integration")
+        _LOGGER.debug("Configuration changed, reloading integration")
         # Schedule reload instead of immediate to avoid double-reload
         hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
     else:

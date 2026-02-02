@@ -253,14 +253,14 @@ def calculate_negretti_zambra_forecast(
     # Check for exceptional weather and clamp BEFORE converting to int
     is_exceptional = False
     if z_option_raw < 0.0:
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} < 0, "
             f"clamping to 0 (pressure={z_hp:.1f} hPa, very low pressure)"
         )
         z_option_raw = 0.0
         is_exceptional = True
     elif z_option_raw > 43.0:
-        _LOGGER.info(
+        _LOGGER.debug(
             f"Negretti: EXCEPTIONAL weather detected - z_option={z_option_raw:.2f} > 43, "
             f"clamping to 43 (pressure={z_hp:.1f} hPa, very high pressure)"
         )
@@ -331,10 +331,10 @@ def _map_zambretti_to_letter(z: int) -> str:
     """
     # Defensive clamping - should already be done by caller, but extra safety
     if z < 1:
-        _LOGGER.warning(f"Negretti: z={z} < 1, clamping to 1 for letter mapping")
+        _LOGGER.debug(f"Negretti: z={z} < 1, clamping to 1 for letter mapping")
         z = 1
     elif z > 33:
-        _LOGGER.warning(f"Negretti: z={z} > 33, clamping to 33 for letter mapping")
+        _LOGGER.debug(f"Negretti: z={z} > 33, clamping to 33 for letter mapping")
         z = 33
 
     mapping = {

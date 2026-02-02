@@ -133,7 +133,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.12",
+            sw_version="3.1.13",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -174,7 +174,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 configured_sensors[sensor_key] = sensor_id
 
         if not configured_sensors:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Weather: No sensors configured! Weather entity will use defaults. "
                 "If you add sensors later through config, they will be used automatically."
             )
@@ -183,17 +183,17 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
         # Log all configured sensors
         if configured_sensors:
-            _LOGGER.info(f"Weather: Found {len(configured_sensors)} configured sensors:")
+            _LOGGER.debug(f"Weather: Found {len(configured_sensors)} configured sensors:")
             for key, sensor_id in configured_sensors.items():
                 is_required = "(REQUIRED)" if key == CONF_PRESSURE_SENSOR else "(optional)"
-                _LOGGER.info(f"  - {key}: {sensor_id} {is_required}")
+                _LOGGER.debug(f"  - {key}: {sensor_id} {is_required}")
 
             # Wait for sensors with timeout
             start_time = datetime.now()
             max_wait = 30  # Maximum 30 seconds wait
             check_interval = 0.5  # Check every 500ms
 
-            _LOGGER.info(f"Weather: Waiting up to {max_wait}s for sensors to become ready...")
+            _LOGGER.debug(f"Weather: Waiting up to {max_wait}s for sensors to become ready...")
 
             sensors_ready = {}
             elapsed = 0
@@ -207,7 +207,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         if state and state.state not in ("unknown", "unavailable"):
                             sensors_ready[key] = sensor_id
                             elapsed_time = (datetime.now() - start_time).total_seconds()
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: ✅ {key} ready after {elapsed_time:.1f}s "
                                 f"({len(sensors_ready)}/{len(configured_sensors)})"
                             )
@@ -217,7 +217,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 # If all sensors ready, break early
                 if all_ready:
                     elapsed_time = (datetime.now() - start_time).total_seconds()
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Weather: 🎉 All {len(configured_sensors)} sensors ready after {elapsed_time:.1f}s! "
                         f"Weather entity is fully operational."
                     )
@@ -234,7 +234,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         missing_sensors.append(f"{key} ({sensor_id})")
 
                 if missing_sensors:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         f"Weather: ⏱️ Timeout after {max_wait}s. "
                         f"{len(sensors_ready)}/{len(configured_sensors)} sensors ready. "
                         f"Missing: {', '.join(missing_sensors)}"
@@ -242,12 +242,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
                     # Check if pressure sensor (REQUIRED) is missing
                     if CONF_PRESSURE_SENSOR not in sensors_ready:
-                        _LOGGER.error(
+                        _LOGGER.debug(
                             f"Weather: ❌ CRITICAL: Pressure sensor not ready! "
                             f"Weather entity will show 'partlycloudy' until pressure sensor initializes."
                         )
                     else:
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"Weather: ✅ Pressure sensor ready. Weather entity will work with available sensors. "
                             f"Missing sensors will be used when they become available."
                         )
@@ -259,7 +259,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         sensors_to_track = list(configured_sensors.values())
 
         if sensors_to_track:
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Weather: 📡 Tracking {len(sensors_to_track)} sensors for auto-refresh "
                 f"(includes sensors not yet available)"
             )
@@ -274,7 +274,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 if old_state and new_state and old_state.state != new_state.state:
                     # Check if transitioning from unavailable/unknown to valid
                     if old_state.state in ("unknown", "unavailable") and new_state.state not in ("unknown", "unavailable"):
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             f"Weather: 🔄 Sensor {entity_id} became available "
                             f"({old_state.state} → {new_state.state}), triggering refresh"
                         )
@@ -873,7 +873,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     # SNOW - Cold enough that all precipitation is frozen
                                     # Below -1°C, humidity doesn't matter - too cold for melting
                                     if fog_also_present and dewpoint is not None and humidity is not None:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             f"Weather: ⚠️ SNOWY + FOG detected simultaneously! "
                                             f"temp={temp:.1f}°C (frozen precipitation), "
                                             f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
@@ -921,7 +921,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                         # MIXED (SNOWY-RAINY) - Transition conditions
                                         # Temperature and humidity in range where both can occur
                                         if fog_also_present and dewpoint is not None and humidity is not None:
-                                            _LOGGER.info(
+                                            _LOGGER.debug(
                                                 f"Weather: ⚠️ MIXED PRECIPITATION + FOG detected simultaneously! "
                                                 f"temp={temp:.1f}°C, humidity={current_humidity:.0f}% (transition zone), "
                                                 f"dewpoint_spread={dewpoint_spread:.1f}°C, wind={wind_speed:.1f} m/s. "
@@ -948,7 +948,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 # - High humidity (>80%)
                                 # - Very unstable atmosphere (gust_ratio >2.5)
                                 if hasattr(self, '_hail_conditions_present') and self._hail_conditions_present:
-                                    _LOGGER.info(
+                                    _LOGGER.debug(
                                         f"🧊 HAIL DETECTED! Active precipitation + hail-favorable atmospheric conditions. "
                                         f"Temp={temp:.1f}°C (convective), Humidity={current_humidity:.0f}% (high), "
                                         f"Gust ratio >2.5 (very unstable). Returning HAIL condition."
@@ -969,7 +969,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 if is_pouring:
                                     # POURING - Heavy convective rain
                                     if fog_also_present and dewpoint is not None and humidity is not None:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             f"Weather: ⚠️ POURING + FOG detected simultaneously! "
                                             f"value={current_rain:.1f} {unit} (heavy rain), temp={temp:.1f}°C, "
                                             f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
@@ -984,7 +984,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 else:
                                     # RAINY - Light to moderate rain
                                     if fog_also_present and dewpoint is not None and humidity is not None:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             f"Weather: ⚠️ RAINY + FOG detected simultaneously! "
                                             f"temp={temp:.1f}°C, "
                                             f"dewpoint_spread={dewpoint_spread:.1f}°C, humidity={humidity:.1f}%, wind={wind_speed:.1f} m/s. "
@@ -1422,7 +1422,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # Check 1: Humidity should be 0-100%
                         if humidity < 0 or humidity > 100:
                             humidity_is_valid = False
-                            _LOGGER.warning(
+                            _LOGGER.debug(
                                 f"Weather: PHASE 3 - Humidity sensor INVALID: {humidity:.1f}% (out of range). "
                                 f"Skipping humidity fine-tuning."
                             )
@@ -1605,7 +1605,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # Basic cloudiness - wind can override
                         if condition in (ATTR_CONDITION_SUNNY, ATTR_CONDITION_CLEAR_NIGHT, ATTR_CONDITION_PARTLYCLOUDY):
                             # Clear/partly cloudy → windy
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: PHASE 4 - Wind override → windy "
                                 f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
                                 f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
@@ -1615,7 +1615,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             condition = "windy"
                         else:  # cloudy
                             # Cloudy → windy-variant
-                            _LOGGER.info(
+                            _LOGGER.debug(
                                 f"Weather: PHASE 4 - Wind override → windy-variant "
                                 f"(wind={wind_speed:.1f if wind_speed else 0.0} m/s, "
                                 f"gust={wind_gust:.1f if wind_gust else 0.0} m/s, "
@@ -1644,7 +1644,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 pressure = self.native_pressure
                 if pressure is None:
                     # Likely startup - sensors not ready yet
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Weather: PHASE 5 - Sensors not ready yet (startup). "
                         f"Pressure sensor not available. Using default condition (partlycloudy) "
                         f"until sensors initialize."
@@ -1652,7 +1652,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     condition = ATTR_CONDITION_PARTLYCLOUDY  # ✅ Better default than exceptional
                 else:
                     # Runtime failure - this should never happen!
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         f"Weather: PHASE 5 - No condition could be determined! "
                         f"Pressure={pressure:.1f} hPa available, but no priority matched. "
                         f"This is unexpected - falling back to EXCEPTIONAL."
@@ -2080,7 +2080,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         current_rain_rate = float(rain_sensor.state)
                         _LOGGER.debug(f"🌧️ Current rain rate: {current_rain_rate} mm/h")
                     except (ValueError, TypeError) as err:
-                        _LOGGER.warning(f"🌧️ Failed to parse rain rate: {err}")
+                        _LOGGER.debug(f"🌧️ Failed to parse rain rate: {err}")
             else:
                 _LOGGER.debug("🌧️ No rain rate sensor configured")
 
@@ -2230,7 +2230,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             wind_speed = self.native_wind_speed or 0.0
 
             if pressure is None or temperature is None:
-                _LOGGER.warning("Missing pressure or temperature for advanced forecast")
+                _LOGGER.debug("Missing pressure or temperature for advanced forecast")
                 return None
 
             # Get pressure and temperature changes
@@ -2266,7 +2266,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         current_rain_rate = float(rain_sensor.state)
                         _LOGGER.debug(f"Current rain rate: {current_rain_rate} mm/h")
                     except (ValueError, TypeError) as err:
-                        _LOGGER.warning(f"Failed to parse rain rate: {err}")
+                        _LOGGER.debug(f"Failed to parse rain rate: {err}")
             else:
                 _LOGGER.debug("No rain rate sensor configured")
 

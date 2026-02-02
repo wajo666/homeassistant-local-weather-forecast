@@ -175,7 +175,7 @@ def calculate_zambretti_forecast(
         forecast_text = "Unknown"
         forecast_type = 0
         letter_code = "A"
-        _LOGGER.warning(f"Zambretti: Failed to map z={z} to forecast, using Unknown")
+        _LOGGER.debug(f"Zambretti: Failed to map z={z} to forecast, using Unknown")
 
     # Return [text, code, letter] - forecast_calculator expects 3 items
     return [forecast_text, forecast_type, letter_code]
@@ -192,10 +192,10 @@ def _map_zambretti_to_forecast(z: int) -> int | None:
     """
     # Defensive clamping - should already be done by caller, but extra safety
     if z < 1:
-        _LOGGER.warning(f"Zambretti: z={z} < 1, clamping to 1")
+        _LOGGER.debug(f"Zambretti: z={z} < 1, clamping to 1")
         z = 1
     elif z > 33:
-        _LOGGER.warning(f"Zambretti: z={z} > 33, clamping to 33")
+        _LOGGER.debug(f"Zambretti: z={z} > 33, clamping to 33")
         z = 33
 
     _LOGGER.debug(f"Zambretti: Mapping z-number={z}")
@@ -253,10 +253,10 @@ def _map_zambretti_to_letter(z: int) -> str:
     """
     # Defensive clamping - should already be done by caller, but extra safety
     if z < 1:
-        _LOGGER.warning(f"Zambretti: z={z} < 1, clamping to 1 for letter mapping")
+        _LOGGER.debug(f"Zambretti: z={z} < 1, clamping to 1 for letter mapping")
         z = 1
     elif z > 33:
-        _LOGGER.warning(f"Zambretti: z={z} > 33, clamping to 33 for letter mapping")
+        _LOGGER.debug(f"Zambretti: z={z} > 33, clamping to 33 for letter mapping")
         z = 33
 
     mapping = {
