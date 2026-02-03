@@ -22,6 +22,10 @@ def create_mock_hass():
     mock_hass = MagicMock()
     mock_hass.states = MagicMock()
     mock_hass.states.get = MagicMock(return_value=None)
+    # Mock config with real latitude/longitude for continentality calculation
+    mock_hass.config = MagicMock()
+    mock_hass.config.latitude = 48.0
+    mock_hass.config.longitude = 17.0
     return mock_hass
 
 

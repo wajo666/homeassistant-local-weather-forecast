@@ -165,10 +165,12 @@ class TemperatureModel:
         solar_radiation: float | None = None,
         cloud_cover: float | None = None,
         humidity: float | None = None,
+        wind_speed: float | None = None,
         hass: HomeAssistant | None = None,
         latitude: float | None = None,
         longitude: float | None = None,
-        hemisphere: str = "north"
+        hemisphere: str = "north",
+        elevation: float | None = None
     ):
         """Initialize temperature model.
 
@@ -177,13 +179,15 @@ class TemperatureModel:
             change_rate_1h: Temperature change rate per hour
             diurnal_amplitude: Daily temperature swing amplitude (None = auto-calculate from season/sun)
             trend_damping: Exponential decay factor for trend (0.75 = trend halves in ~3 hours)
-            solar_radiation: Current solar radiation in W/m² (None = solar effect ignored)
+            solar_radiation: Current solar radiation in W/m² (None = solar effect ignored, only works during daylight)
             cloud_cover: Current cloud cover in % (None = estimated from humidity if available)
             humidity: Relative humidity in % (used to estimate cloud cover if sensor unavailable)
+            wind_speed: Current wind speed in m/s (None = assume calm conditions for radiative cooling)
             hass: Home Assistant instance for location fallback
             latitude: Station latitude (-90 to +90, None = use HA config)
             longitude: Station longitude (-180 to +180, None = use HA config)
             hemisphere: "north" or "south"
+            elevation: Station elevation in meters (None = use HA config or 0)
         """
         self.current_temp = current_temp
         self.change_rate_1h = change_rate_1h
@@ -191,7 +195,9 @@ class TemperatureModel:
         self.current_hour = datetime.now(timezone.utc).hour
         self.solar_radiation = solar_radiation
         self.humidity = humidity
+        self.wind_speed = wind_speed
         self.hemisphere = hemisphere
+        self.hass = hass
 
         # Get location coordinates
         if latitude is not None and longitude is not None:
@@ -208,6 +214,24 @@ class TemperatureModel:
                 f"TempModel: No location specified, using fallback: "
                 f"{self.latitude}°N, {self.longitude}°E"
             )
+        
+        # Get elevation (affects diurnal amplitude)
+        if elevation is not None:
+            self.elevation = float(elevation)
+        elif hass is not None and hasattr(hass.config, 'elevation'):
+            try:
+                self.elevation = float(hass.config.elevation)
+            except (TypeError, ValueError):
+                self.elevation = 0.0  # Fallback if elevation is Mock or invalid
+        else:
+            self.elevation = 0.0  # Sea level fallback
+        
+        # Calculate continentality (0 = ocean, 1 = deep interior)
+        # Based on distance from coast - approximated by longitude position
+        # This is a simplification: proper method would need actual distance to coast
+        # For Europe/Asia: center of continent ~60-90°E, coasts at edges
+        # For Americas: center ~100°W, coasts at edges
+        self.continentality = self._estimate_continentality(self.latitude, self.longitude)
 
         # Auto-calculate diurnal amplitude if not specified
         if diurnal_amplitude is None:
@@ -215,31 +239,43 @@ class TemperatureModel:
             self.diurnal_amplitude = self._get_seasonal_amplitude(current_month)
             _LOGGER.debug(
                 f"TempModel: Auto-calculated seasonal amplitude: {self.diurnal_amplitude}°C "
-                f"(month={current_month}, hemisphere={hemisphere})"
+                f"(lat={self.latitude:.1f}°, elev={self.elevation:.0f}m, "
+                f"continent={self.continentality:.2f}, month={current_month}, hemisphere={hemisphere})"
             )
         else:
             self.diurnal_amplitude = diurnal_amplitude
 
         # Cloud cover estimation: If sensor not available, estimate from humidity
+        # This is critical for radiative cooling calculations at night
         if cloud_cover is not None:
             self.cloud_cover = cloud_cover
+            _LOGGER.debug(f"Cloud cover from sensor: {self.cloud_cover:.0f}%")
         elif humidity is not None:
-            # ...existing code...
+            # Empirical relationship: high humidity correlates with clouds
+            # Based on typical RH-cloud relationships:
+            # RH < 50%: mostly clear (0-20% clouds)
+            # RH 50-70%: partly cloudy (20-50% clouds)
+            # RH 70-85%: mostly cloudy (50-80% clouds)
+            # RH > 85%: overcast (80-100% clouds)
             if humidity < 50:
-                self.cloud_cover = humidity * 0.4
+                self.cloud_cover = humidity * 0.4  # 0-20%
             elif humidity < 70:
-                self.cloud_cover = 20 + (humidity - 50) * 1.5
+                self.cloud_cover = 20 + (humidity - 50) * 1.5  # 20-50%
             elif humidity < 85:
-                self.cloud_cover = 50 + (humidity - 70) * 2.0
+                self.cloud_cover = 50 + (humidity - 70) * 2.0  # 50-80%
             else:
-                self.cloud_cover = 80 + (humidity - 85) * 1.33
+                self.cloud_cover = 80 + (humidity - 85) * 1.33  # 80-100%
             _LOGGER.debug(
                 f"Cloud cover estimated from humidity: {self.cloud_cover:.0f}% "
                 f"(RH={humidity:.1f}%)"
             )
         else:
-            self.cloud_cover = 0.0
-        self.hass = hass
+            # No cloud/humidity data: assume moderate conditions (50% clouds)
+            # This is conservative - neither full cooling nor full blocking
+            self.cloud_cover = 50.0
+            _LOGGER.debug(
+                "Cloud cover unknown: assuming 50% (moderate conditions) for radiative calculations"
+            )
 
     def predict(self, hours_ahead: int) -> float:
         """Predict temperature N hours ahead.
@@ -270,18 +306,216 @@ class TemperatureModel:
         # Cap trend contribution to realistic limits (±5°C over forecast period)
         trend_change = max(-5.0, min(5.0, trend_change))
 
-        # Diurnal cycle component
-        # Current cycle position (peak at 14:00, min at 04:00)
-        current_phase = (self.current_hour - 14) / 24.0 * 2 * math.pi
-        future_hour = (self.current_hour + hours_ahead) % 24
-        future_phase = (future_hour - 14) / 24.0 * 2 * math.pi
+        # Diurnal cycle component - USE REAL SUN POSITION
+        # Get actual sunrise/sunset times to calculate proper diurnal cycle
+        diurnal_change = 0.0
+        
+        if self.hass is not None:
+            sun_entity = self.hass.states.get("sun.sun")
+            if sun_entity:
+                try:
+                    from homeassistant.util import dt as dt_util
+                    
+                    # Get sunrise and sunset times for accurate diurnal calculation
+                    next_rising_str = sun_entity.attributes.get("next_rising")
+                    next_setting_str = sun_entity.attributes.get("next_setting")
+                    
+                    if next_rising_str and next_setting_str:
+                        next_rising = dt_util.parse_datetime(next_rising_str)
+                        next_setting = dt_util.parse_datetime(next_setting_str)
+                        
+                        if next_rising and next_setting:
+                            # Calculate for current and future hour
+                            sunrise_hour = next_rising.hour + next_rising.minute / 60.0
+                            sunset_hour = next_setting.hour + next_setting.minute / 60.0
+                            
+                            # Temperature minimum: ~30min before sunrise
+                            temp_min_hour = sunrise_hour - 0.5
+                            if temp_min_hour < 0:
+                                temp_min_hour += 24
+                            
+                            # Temperature maximum: ~2-3h after solar noon
+                            solar_noon = (sunrise_hour + sunset_hour) / 2.0
+                            temp_max_hour = solar_noon + 2.5
+                            
+                            # Daylight duration affects amplitude of warming
+                            daylight_duration = sunset_hour - sunrise_hour
+                            if daylight_duration < 0:
+                                daylight_duration += 24
+                            
+                            # Scale amplitude by daylight duration (winter = less warming)
+                            # Standard day = 12h, winter day = 8-9h, summer = 15-16h
+                            daylight_factor = min(1.0, daylight_duration / 12.0)
+                            effective_amplitude = self.diurnal_amplitude * daylight_factor
+                            
+                            # Calculate diurnal position for current and future hour
+                            def get_diurnal_temp(hour: float, min_hour: float, max_hour: float, amplitude: float) -> float:
+                                """Calculate diurnal temperature offset at given hour.
+                                
+                                Uses radiative cooling model for nighttime based on:
+                                - Cloud cover (clouds trap heat, reduce cooling)
+                                - Humidity (water vapor absorbs IR, slows cooling)
+                                
+                                References:
+                                - Oke (1987): "Boundary Layer Climates"
+                                - Clear sky: 5-7°C cooling, Overcast: 1-2°C cooling
+                                """
+                                # Night time (after sunset or before sunrise): cooling toward minimum
+                                if hour < sunrise_hour or hour >= sunset_hour:
+                                    # Night length: from sunset to sunrise
+                                    night_length = (24 - sunset_hour) + sunrise_hour
+                                    
+                                    # Calculate hours from sunset
+                                    if hour >= sunset_hour:
+                                        # After sunset (same day)
+                                        hours_from_sunset = hour - sunset_hour
+                                    else:
+                                        # Before sunrise (next day)
+                                        hours_from_sunset = (24 - sunset_hour) + hour
+                                    
+                                    # === RADIATIVE COOLING MODEL ===
+                                    # Nighttime cooling rate depends on atmospheric conditions
+                                    
+                                    # Base cooling rate (clear sky, dry air, calm wind)
+                                    radiative_cooling_rate = 1.0
+                                    
+                                    # Cloud cover STRONGLY reduces radiative cooling
+                                    # Empirical: 100% clouds reduces cooling by ~70%
+                                    # Physical: clouds emit IR back to surface
+                                    if self.cloud_cover is not None:
+                                        cloud_factor = 1.0 - (self.cloud_cover / 100.0) * 0.7
+                                        radiative_cooling_rate *= cloud_factor
+                                        _LOGGER.debug(
+                                            f"Radiative cooling - cloud_cover={self.cloud_cover:.0f}%, "
+                                            f"cloud_factor={cloud_factor:.2f}"
+                                        )
+                                    
+                                    # High humidity reduces cooling (water vapor absorbs IR)
+                                    # Empirical: RH > 80% reduces cooling by up to ~30%
+                                    if self.humidity is not None and self.humidity > 80:
+                                        humidity_factor = 1.0 - (self.humidity - 80) / 20.0 * 0.3
+                                        radiative_cooling_rate *= humidity_factor
+                                        _LOGGER.debug(
+                                            f"Radiative cooling - humidity={self.humidity:.0f}%, "
+                                            f"humidity_factor={humidity_factor:.2f}"
+                                        )
+                                    
+                                    # Wind mixing prevents temperature inversion and reduces surface cooling
+                                    # Calm night (0 m/s): max radiative cooling (strong inversion)
+                                    # Breezy night (3-5 m/s): reduced cooling (~20-40% less)
+                                    # Windy night (>8 m/s): minimal cooling (~60% less, well-mixed atmosphere)
+                                    # Based on: Oke (1987), Geiger et al. (2009)
+                                    if self.wind_speed is not None:
+                                        if self.wind_speed < 1.0:
+                                            # Calm: full radiative cooling (factor = 1.0)
+                                            wind_factor = 1.0
+                                        elif self.wind_speed < 3.0:
+                                            # Light breeze: slight mixing (factor = 0.9-1.0)
+                                            wind_factor = 1.0 - (self.wind_speed - 1.0) / 2.0 * 0.1
+                                        elif self.wind_speed < 5.0:
+                                            # Moderate breeze: noticeable mixing (factor = 0.7-0.9)
+                                            wind_factor = 0.9 - (self.wind_speed - 3.0) / 2.0 * 0.2
+                                        elif self.wind_speed < 8.0:
+                                            # Fresh breeze: strong mixing (factor = 0.5-0.7)
+                                            wind_factor = 0.7 - (self.wind_speed - 5.0) / 3.0 * 0.2
+                                        else:
+                                            # Strong wind: well-mixed, minimal surface cooling (factor = 0.4)
+                                            wind_factor = 0.4
+                                        
+                                        radiative_cooling_rate *= wind_factor
+                                        _LOGGER.debug(
+                                            f"Radiative cooling - wind_speed={self.wind_speed:.1f}m/s, "
+                                            f"wind_factor={wind_factor:.2f}"
+                                        )
+                                    
+                                    # === COOLING CURVE ===
+                                    # Cooling curve: gradual cooling from 0 at sunset to -amplitude at minimum
+                                    # Use gentler exponential to avoid unrealistic rapid cooling
+                                    if night_length > 0:
+                                        progress = hours_from_sunset / night_length  # 0 at sunset, 1 at sunrise
+                                        
+                                        # Modified cosine for more realistic cooling
+                                        # At sunset (progress=0): offset = 0
+                                        # At midnight-ish (progress=0.5): offset ≈ -amplitude * 0.3
+                                        # At minimum before sunrise: offset ≈ -amplitude * 0.5
+                                        # Using (1 - cos) / 2 gives smooth S-curve
+                                        cooling_factor = (1 - math.cos(progress * math.pi)) / 2.0
+                                        
+                                        # Apply radiative cooling rate
+                                        # Clear sky: full cooling (rate=1.0)
+                                        # Cloudy: reduced cooling (rate=0.3-0.7)
+                                        # Very cloudy + humid: minimal cooling (rate=0.2)
+                                        max_cooling = amplitude * 0.5  # Base maximum cooling
+                                        actual_cooling = max_cooling * radiative_cooling_rate
+                                        
+                                        return -actual_cooling * cooling_factor
+                                    return -amplitude * 0.25 * radiative_cooling_rate
+                                
+                                # Daytime: warming from minimum to maximum
+                                else:
+                                    # Hours from minimum to maximum
+                                    hours_from_min = hour - min_hour
+                                    if hours_from_min < 0:
+                                        hours_from_min += 24
+                                    
+                                    hours_min_to_max = max_hour - min_hour
+                                    if hours_min_to_max < 0:
+                                        hours_min_to_max += 24
+                                    
+                                    if hours_from_min <= hours_min_to_max:
+                                        # Warming phase: sine curve from -amplitude to +amplitude
+                                        progress = hours_from_min / hours_min_to_max
+                                        return amplitude * (math.sin(progress * math.pi - math.pi/2))
+                                    else:
+                                        # Cooling phase after maximum: toward sunset
+                                        hours_from_max = hour - max_hour
+                                        hours_max_to_sunset = sunset_hour - max_hour
+                                        if hours_max_to_sunset > 0:
+                                            progress = min(1.0, hours_from_max / hours_max_to_sunset)
+                                            # Cosine curve from maximum to 0 at sunset
+                                            return amplitude * math.cos(progress * math.pi / 2)
+                                        return 0.0
+                            
+                            current_diurnal = get_diurnal_temp(
+                                float(self.current_hour), temp_min_hour, temp_max_hour, effective_amplitude
+                            )
+                            future_hour = (self.current_hour + hours_ahead) % 24
+                            future_diurnal = get_diurnal_temp(
+                                float(future_hour), temp_min_hour, temp_max_hour, effective_amplitude
+                            )
+                            
+                            diurnal_change = future_diurnal - current_diurnal
+                            
+                            _LOGGER.debug(
+                                f"Sun-based diurnal: current_hour={self.current_hour}, future_hour={future_hour}, "
+                                f"sunrise={sunrise_hour:.1f}, sunset={sunset_hour:.1f}, "
+                                f"temp_min={temp_min_hour:.1f}, temp_max={temp_max_hour:.1f}, "
+                                f"daylight={daylight_duration:.1f}h, daylight_factor={daylight_factor:.2f}, "
+                                f"current_offset={current_diurnal:+.1f}°C, future_offset={future_diurnal:+.1f}°C, "
+                                f"change={diurnal_change:+.1f}°C"
+                            )
+                        else:
+                            _LOGGER.debug("Could not parse sunrise/sunset times, using fallback")
+                    else:
+                        _LOGGER.debug("Sunrise/sunset times not available, using fallback")
+                except Exception as err:
+                    _LOGGER.debug(f"Error calculating sun-based diurnal: {err}, using fallback")
+            else:
+                _LOGGER.debug("sun.sun entity not available, using fallback")
+        
+        # Fallback: simple fixed-time diurnal cycle (old behavior)
+        if diurnal_change == 0.0:
+            # Current cycle position (peak at 14:00, min at 04:00)
+            current_phase = (self.current_hour - 14) / 24.0 * 2 * math.pi
+            future_hour = (self.current_hour + hours_ahead) % 24
+            future_phase = (future_hour - 14) / 24.0 * 2 * math.pi
 
-        # Diurnal contribution (sinusoidal)
-        # cos(0) = 1 at 14:00 = maximum
-        # cos(π) = -1 at 04:00 = minimum
-        current_diurnal = self.diurnal_amplitude * math.cos(current_phase)
-        future_diurnal = self.diurnal_amplitude * math.cos(future_phase)
-        diurnal_change = future_diurnal - current_diurnal
+            # Diurnal contribution (sinusoidal)
+            # cos(0) = 1 at 14:00 = maximum
+            # cos(π) = -1 at 04:00 = minimum
+            current_diurnal = self.diurnal_amplitude * math.cos(current_phase)
+            future_diurnal = self.diurnal_amplitude * math.cos(future_phase)
+            diurnal_change = future_diurnal - current_diurnal
 
         # Solar radiation warming component (if sensor available)
         solar_change = 0.0
@@ -314,7 +548,48 @@ class TemperatureModel:
             )
 
         # Combine all components: damped trend + diurnal cycle + solar warming
-        predicted = self.current_temp + trend_change + diurnal_change + solar_change
+        predicted_ideal = self.current_temp + trend_change + diurnal_change + solar_change
+        
+        # === THERMAL INERTIA (THERMAL TIME CONSTANT) ===
+        # Temperature changes are not instantaneous - surface has thermal capacity
+        # Different surfaces respond at different rates:
+        # - Water/ocean: very slow (tau = 6-12 hours) - high thermal capacity
+        # - Soil/vegetation: medium (tau = 1.5-2 hours)
+        # - Urban/pavement: fast (tau = 0.5-1 hour) - low thermal capacity
+        # - Snow/ice: medium (tau = 2-3 hours)
+        #
+        # We use a composite time constant based on continentality:
+        # - Maritime (0.0): tau = 3.0h (ocean influence)
+        # - Continental (1.0): tau = 1.0h (land dominates)
+        #
+        # Formula: T(t) = T_ideal * (1 - e^(-t/tau))
+        # This means temperature approaches ideal value exponentially
+        
+        # Calculate thermal time constant
+        # Maritime areas: slow response (high tau)
+        # Continental areas: fast response (low tau)
+        thermal_tau = 3.0 - (2.0 * self.continentality)  # 1.0h to 3.0h
+        
+        # For short timescales (< 1 hour), apply thermal inertia
+        # For longer timescales, response approaches 100%
+        if hours_ahead > 0:
+            # Exponential response factor
+            # At t=0: response = 0 (no change yet)
+            # At t=tau: response = 0.63 (63% of ideal change)
+            # At t=3*tau: response = 0.95 (95% of ideal change)
+            thermal_response = 1 - math.exp(-hours_ahead / thermal_tau)
+            
+            # Apply thermal inertia to temperature change
+            total_change = predicted_ideal - self.current_temp
+            damped_change = total_change * thermal_response
+            predicted = self.current_temp + damped_change
+            
+            _LOGGER.debug(
+                f"Thermal inertia: tau={thermal_tau:.1f}h, response={thermal_response:.2f}, "
+                f"ideal_change={total_change:+.1f}°C, damped_change={damped_change:+.1f}°C"
+            )
+        else:
+            predicted = predicted_ideal
 
         # Apply realistic seasonal constraints
         # For multi-day forecasts, temperature should stay within reasonable bounds
@@ -341,7 +616,14 @@ class TemperatureModel:
     def _get_seasonal_amplitude(self, month: int) -> float:
         """Get base diurnal amplitude for given month.
 
-        Accounts for hemisphere (seasons are reversed).
+        Accounts for:
+        - Hemisphere (seasons are reversed in southern hemisphere)
+        - Latitude (tropical vs temperate vs polar)
+        - Month/season (winter vs summer diurnal range)
+
+        Based on:
+        - Makowski et al. (2008): "Diurnal temperature range variability and trends"
+        - WMO (2017): "Guidelines on the Calculation of Climate Normals"
 
         Args:
             month: Month (1-12)
@@ -354,17 +636,134 @@ class TemperatureModel:
             # Southern hemisphere: shift by 6 months
             month = ((month + 5) % 12) + 1
 
-        # Seasonal amplitudes (northern hemisphere reference)
+        # Get absolute latitude for climate zone classification
+        abs_lat = abs(self.latitude) if self.latitude is not None else 45.0
+        
+        # Classify climate zone by latitude
+        # Tropics (0-15°): minimal seasonal variation, constant ~8°C DTR
+        # Subtropics (15-40°): moderate seasonal variation
+        # Temperate (40-60°): large seasonal variation
+        # Polar (60-90°): extreme seasonal variation, but limited by sun angle
+        
+        if abs_lat < 15:  # Tropical zone
+            # Minimal seasonal variation
+            base_summer = 8.0
+            base_winter = 7.0
+        elif abs_lat < 40:  # Subtropical zone
+            # Moderate seasonal variation
+            base_summer = 10.0
+            base_winter = 5.0
+        elif abs_lat < 60:  # Temperate zone
+            # Large seasonal variation
+            base_summer = 12.0
+            base_winter = 3.0
+        else:  # Polar zone (60-90°)
+            # Extreme light/dark but limited by low sun angle
+            base_summer = 8.0   # Continuous daylight but low sun angle
+            base_winter = 2.0   # Continuous darkness or very short days
+
+        # Seasonal interpolation (northern hemisphere reference after adjustment)
         # Winter (Dec-Feb): Low sun, short days → small amplitude
         # Summer (Jun-Aug): High sun, long days → large amplitude
         if month in [12, 1, 2]:  # Winter
-            return 3.0
-        elif month in [3, 4, 5]:  # Spring
-            return 6.0
+            seasonal_amp = base_winter
         elif month in [6, 7, 8]:  # Summer
-            return 10.0
-        else:  # Autumn (9, 10, 11)
-            return 5.0
+            seasonal_amp = base_summer
+        elif month in [3, 4, 5]:  # Spring (transition)
+            seasonal_amp = (base_winter + base_summer) / 2.0
+        else:  # Autumn (9, 10, 11) (transition)
+            seasonal_amp = (base_summer + base_winter) / 2.0
+        
+        _LOGGER.debug(
+            f"Seasonal amplitude: lat={abs_lat:.1f}°, month={month}, "
+            f"base_winter={base_winter}°C, base_summer={base_summer}°C, "
+            f"result={seasonal_amp:.1f}°C"
+        )
+        
+        # Apply continentality factor
+        # Maritime climate (0.0): smaller DTR due to ocean's thermal inertia
+        # Continental climate (1.0): larger DTR due to land's low thermal capacity
+        # Typical: maritime = 0.7x, continental = 1.3x
+        continentality_factor = 0.7 + (0.6 * self.continentality)
+        seasonal_amp *= continentality_factor
+        
+        # Apply elevation factor
+        # Higher elevations have larger DTR due to:
+        # - Thinner atmosphere (less heat retention)
+        # - Lower absolute humidity (enhanced radiative cooling)
+        # Empirical: +10% per 1000m (up to 3000m)
+        elevation_factor = 1.0 + min(0.3, self.elevation / 1000.0 * 0.1)
+        seasonal_amp *= elevation_factor
+        
+        _LOGGER.debug(
+            f"Final amplitude after adjustments: {seasonal_amp:.1f}°C "
+            f"(continent_factor={continentality_factor:.2f}, elev_factor={elevation_factor:.2f})"
+        )
+        
+        return seasonal_amp
+    
+    def _estimate_continentality(self, latitude: float, longitude: float) -> float:
+        """Estimate continentality (0 = ocean, 1 = deep interior) from coordinates.
+        
+        This is a simplified heuristic based on known continental interiors:
+        - Europe/Asia: continental interior around 60-90°E
+        - Americas: continental interior around 90-110°W
+        - Coastal areas: edges of continents
+        
+        Note: This is an approximation. Proper calculation would require
+        actual distance to nearest coast, but that requires geographic database.
+        
+        Args:
+            latitude: Latitude in degrees
+            longitude: Longitude in degrees (-180 to +180)
+            
+        Returns:
+            Continentality factor (0.0 to 1.0)
+        """
+        abs_lat = abs(latitude)
+        
+        # Polar regions and small islands: assume maritime (low continentality)
+        if abs_lat > 70:
+            return 0.3  # Polar oceans and ice
+        
+        # Normalize longitude to 0-360
+        lon = longitude if longitude >= 0 else longitude + 360
+        
+        # Define continental interiors (simplified)
+        # These are rough approximations of major land masses
+        continental_cores = [
+            # (lon_min, lon_max, lat_min, lat_max, continentality)
+            (20, 140, 25, 65, 0.9),   # Eurasia interior
+            (240, 280, 25, 50, 0.8),  # North America interior
+            (290, 320, -35, -15, 0.7), # South America interior
+            (10, 50, -30, 30, 0.7),   # Africa interior
+            (110, 155, -45, -10, 0.6), # Australia interior
+        ]
+        
+        # Check if location is in any continental interior
+        max_continentality = 0.3  # Default: assume near coast
+        
+        for lon_min, lon_max, lat_min, lat_max, continent_val in continental_cores:
+            if lon_min <= lon <= lon_max and lat_min <= latitude <= lat_max:
+                # Calculate distance from center of continental region
+                center_lon = (lon_min + lon_max) / 2
+                center_lat = (lat_min + lat_max) / 2
+                
+                # Normalize distance (0 = center, 1 = edge)
+                lon_dist = abs(lon - center_lon) / ((lon_max - lon_min) / 2)
+                lat_dist = abs(latitude - center_lat) / ((lat_max - lat_min) / 2)
+                distance_from_center = (lon_dist + lat_dist) / 2
+                
+                # Continentality decreases linearly from center to edge
+                local_continentality = continent_val * (1 - distance_from_center * 0.5)
+                max_continentality = max(max_continentality, local_continentality)
+        
+        _LOGGER.debug(
+            f"Estimated continentality: {max_continentality:.2f} "
+            f"(lat={latitude:.1f}°, lon={longitude:.1f}°)"
+        )
+        
+        return max_continentality
 
     def _get_sun_angle_factor(self, hour: int) -> float:
         """Calculate sun angle factor (0-1) for given hour.
@@ -1645,7 +2044,8 @@ class ForecastCalculator:
         cloud_cover: float | None = None,
         humidity: float | None = None,
         current_rain_rate: float = 0.0,
-        forecast_model: str = FORECAST_MODEL_ENHANCED
+        forecast_model: str = FORECAST_MODEL_ENHANCED,
+        elevation: float | None = None
     ) -> list[Forecast]:
         """Generate daily forecast.
 
@@ -1656,10 +2056,10 @@ class ForecastCalculator:
             pressure_change_3h: 3-hour pressure change
             temp_change_1h: 1-hour temperature change
             wind_direction: Wind direction in degrees
-            wind_speed: Wind speed in m/s
+            wind_speed: Wind speed in m/s (used for temperature and weather prediction)
             latitude: Location latitude
             days: Number of days to forecast
-            solar_radiation: Current solar radiation in W/m² (optional)
+            solar_radiation: Current solar radiation in W/m² (optional, only works during daylight)
             cloud_cover: Current cloud cover in % (optional)
             humidity: Relative humidity in % (optional, used to estimate cloud cover)
             current_rain_rate: Current rain rate in mm/h (optional)
@@ -1676,7 +2076,9 @@ class ForecastCalculator:
             hass=hass,
             solar_radiation=solar_radiation,
             cloud_cover=cloud_cover,
-            humidity=humidity
+            humidity=humidity,
+            wind_speed=wind_speed,
+            elevation=elevation
         )
         zambretti = ZambrettiForecaster(hass=hass, latitude=latitude)
 
@@ -1712,7 +2114,8 @@ class ForecastCalculator:
         cloud_cover: float | None = None,
         humidity: float | None = None,
         current_rain_rate: float = 0.0,
-        forecast_model: str = FORECAST_MODEL_ENHANCED
+        forecast_model: str = FORECAST_MODEL_ENHANCED,
+        elevation: float | None = None
     ) -> list[Forecast]:
         """Generate hourly forecast.
 
@@ -1723,10 +2126,10 @@ class ForecastCalculator:
             pressure_change_3h: 3-hour pressure change
             temp_change_1h: 1-hour temperature change
             wind_direction: Wind direction in degrees
-            wind_speed: Wind speed in m/s
+            wind_speed: Wind speed in m/s (used for temperature and weather prediction)
             latitude: Location latitude
             hours: Number of hours to forecast
-            solar_radiation: Current solar radiation in W/m² (optional)
+            solar_radiation: Current solar radiation in W/m² (optional, only works during daylight)
             cloud_cover: Current cloud cover in % (optional)
             humidity: Relative humidity in % (optional, used to estimate cloud cover)
             current_rain_rate: Current rain rate in mm/h (optional)
@@ -1743,7 +2146,9 @@ class ForecastCalculator:
             hass=hass,
             solar_radiation=solar_radiation,
             cloud_cover=cloud_cover,
-            humidity=humidity
+            humidity=humidity,
+            wind_speed=wind_speed,
+            elevation=elevation
         )
         zambretti = ZambrettiForecaster(hass=hass, latitude=latitude)
 

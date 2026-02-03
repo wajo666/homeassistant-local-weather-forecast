@@ -147,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.13",
+            "sw_version": "3.1.14",
         }
 
     async def _wait_for_entity(
@@ -496,6 +496,14 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 humidity_sensor_id, None, use_history=False, sensor_type="humidity"
             )
 
+        # Wind speed (affects nighttime radiative cooling)
+        wind_speed = None
+        wind_sensor_id = config.options.get(CONF_WIND_SPEED_SENSOR) or config.data.get(CONF_WIND_SPEED_SENSOR)
+        if wind_sensor_id:
+            wind_speed = await self._get_sensor_value(
+                wind_sensor_id, None, use_history=False, sensor_type="wind_speed"
+            )
+
         # Get location and hemisphere
         elevation = config.data.get(CONF_ELEVATION, DEFAULT_ELEVATION)
         hemisphere = config.data.get(CONF_HEMISPHERE, DEFAULT_HEMISPHERE)
@@ -511,10 +519,12 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             change_rate_1h=temp_change,
             solar_radiation=solar_radiation,
             humidity=humidity,
+            wind_speed=wind_speed,
             hass=self.hass,
             latitude=latitude,
             longitude=longitude,
-            hemisphere=hemisphere
+            hemisphere=hemisphere,
+            elevation=elevation
         )
 
         # Try to get first_time

@@ -7,6 +7,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.14] - 2026-02-03
+
+### 🐛 Fixed
+- **Winter Evening Temperature** - Fixed unrealistic warming after sunset (e.g., 0°C → 5.3°C at 19:00)
+  - Diurnal cycle now uses actual sunrise/sunset times from `sun.sun` entity
+  - Temperature properly cools after sunset based on daylight duration
+
+### ✨ Added
+- **Radiative Cooling Model** - Nighttime cooling based on atmospheric conditions
+  - Cloud cover effect: Clear sky cools 70% faster than overcast
+  - Humidity effect: High humidity (>80%) reduces cooling by 30%
+  - Wind speed effect: Calm nights (<1 m/s) cool maximally, windy nights (>8 m/s) cool 60% less
+  - Automatic fallback if sensors unavailable
+  
+- **Climate Zone Adaptation** - Temperature ranges vary by latitude
+  - Tropical (0-15°): 7-8°C daily range year-round
+  - Temperate (40-60°): 3°C winter → 12°C summer
+  - Polar (60-90°): 2°C winter → 8°C summer
+
+- **Continentality Factor** - Maritime vs continental effects
+  - Maritime: 0.7x range modifier (slower temperature changes)
+  - Continental: 1.3x range modifier (faster temperature changes)
+  - Auto-estimated from GPS coordinates
+
+- **Elevation Factor** - +10% temperature range per 1000m altitude
+
+- **Thermal Inertia** - Gradual temperature changes (maritime 3h, continental 1h response time)
+
+### 🔧 Improved
+- All optional sensors now have intelligent fallbacks for maximum compatibility
+
+---
+
 ## [3.1.13] - 2026-02-02
 
 ### 🔧 Changed
