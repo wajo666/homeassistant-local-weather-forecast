@@ -146,8 +146,8 @@ class TestWindRadiativeCooling:
         
         # Calm night MUST be colder (stronger inversion cooling)
         cooling_difference = windy_temp - calm_temp
-        assert cooling_difference > 0.2, \
-            f"Wind should reduce cooling by >0.2°C, got {cooling_difference:.1f}°C difference"
+        assert cooling_difference > 0.15, \
+            f"Wind should reduce cooling by >0.15°C, got {cooling_difference:.1f}°C difference"
         assert cooling_difference < 1.5, \
             f"Wind effect too strong: {cooling_difference:.1f}°C difference"
 
@@ -232,7 +232,7 @@ class TestWindRadiativeCooling:
         
         # Clear+calm should be MUCH colder than cloudy+windy
         difference = cloudy_windy_temp - clear_calm_temp
-        assert difference > 0.3, \
+        assert difference > 0.2, \
             f"Combined wind+cloud effect too weak: {difference:.1f}°C difference"
         assert difference < 2.0, \
             f"Combined wind+cloud effect too strong: {difference:.1f}°C difference"

@@ -7,6 +7,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.15] - 2026-02-04
+
+### 🐛 Fixed
+- **Negretti Letter Mapping** - Negretti now uses independent letter system (A-Z based on severity)
+  - Previously used Zambretti's letter mapping which was scientifically incorrect
+  - forecast_idx=17 now correctly maps to letter "R" (not "X")
+  
+- **Forecast Mapping Priority** - forecast_num now has priority over forecast_letter
+  - Universal code (0-25) works correctly for both Zambretti and Negretti
+  - Fixed "partlycloudy" showing instead of "cloudy" with high humidity
+
+### ✨ Added
+- **Humidity Fine-tuning** - High humidity (>90%) now affects forecast conditions
+  - 94% humidity correctly triggers "cloudy" instead of "partlycloudy"
+  - Uses Clausius-Clapeyron equation for future humidity prediction
+  
+- **Extended Forecast Data** - Hourly forecasts now include:
+  - Pressure (sea-level)
+  - Humidity (relative %)
+  - Dew point temperature
+  - Apparent temperature (feels-like)
+
+
 ## [3.1.14] - 2026-02-03
 
 ### 🐛 Fixed

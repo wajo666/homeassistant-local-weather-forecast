@@ -284,6 +284,10 @@ class TestDailyForecastGenerator:
 
         assert len(forecasts) == 1
         # High should be >= Low
+        # Both temperature and templow should be present in daily forecasts
+        assert "temperature" in forecasts[0]
+        assert "templow" in forecasts[0]
+        assert forecasts[0]["templow"] is not None
         assert forecasts[0]["temperature"] >= forecasts[0]["templow"]
 
 
@@ -353,8 +357,9 @@ class TestIntegration:
         forecast_rising = hourly_rising.generate(hours_count=6)
 
         # Falling pressure should generally have higher rain probability
-        avg_rain_falling = sum(f["precipitation_probability"] for f in forecast_falling) / len(forecast_falling)
-        avg_rain_rising = sum(f["precipitation_probability"] for f in forecast_rising) / len(forecast_rising)
+        # Use .get() to safely access optional TypedDict keys
+        avg_rain_falling = sum(f.get("precipitation_probability") or 0 for f in forecast_falling) / len(forecast_falling)
+        avg_rain_rising = sum(f.get("precipitation_probability") or 0 for f in forecast_rising) / len(forecast_rising)
 
         assert avg_rain_falling > avg_rain_rising
 
@@ -458,27 +463,31 @@ class TestUniversalConditionMapping:
         """Test unsettled weather during day for Zambretti."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Test text WITHOUT rain keywords -> partlycloudy
+        # Code 17 = "Unsettled, rain later" (letter R)
+        # This is NOT partlycloudy - it's heavy clouds with rain threat (rain LATER, not now)
+        # Correct HA condition: cloudy (overcast with rain approaching)
         condition = map_forecast_to_condition(
-            forecast_text="Unsettled weather",
+            forecast_text="Nestále, neskôr dážď",  # "Unsettled, rain later"
             forecast_num=17,
             is_night_func=lambda: False,
             source="Zambretti"
         )
-        assert condition == "partlycloudy"
+        assert condition == "cloudy"  # Correct: heavy clouds/rain threat, not partly cloudy
 
     def test_zambretti_unsettled_night(self):
         """Test unsettled weather during night for Zambretti."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
+        # Code 16 = "Unsettled, short fine intervals" (letter Q)
+        # This is heavy clouds with brief clear periods (rain threat)
+        # Correct HA condition: cloudy (overcast with rain threat, not partly cloudy)
         condition = map_forecast_to_condition(
-            forecast_text="Changeable",
+            forecast_text="Nestále, krátke jasné intervaly",  # "Unsettled, short fine intervals"
             forecast_num=16,
             is_night_func=lambda: True,
             source="Zambretti"
         )
-        # Unsettled/changeable = partly cloudy, even at night (HA shows moon + clouds)
-        assert condition == "partlycloudy"
+        assert condition == "cloudy"  # Correct: heavy clouds/rain threat
 
     def test_negretti_partly_cloudy(self):
         """Test partly cloudy for Negretti."""
@@ -493,15 +502,18 @@ class TestUniversalConditionMapping:
         assert condition == "partlycloudy"
 
     def test_negretti_cloudy(self):
-        """Test fully cloudy for Negretti."""
+        """Test fairly fine/showery weather for Negretti (code 8 = improving showers)."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
+        # Code 8 = "Showery early, improving" (letter I)
+        # This is NOT fully cloudy - it's fair weather with early showers that improve
+        # Correct HA condition: partlycloudy (fair with some clouds/showers)
         condition = map_forecast_to_condition(
-            forecast_text="Oblačno, zamračené",
+            forecast_text="Premenlivo, prehánky na začiatku, zlepšovanie",  # Correct text for code 8
             forecast_num=8,
             source="Negretti"
         )
-        assert condition == "cloudy"
+        assert condition == "partlycloudy"  # Correct: fair weather, not fully cloudy
 
     def test_combined_forecast_rainy(self):
         """Test Combined forecast rain detection (keywords map to code 15 = cloudy)."""
@@ -575,8 +587,8 @@ class TestUniversalConditionMapping:
         """Test Zambretti fair weather detection for numbers 0-5."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Zambretti 0-5 should be sunny (if no unsettled keywords)
-        for num in range(6):  # 0, 1, 2, 3, 4, 5
+        # Zambretti 0-2 should be sunny (settled/fine/becoming fine)
+        for num in range(3):  # 0, 1, 2
             condition = map_forecast_to_condition(
                 forecast_text="Fine weather",
                 forecast_num=num,
@@ -584,6 +596,16 @@ class TestUniversalConditionMapping:
                 source="Zambretti"
             )
             assert condition == "sunny", f"Zambretti #{num} should be sunny"
+
+        # Zambretti 3-5 should be partlycloudy (fine with some uncertainty)
+        for num in range(3, 6):  # 3, 4, 5
+            condition = map_forecast_to_condition(
+                forecast_text="Fine with possible changes",
+                forecast_num=num,
+                is_night_func=lambda: False,
+                source="Zambretti"
+            )
+            assert condition == "partlycloudy", f"Zambretti #{num} should be partlycloudy"
 
         # Zambretti 6+ should not automatically be sunny
         condition_6 = map_forecast_to_condition(
@@ -618,13 +640,14 @@ class TestUniversalConditionMapping:
         assert condition_3 == "partlycloudy", "Negretti #3 should default to partlycloudy"
 
     def test_zambretti_fair_with_unsettled_mention(self):
-        """Test Zambretti fair weather with 'rain later' becomes cloudy."""
+        """Test Zambretti fair weather with 'rain later' keyword detection."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Zambretti #4 normally fair, but "later rain" keyword → code 15
+        # Test text-only (no forecast_num to allow text analysis)
+        # Text "later rain" should trigger code 15 → cloudy
         condition = map_forecast_to_condition(
             forecast_text="Fine, but later rain",
-            forecast_num=4,
+            forecast_num=None,  # Don't provide num - let text analysis work
             is_night_func=lambda: False,
             source="Zambretti"
         )
@@ -632,6 +655,17 @@ class TestUniversalConditionMapping:
         # This prevents showing "sunny" when rain is predicted later
         assert condition != "sunny", "Should not be sunny with 'rain' in text"
         assert condition == "cloudy"  # Heavy clouds, rain threat
+
+        # Test with forecast_num provided (should prioritize number over text)
+        # This verifies that forecast_num has priority over text
+        condition_num = map_forecast_to_condition(
+            forecast_text="Fine, but later rain",
+            forecast_num=4,  # Code 4 = partlycloudy (fine with showers)
+            is_night_func=lambda: False,
+            source="Zambretti"
+        )
+        # forecast_num has priority → code 4 → partlycloudy
+        assert condition_num == "partlycloudy", "forecast_num should have priority over text"
 
     def test_negretti_clear_night(self):
         """Test Negretti fair weather at night becomes clear-night."""

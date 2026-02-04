@@ -431,17 +431,18 @@ def map_forecast_to_condition(
         HA weather condition string
     """
     # Step 1: Convert to internal code
-    if forecast_letter:
-        # Letter has highest priority (most precise)
-        code = ZAMBRETTI_LETTER_TO_CODE.get(forecast_letter.upper(), forecast_num or 3)
+    # PRIORITY: forecast_num > forecast_letter (Negretti uses different letters!)
+    if forecast_num is not None:
+        # Direct number has priority (works for both Zambretti and Negretti)
+        code = max(0, min(25, forecast_num))
+        _LOGGER.debug(f"Unified[{source}]: num={forecast_num} → code={code}")
+    elif forecast_letter:
+        # Letter mapping (only for Zambretti-style letters)
+        code = ZAMBRETTI_LETTER_TO_CODE.get(forecast_letter.upper(), 3)
         _LOGGER.debug(f"Unified[{source}]: letter={forecast_letter} → code={code}")
     elif forecast_text:
         # Text analysis
-        code = forecast_text_to_code(forecast_text, forecast_num, source)
-    elif forecast_num is not None:
-        # Direct number
-        code = max(0, min(25, forecast_num))
-        _LOGGER.debug(f"Unified[{source}]: num={forecast_num} → code={code}")
+        code = forecast_text_to_code(forecast_text, None, source)
     else:
         # No input - fallback
         _LOGGER.debug(f"Unified[{source}]: No input, using default code=3")

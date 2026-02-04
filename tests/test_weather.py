@@ -380,7 +380,7 @@ class TestEntityProperties:
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Weather Station",
-            "sw_version": "3.1.14",
+            "sw_version": "3.1.15",
         }
         assert "identifiers" in device_info
         assert "name" in device_info

@@ -148,6 +148,85 @@ def get_precipitation_type_from_wet_bulb(
             return 'mixed'  # True transition conditions
 
 
+def calculate_future_humidity(
+    current_temperature: float,
+    current_humidity: float,
+    future_temperature: float,
+    pressure_change: float = 0.0
+) -> Optional[float]:
+    """
+    Calculate future relative humidity based on temperature change.
+    
+    PHYSICAL BASIS (Clausius-Clapeyron equation):
+    - Absolute humidity (vapor content) stays relatively constant over short periods
+    - Relative humidity changes with temperature due to saturation vapor pressure
+    - RH = (actual vapor pressure / saturation vapor pressure) × 100%
+    
+    WHEN ABSOLUTE HUMIDITY CHANGES:
+    - Precipitation/rain: adds moisture → increases absolute humidity
+    - Evaporation: adds moisture → increases absolute humidity
+    - Advection: new air mass → different moisture content
+    - Condensation: removes moisture → decreases absolute humidity
+    
+    This function assumes NO MOISTURE ADDITION/REMOVAL (conservative estimate).
+    For precipitation forecasts, additional adjustments should be applied.
+    
+    Args:
+        current_temperature: Current air temperature in °C
+        current_humidity: Current relative humidity in %
+        future_temperature: Predicted future temperature in °C
+        pressure_change: Pressure change in hPa (optional, for adiabatic effects)
+    
+    Returns:
+        Predicted relative humidity in %, or None if calculation fails
+    """
+    if current_humidity <= 0 or current_humidity > 100:
+        _LOGGER.debug(f"FutureRH: Invalid current humidity={current_humidity}%")
+        return None
+    
+    try:
+        # Step 1: Calculate current saturation vapor pressure (Magnus formula)
+        # es = 6.112 × exp((17.67 × T) / (T + 243.5))
+        a = 17.67
+        b = 243.5
+        
+        es_current = 6.112 * math.exp((a * current_temperature) / (b + current_temperature))
+        
+        # Step 2: Calculate actual vapor pressure (from current RH)
+        # e = RH × es / 100
+        e_actual = (current_humidity / 100.0) * es_current
+        
+        # Step 3: Calculate future saturation vapor pressure
+        es_future = 6.112 * math.exp((a * future_temperature) / (b + future_temperature))
+        
+        # Step 4: Calculate future relative humidity (assuming constant absolute humidity)
+        # RH_future = (e_actual / es_future) × 100
+        future_humidity = (e_actual / es_future) * 100.0
+        
+        # Clamp to valid range [1, 100]
+        future_humidity = max(1.0, min(100.0, future_humidity))
+        
+        # Adiabatic correction for pressure changes (optional, small effect)
+        if abs(pressure_change) > 1.0:
+            # Rising pressure (compression) → slight moisture reduction
+            # Falling pressure (expansion) → slight moisture increase
+            # Rule of thumb: ±1% RH per ±10 hPa change
+            adiabatic_adjustment = -pressure_change * 0.1  # hPa → % RH
+            future_humidity = max(1.0, min(100.0, future_humidity + adiabatic_adjustment))
+        
+        _LOGGER.debug(
+            f"FutureRH: T={current_temperature:.1f}°C → {future_temperature:.1f}°C, "
+            f"RH={current_humidity:.1f}% → {future_humidity:.1f}% "
+            f"(ΔT={future_temperature-current_temperature:+.1f}°C, ΔP={pressure_change:+.1f}hPa)"
+        )
+        
+        return round(future_humidity, 1)
+        
+    except (ValueError, ZeroDivisionError) as e:
+        _LOGGER.debug(f"FutureRH: Calculation failed - {e}")
+        return None
+
+
 def degrees_to_cardinal(degrees: float) -> str:
     """
     Convert wind direction in degrees to cardinal direction.

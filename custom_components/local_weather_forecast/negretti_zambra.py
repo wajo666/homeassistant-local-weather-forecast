@@ -309,20 +309,93 @@ def calculate_negretti_zambra_forecast(
         forecast_text = base_forecast_text
 
     # Calculate letter code for display purposes
-    letter_code = _map_zambretti_to_letter(forecast_idx + 1)
+    # ⚠️ IMPORTANT: Negretti uses DIFFERENT letter codes than Zambretti!
+    # The Negretti & Zambra slide rule has its own proprietary letter system.
+    # However, for compatibility with unified forecast system, we use sequential letters
+    # based on forecast_idx (0-25), NOT Zambretti's letter mapping.
+    # 
+    # SCIENTIFIC RATIONALE:
+    # - Negretti letters are for display/reference only (not used for mapping)
+    # - forecast_idx (0-25) is the UNIVERSAL code used by all models
+    # - Using Zambretti letters for Negretti would be scientifically incorrect
+    # 
+    # Solution: Generate letter based on forecast severity (A=best, Z=worst)
+    letter_code = _generate_negretti_letter(forecast_idx)
 
     _LOGGER.debug(
         f"Negretti: RESULT - forecast_code={forecast_idx}, "
-        f"letter={letter_code} (display), text='{forecast_text}'"
+        f"letter={letter_code} (Negretti system), text='{forecast_text}'"
     )
 
     # Return [text, code, letter] - forecast_calculator expects 3 items
     return [forecast_text, forecast_idx, letter_code]
 
 
-def _map_zambretti_to_letter(z: int) -> str:
-    """Map Zambretti number to letter code.
+def _generate_negretti_letter(forecast_idx: int) -> str:
+    """Generate Negretti letter code based on forecast severity.
+    
+    Negretti & Zambra slide rule uses proprietary letter system.
+    For compatibility, we generate sequential letters based on forecast severity.
+    
+    SCIENTIFIC BASIS:
+    - Original Negretti slide rule: A-Z represent weather progression
+    - A = Settled Fine (best)
+    - Z = Stormy (worst)
+    - Letters progress roughly with forecast severity
+    
+    Args:
+        forecast_idx: Forecast index (0-25)
+        
+    Returns:
+        Letter code (A-Z) representing forecast severity
+    """
+    # Map forecast_idx (0-25) to letter severity (A-Z, 26 letters)
+    # Group similar severities together for better representation
+    mapping = {
+        0: "A",   # Settled fine
+        1: "B",   # Fine weather
+        2: "C",   # Becoming fine
+        3: "D",   # Fine, becoming less settled
+        4: "E",   # Fine, possible showers
+        5: "F",   # Fairly fine, improving
+        6: "G",   # Fairly fine, possible showers early
+        7: "H",   # Fairly fine, showery later
+        8: "I",   # Showery early, improving
+        9: "J",   # Changeable, mending
+        10: "K",  # Fairly fine, showers likely
+        11: "L",  # Rather unsettled clearing later
+        12: "M",  # Unsettled, probably improving
+        13: "N",  # Showery, bright intervals
+        14: "O",  # Showery, becoming more unsettled
+        15: "P",  # Changeable, some rain
+        16: "Q",  # Unsettled, short fine intervals
+        17: "R",  # Unsettled, rain later (not X!)
+        18: "S",  # Unsettled, some rain
+        19: "T",  # Mostly very unsettled
+        20: "U",  # Occasional rain, worsening
+        21: "V",  # Rain at times, very unsettled
+        22: "W",  # Rain at frequent intervals
+        23: "X",  # Very unsettled, rain
+        24: "Y",  # Stormy, may improve
+        25: "Z",  # Stormy, much rain
+    }
+    
+    # Clamp to valid range
+    forecast_idx = max(0, min(25, forecast_idx))
+    result = mapping.get(forecast_idx, "A")
+    
+    _LOGGER.debug(f"Negretti letter: forecast_idx={forecast_idx} → '{result}'")
+    return result
 
+
+def _map_zambretti_to_letter(z: int) -> str:
+    """DEPRECATED: This function should NOT be used for Negretti!
+    
+    This function maps Zambretti z-numbers to Zambretti letter codes.
+    Negretti has a DIFFERENT letter system and should use _generate_negretti_letter() instead.
+    
+    Kept for backward compatibility only.
+    
     Args:
         z: Zambretti number (1-33, should be clamped by caller)
 
