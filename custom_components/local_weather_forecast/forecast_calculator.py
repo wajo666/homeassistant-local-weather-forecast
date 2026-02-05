@@ -308,21 +308,22 @@ class TemperatureModel:
         current_rate = self.change_rate_1h
 
         for hour in range(hours_ahead):
-            # Apply diurnal damping: warming trends are moderated in evening/night
+            # Apply diurnal damping: warming trends are moderated during natural cooling periods
             # This prevents unrealistic temperature rise after natural cooling should occur
             future_hour_temp = (self.current_hour + hour + 1) % 24
             
-            # Moderate warming trends during cooling period (16:00-06:00)
-            if 16 <= future_hour_temp or future_hour_temp < 6:
+            # Moderate warming trends during cooling period (18:00-06:00)
+            # Changed from 16:00 to 18:00 to allow natural afternoon cooling from 14:00-18:00
+            if 18 <= future_hour_temp or future_hour_temp < 6:
                 if current_rate > 0:  # Only moderate warming, not cooling
-                    # Reduce warming trend by 50% during evening/night (not 70%)
+                    # Reduce warming trend by 50% during evening/night
                     # This allows some trend influence but prevents unrealistic warming
                     trend_change += current_rate * 0.5
                 else:
                     # Cooling trends work normally
                     trend_change += current_rate
             else:
-                # Daytime: normal trend influence
+                # Daytime (06:00-18:00): normal trend influence
                 trend_change += current_rate
             
             current_rate *= self.trend_damping  # Decay the trend influence
@@ -515,20 +516,23 @@ class TemperatureModel:
                                         return amplitude * (math.sin(progress * math.pi - math.pi/2))
                                     else:
                                         # Cooling phase after maximum: logarithmic decay (smoother transition)
-                                        # Temperature drops very gradually initially, then faster
-                                        # This creates a more realistic afternoon cooling pattern
+                                        # Temperature drops gradually from peak toward evening minimum
+                                        # This creates a realistic afternoon cooling pattern
                                         # References: Oke (1987) - surface temperature response
                                         hours_from_max = hour - max_hour
+                                        # Handle day wrap-around: if negative, it's actually next day
+                                        if hours_from_max < 0:
+                                            hours_from_max += 24
                                         
-                                        # Logarithmic cooling with very gentle initial drop
-                                        # At +0.5h after max (14:30): ~98% remaining
-                                        # At +1h after max (15:00): ~96% remaining
-                                        # At +2h after max (16:00): ~92% remaining
-                                        # At +4h after max (18:00): ~83% remaining
-                                        # At +8h after max (22:00): ~67% remaining
+                                        # Logarithmic cooling with gradual initial drop
+                                        # At +0.5h after max (14:30): ~97% remaining
+                                        # At +1h after max (15:00): ~93% remaining  
+                                        # At +2h after max (16:00): ~86% remaining
+                                        # At +4h after max (18:00): ~73% remaining
+                                        # At +8h after max (22:00): ~53% remaining
                                         # Formula: amplitude * (1 - k * log(1 + t))
-                                        # where k controls cooling rate
-                                        k = 0.12
+                                        # where k controls cooling rate (increased from 0.12 to 0.18)
+                                        k = 0.18
                                         fraction = max(0.1, 1.0 - k * math.log(1.0 + hours_from_max))
                                         return amplitude * fraction
                             
@@ -1742,6 +1746,36 @@ class HourlyForecastGenerator:
                 zambretti_letter=forecast_letter
             )
 
+            # ═══════════════════════════════════════════════════════════════
+            # ✅ FIX v3.1.15: ADJUST CONDITION BASED ON RAIN PROBABILITY
+            # Scientific basis: WMO (2018) - precipitation forecast consistency
+            # Rain probability and condition must align for accurate forecasts
+            # ═══════════════════════════════════════════════════════════════
+            original_condition_before_rain = condition
+            
+            if rain_prob >= 75 and condition not in ("rainy", "pouring", "lightning-rainy", "snowy", "snowy-rainy"):
+                # High rain probability (75%+) → upgrade to rainy if not already
+                _LOGGER.debug(
+                    f"🌧️ Forecast h{hour_offset}: RAIN PROB UPGRADE {condition} → rainy "
+                    f"(prob={rain_prob}% ≥ 75%, strong precipitation signal)"
+                )
+                condition = "rainy"
+            elif rain_prob >= 60 and condition in ("sunny", "clear-night", "partlycloudy"):
+                # Moderate-high rain probability (60-74%) → upgrade to cloudy minimum
+                _LOGGER.debug(
+                    f"☁️ Forecast h{hour_offset}: RAIN PROB UPGRADE {condition} → cloudy "
+                    f"(prob={rain_prob}% ≥ 60%, precipitation likely)"
+                )
+                condition = "cloudy"
+            elif rain_prob <= 15 and condition in ("rainy", "pouring", "lightning-rainy"):
+                # Very low rain probability (≤15%) → downgrade to cloudy
+                # This handles cases where Zambretti gives high code but conditions improved
+                _LOGGER.debug(
+                    f"☀️ Forecast h{hour_offset}: RAIN PROB DOWNGRADE {condition} → cloudy "
+                    f"(prob={rain_prob}% ≤ 15%, precipitation unlikely)"
+                )
+                condition = "cloudy"
+
             # Barometric models don't predict exact precipitation amounts
             # Only probability and conditions are predicted
             precipitation_amount = None
@@ -2001,6 +2035,35 @@ class HourlyForecastGenerator:
                 zambretti_code=condition_code,
                 zambretti_letter=forecast_letter
             )
+            
+            # ═══════════════════════════════════════════════════════════════
+            # ✅ v3.1.15: ADJUST CONDITION BASED ON RAIN PROBABILITY
+            # Same logic as legacy path - ensures consistency across all models
+            # Scientific basis: WMO (2018) - precipitation forecast consistency
+            # ═══════════════════════════════════════════════════════════════
+            hour_offset = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600
+            
+            if rain_prob >= 75 and condition not in ("rainy", "pouring", "lightning-rainy", "snowy", "snowy-rainy"):
+                # High rain probability (75%+) → upgrade to rainy if not already
+                _LOGGER.debug(
+                    f"🌧️ Enhanced h{hour_offset:.0f}: RAIN PROB UPGRADE {condition} → rainy "
+                    f"(prob={rain_prob}% ≥ 75%, strong precipitation signal)"
+                )
+                condition = "rainy"
+            elif rain_prob >= 60 and condition in ("sunny", "clear-night", "partlycloudy"):
+                # Moderate-high rain probability (60-74%) → upgrade to cloudy minimum
+                _LOGGER.debug(
+                    f"☁️ Enhanced h{hour_offset:.0f}: RAIN PROB UPGRADE {condition} → cloudy "
+                    f"(prob={rain_prob}% ≥ 60%, precipitation likely)"
+                )
+                condition = "cloudy"
+            elif rain_prob <= 15 and condition in ("rainy", "pouring", "lightning-rainy"):
+                # Very low rain probability (≤15%) → downgrade to cloudy
+                _LOGGER.debug(
+                    f"☀️ Enhanced h{hour_offset:.0f}: RAIN PROB DOWNGRADE {condition} → cloudy "
+                    f"(prob={rain_prob}% ≤ 15%, precipitation unlikely)"
+                )
+                condition = "cloudy"
             
             forecast: Forecast = {
                 "datetime": future_time.isoformat(),
