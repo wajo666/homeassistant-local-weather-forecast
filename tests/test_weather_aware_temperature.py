@@ -108,14 +108,15 @@ class TestWeatherAwareTemperature:
         assert temp_afternoon > temp_morning
     
     def test_trend_damping(self):
-        """Test that temperature trend dampens over time."""
-        # Strong warming trend
+        """Test that forecast-based temperature trend dampens over time."""
+        # Sunny forecast (strong warming bias)
+        # Use morning hours to avoid diurnal cycle interference
         temp_2h = calculate_weather_aware_temperature(
             hour=2,
             current_temp=15.0,
-            temp_trend=2.0,  # +2°C/hour
-            forecast_code=10,
-            current_hour=12,
+            temp_trend=0.0,  # Historical trend ignored
+            forecast_code=0,  # Sunny: +0.08°C/h
+            current_hour=6,  # Starting at 6 AM
             latitude=48.72,
             longitude=21.25
         )
@@ -123,19 +124,19 @@ class TestWeatherAwareTemperature:
         temp_10h = calculate_weather_aware_temperature(
             hour=10,
             current_temp=15.0,
-            temp_trend=2.0,
-            forecast_code=10,
-            current_hour=12,
+            temp_trend=0.0,  # Historical trend ignored
+            forecast_code=0,  # Sunny: +0.08°C/h
+            current_hour=6,  # Starting at 6 AM
             latitude=48.72,
             longitude=21.25
         )
         
-        # 10h should NOT be 15 + 20 = 35°C (unrealistic)
-        # Due to damping should be much less
-        assert temp_10h < 30.0
-        
-        # But should still be warmer than 2h
+        # 10h should be warmer due to forecast bias accumulation
         assert temp_10h > temp_2h
+        
+        # But trend should be capped (±6°C over 48h)
+        # Even with strong warming, shouldn't exceed reasonable limits
+        assert temp_10h < 30.0
     
     def test_temperature_limits(self):
         """Test that temperature stays within realistic limits."""
@@ -212,14 +213,16 @@ class TestWeatherAdjustments:
         assert adj < 0.5  # Minimal effect
     
     def test_cloudy_neutral(self):
-        """Test cloudy conditions have neutral effect."""
+        """Test cloudy/unsettled conditions cause cooling."""
         adj = _get_weather_temperature_adjustment(
             forecast_code=14,  # Unsettled
             future_hour=14,
             solar_radiation=None,
             cloud_cover=80.0
         )
-        assert -0.5 <= adj <= 0.5  # Minimal effect
+        # Unsettled weather should cool (clouds block solar radiation)
+        # Match behavior of external weather services
+        assert -1.0 <= adj <= -0.5  # Moderate cooling effect
 
 
 class TestDiurnalAmplitude:

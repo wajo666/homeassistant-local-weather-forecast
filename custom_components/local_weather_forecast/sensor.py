@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -510,22 +510,12 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         latitude = self.hass.config.latitude
         longitude = self.hass.config.longitude
 
-        # Import TemperatureModel
-        from .forecast_calculator import TemperatureModel
+        # Get forecast code for forecast-aware temperature (from Zambretti detail)
+        forecast_code = attrs.get("zambretti_number", 13)  # Default to middle value (13 = "Showery, bright intervals")
+        _LOGGER.debug(f"Using forecast code {forecast_code} for temperature bias")
 
-        # Create temperature model with all available data
-        temp_model = TemperatureModel(
-            current_temp=current_temp,
-            change_rate_1h=temp_change,
-            solar_radiation=solar_radiation,
-            humidity=humidity,
-            wind_speed=wind_speed,
-            hass=self.hass,
-            latitude=latitude,
-            longitude=longitude,
-            hemisphere=hemisphere,
-            elevation=elevation
-        )
+        # Import calculate_weather_aware_temperature for forecast-aware prediction
+        from .combined_model import calculate_weather_aware_temperature
 
         # Try to get first_time
         first_time = attrs.get("first_time")
@@ -535,12 +525,24 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"first_time minutes: {minutes_to_first}")
 
                 if minutes_to_first > 0:
-                    # Use advanced model to predict temperature
+                    # Use forecast-aware temperature model with forecast bias
                     hours_to_first = minutes_to_first / 60.0
-                    predicted_temp = temp_model.predict(int(round(hours_to_first)))
+                    predicted_temp = calculate_weather_aware_temperature(
+                        hour=int(round(hours_to_first)),
+                        current_temp=current_temp,
+                        temp_trend=temp_change,
+                        forecast_code=forecast_code,
+                        current_hour=datetime.now(timezone.utc).hour,
+                        latitude=latitude,
+                        longitude=longitude,
+                        humidity=humidity,
+                        cloud_cover=None,  # Will be estimated from humidity
+                        solar_radiation=solar_radiation
+                    )
                     _LOGGER.debug(
-                        f"Advanced temp forecast using first_time: {predicted_temp:.1f}°C "
+                        f"Forecast-aware temp using first_time: {predicted_temp:.1f}°C "
                         f"(current: {current_temp:.1f}, hours: {hours_to_first:.1f}, "
+                        f"forecast_code: {forecast_code}, temp_trend: {temp_change:+.3f}°C/h, "
                         f"solar: {solar_radiation if solar_radiation else 'N/A'} W/m², "
                         f"humidity: {humidity if humidity else 'N/A'}%)"
                     )
@@ -561,12 +563,24 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                 _LOGGER.debug(f"second_time minutes: {minutes_to_second}")
 
                 if minutes_to_second > 0:
-                    # Use advanced model to predict temperature
+                    # Use forecast-aware temperature model with forecast bias
                     hours_to_second = minutes_to_second / 60.0
-                    predicted_temp = temp_model.predict(int(round(hours_to_second)))
+                    predicted_temp = calculate_weather_aware_temperature(
+                        hour=int(round(hours_to_second)),
+                        current_temp=current_temp,
+                        temp_trend=temp_change,
+                        forecast_code=forecast_code,
+                        current_hour=datetime.now(timezone.utc).hour,
+                        latitude=latitude,
+                        longitude=longitude,
+                        humidity=humidity,
+                        cloud_cover=None,  # Will be estimated from humidity
+                        solar_radiation=solar_radiation
+                    )
                     _LOGGER.debug(
-                        f"Advanced temp forecast using second_time: {predicted_temp:.1f}°C "
+                        f"Forecast-aware temp using second_time: {predicted_temp:.1f}°C "
                         f"(current: {current_temp:.1f}, hours: {hours_to_second:.1f}, "
+                        f"forecast_code: {forecast_code}, temp_trend: {temp_change:+.3f}°C/h, "
                         f"solar: {solar_radiation if solar_radiation else 'N/A'} W/m², "
                         f"humidity: {humidity if humidity else 'N/A'}%)"
                     )

@@ -630,6 +630,53 @@ def calculate_temperature_at_hour(
     return current_temp + (temp_trend * hour)
 
 
+def _get_forecast_temperature_bias(forecast_code: int) -> float:
+    """Get temperature trend bias based on forecast direction.
+    
+    Forecast direction affects temperature trend:
+    - Worsening weather (storms, rain) → cooling bias
+    - Improving weather (sunny, clear) → warming bias
+    - Stable weather (cloudy) → neutral
+    
+    Args:
+        forecast_code: Forecast code (0-25)
+        
+    Returns:
+        Temperature bias in °C/hour
+    """
+    # Group codes by weather severity:
+    # 0-5: Settled fine to fairly fine (IMPROVING/GOOD)
+    # 6-10: Fair weather, possible showers (STABLE/NEUTRAL)
+    # 11-15: Unsettled, changeable (DETERIORATING)
+    # 16-20: Rain at times (POOR)
+    # 21-25: Very wet, stormy (VERY POOR)
+    
+    if forecast_code <= 5:
+        # Settled fine weather - WARMING bias
+        # High pressure, clear skies → solar heating
+        return +0.08  # +2.0°C/day warming tendency
+    elif forecast_code <= 10:
+        # Fair weather - SLIGHT WARMING bias
+        # Mixed conditions, but generally pleasant
+        return +0.04  # +1.0°C/day slight warming
+    elif forecast_code <= 15:
+        # Unsettled, changeable - STRONG COOLING bias
+        # Increasing clouds, possible precipitation, reduced solar heating
+        return -0.15  # -3.6°C/day strong cooling (match external services)
+    elif forecast_code <= 20:
+        # Rain at times - VERY STRONG COOLING bias
+        # Cloudy, wet conditions, evaporative cooling
+        return -0.18  # -4.3°C/day very strong cooling tendency
+    else:
+        # Very wet, stormy - VERY STRONG COOLING bias
+        # Heavy precipitation, strong clouds, evaporative cooling
+        return -0.20  # -4.8°C/day very strong cooling
+    
+    # Note: These biases are ADDED to historical temp_trend
+    # Historical trend: short-term inertia (hours)
+    # Forecast bias: medium-term tendency (days)
+
+
 def calculate_weather_aware_temperature(
     hour: int,
     current_temp: float,
@@ -641,18 +688,24 @@ def calculate_weather_aware_temperature(
     humidity: float | None = None,
     cloud_cover: float | None = None,
     solar_radiation: float | None = None,
+    current_month: int | None = None,
 ) -> float:
     """Calculate temperature with weather-aware adjustments.
     
     Combines:
-    - Damped linear trend (realistic decay)
+    - Forecast-based trend (from synoptic situation, not local sensor)
     - Diurnal cycle based on actual sun position (not fixed hours!)
     - Weather condition adjustments (rain cooling, solar warming)
+    
+    Scientific basis:
+    - Numerical models (GFS, ECMWF) use physical equations, not point sensor extrapolation
+    - Local temperature trend is unreliable (microclimate, sensor errors, chaotic atmosphere)
+    - Forecast bias derived from pressure/weather patterns is more robust
     
     Args:
         hour: Hours ahead (0-24)
         current_temp: Current temperature in °C
-        temp_trend: Temperature trend in °C/hour
+        temp_trend: IGNORED (kept for backward compatibility)
         forecast_code: Forecast code (0-25) from unified mapping
         current_hour: Current hour of day (0-23)
         latitude: Location latitude (for sun calculations)
@@ -660,6 +713,7 @@ def calculate_weather_aware_temperature(
         humidity: Relative humidity % (optional)
         cloud_cover: Cloud cover % (optional)
         solar_radiation: Solar radiation W/m² (optional)
+        current_month: Current month (1-12) for seasonal amplitude (optional, defaults to current)
         
     Returns:
         Predicted temperature in °C
@@ -668,23 +722,31 @@ def calculate_weather_aware_temperature(
         return current_temp
     
     # ═══════════════════════════════════════
-    # 1. DAMPED TREND COMPONENT
+    # 1. FORECAST-ADJUSTED TREND COMPONENT
     # ═══════════════════════════════════════
-    # Exponential damping: trend weakens over time
-    # Formula: sum of (initial_rate * damping^hour)
-    damping_factor = 0.85  # Same as TemperatureModel
+    # IGNORE historical trend from point sensor (unreliable, microclimate, sensor errors)
+    # Use ONLY forecast-based bias derived from synoptic situation
+    # This is how numerical weather models (GFS, ECMWF) work
+    
+    # Forecast direction (improving/worsening) affects temperature trend
+    forecast_bias = _get_forecast_temperature_bias(forecast_code)
+    
+    # ═══════════════════════════════════════
+    # 2. FORECAST TREND ACCUMULATION
+    # ═══════════════════════════════════════
+    # Simple damped accumulation: trend weakens with time
+    # Reflects uncertainty increase and synoptic changes
     trend_change = 0.0
-    current_rate = temp_trend
+    damping = 0.90  # 10% decay per hour
     
     for h in range(hour):
-        trend_change += current_rate
-        current_rate *= damping_factor
+        trend_change += forecast_bias * (damping ** h)
     
-    # Cap trend to ±5°C over forecast period
-    trend_change = max(-5.0, min(5.0, trend_change))
+    # Cap to prevent extreme values (±6°C over 48h is realistic)
+    trend_change = max(-6.0, min(6.0, trend_change))
     
     # ═══════════════════════════════════════
-    # 2. DIURNAL CYCLE COMPONENT (SUN-BASED)
+    # 3. DIURNAL CYCLE COMPONENT (SUN-BASED)
     # ═══════════════════════════════════════
     # Use actual sun position based on longitude
     # Maximum temperature: ~2-3h after solar noon
@@ -708,7 +770,8 @@ def calculate_weather_aware_temperature(
     temp_min_hour = sunrise_hour - 0.5  # Temp min before sunrise
     
     # Calculate amplitude (seasonal + cloud reduction)
-    base_amplitude = _get_diurnal_amplitude(current_time.month)
+    month = current_month if current_month is not None else current_time.month
+    base_amplitude = _get_diurnal_amplitude(month)
     
     # Cloud cover reduces amplitude
     if cloud_cover is not None:
@@ -724,20 +787,41 @@ def calculate_weather_aware_temperature(
     future_hour_of_day = (current_hour + hour) % 24
     future_hours_from_min = (future_hour_of_day - temp_min_hour) % 24
     
-    # Map to sinusoid: minimum at 0h, maximum at ~10h (temp_max - temp_min)
-    temp_cycle_period = 24.0  # 24h cycle
-    current_phase = (current_hours_from_min / temp_cycle_period) * 2 * math.pi
-    future_phase = (future_hours_from_min / temp_cycle_period) * 2 * math.pi
+    # Real diurnal cycle is asymmetric:
+    # - Warming: 8-9h (from min to max)
+    # - Cooling: 15-16h (from max back to min)
+    # Use piecewise function for realistic behavior
     
-    # Shift so minimum is at phase=0: use -cos instead of cos
-    # This gives: min at 0h, max at 12h
-    current_diurnal = amplitude * (1 - math.cos(current_phase)) / 2.0  # Range: 0 to amplitude
-    future_diurnal = amplitude * (1 - math.cos(future_phase)) / 2.0
+    def calculate_diurnal_position(hours_from_min: float) -> float:
+        """Calculate diurnal temperature position (0=min, 1=max).
+        
+        Args:
+            hours_from_min: Hours since temperature minimum
+            
+        Returns:
+            Position in diurnal cycle (0.0 to 1.0)
+        """
+        hours_to_max = temp_max_hour - temp_min_hour
+        if hours_to_max < 0:
+            hours_to_max += 24
+        
+        if hours_from_min < hours_to_max:
+            # Warming phase: faster, steeper (sine-based)
+            phase = (hours_from_min / hours_to_max) * (math.pi / 2)
+            return math.sin(phase)  # 0 → 1
+        else:
+            # Cooling phase: slower, gentler (cosine-based)
+            hours_from_max = hours_from_min - hours_to_max
+            hours_to_next_min = 24 - hours_to_max
+            phase = (hours_from_max / hours_to_next_min) * (math.pi / 2)
+            return math.cos(phase)  # 1 → 0
     
-    # Center around current temp (not around amplitude)
-    # We want ±amplitude/2 variation around mean
-    current_diurnal -= amplitude / 2.0
-    future_diurnal -= amplitude / 2.0
+    current_diurnal_pos = calculate_diurnal_position(current_hours_from_min)
+    future_diurnal_pos = calculate_diurnal_position(future_hours_from_min)
+    
+    # Convert position to temperature deviation
+    current_diurnal = amplitude * (current_diurnal_pos - 0.5)  # Range: -amplitude/2 to +amplitude/2
+    future_diurnal = amplitude * (future_diurnal_pos - 0.5)
     
     diurnal_change = future_diurnal - current_diurnal
     
@@ -761,7 +845,7 @@ def calculate_weather_aware_temperature(
     
     _LOGGER.debug(
         f"🌡️ Temperature h{hour}: {predicted:.1f}°C "
-        f"(base={current_temp:.1f}, trend={trend_change:+.1f}, "
+        f"(base={current_temp:.1f}, fcst_trend={trend_change:+.1f} [bias={forecast_bias:+.3f}°C/h], "
         f"diurnal={diurnal_change:+.1f}, weather={weather_adjustment:+.1f})"
     )
     
@@ -821,6 +905,12 @@ def _get_weather_temperature_adjustment(
         adjustment = -1.5  # Moderate rain: moderate cooling
     
     # ═══════════════════════════════════════
+    # SHOWERY/UNSETTLED: Light rain cooling
+    # ═══════════════════════════════════════
+    elif forecast_code >= 16:  # Showery, turning unsettled (codes 16-17)
+        adjustment = -1.0  # Showers: light to moderate cooling
+    
+    # ═══════════════════════════════════════
     # SUNNY CONDITIONS: Solar warming (daytime only)
     # ═══════════════════════════════════════
     elif forecast_code <= 2 and is_daytime:  # Settled fine, Fine (codes 0-2)
@@ -860,9 +950,12 @@ def _get_weather_temperature_adjustment(
             adjustment = 0.7  # Moderate warming
     
     # ═══════════════════════════════════════
-    # CLOUDY: Minimal effect
+    # CLOUDY/UNSETTLED: Cooling effect
     # ═══════════════════════════════════════
-    # Codes 11-17: Unsettled, rain later - neutral temperature effect
+    elif 11 <= forecast_code <= 15:  # Unsettled, changeable (codes 11-15)
+        # Heavy clouds block solar radiation → cooling
+        # Match behavior of external weather services
+        adjustment = -0.8  # Significant cooling due to cloud cover
     
     return adjustment
 
