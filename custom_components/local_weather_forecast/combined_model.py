@@ -689,6 +689,8 @@ def calculate_weather_aware_temperature(
     cloud_cover: float | None = None,
     solar_radiation: float | None = None,
     current_month: int | None = None,
+    wind_speed: float | None = None,
+    elevation: float | None = None,
 ) -> float:
     """Calculate temperature with weather-aware adjustments.
     
@@ -696,11 +698,17 @@ def calculate_weather_aware_temperature(
     - Forecast-based trend (from synoptic situation, not local sensor)
     - Diurnal cycle based on actual sun position (not fixed hours!)
     - Weather condition adjustments (rain cooling, solar warming)
+    - Humidity/dewpoint effects (apparent temperature)
+    - Wind chill and heat index
+    - Elevation correction (lapse rate)
+    - Dynamic cloud cover feedback
     
     Scientific basis:
     - Numerical models (GFS, ECMWF) use physical equations, not point sensor extrapolation
     - Local temperature trend is unreliable (microclimate, sensor errors, chaotic atmosphere)
     - Forecast bias derived from pressure/weather patterns is more robust
+    - Standard lapse rate: -0.65°C/100m
+    - Wind chill: JAG/TI formula (USA/Canada standard)
     
     Args:
         hour: Hours ahead (0-24)
@@ -714,6 +722,8 @@ def calculate_weather_aware_temperature(
         cloud_cover: Cloud cover % (optional)
         solar_radiation: Solar radiation W/m² (optional)
         current_month: Current month (1-12) for seasonal amplitude (optional, defaults to current)
+        wind_speed: Wind speed in m/s (optional, for wind chill)
+        elevation: Elevation in meters (optional, for lapse rate correction)
         
     Returns:
         Predicted temperature in °C
@@ -836,9 +846,70 @@ def calculate_weather_aware_temperature(
     )
     
     # ═══════════════════════════════════════
-    # 4. COMBINE ALL COMPONENTS
+    # 4. ELEVATION CORRECTION (Lapse Rate)
     # ═══════════════════════════════════════
-    predicted = current_temp + trend_change + diurnal_change + weather_adjustment
+    # Standard atmospheric lapse rate: -0.65°C per 100m
+    # Important for mountain locations (negligible for <200m)
+    elevation_correction = 0.0
+    if elevation is not None and elevation > 0:
+        # Compared to sea level (0m)
+        elevation_correction = -0.0065 * elevation
+        _LOGGER.debug(f"Elevation correction: {elevation_correction:+.2f}°C for {elevation}m")
+    
+    # ═══════════════════════════════════════
+    # 5. HUMIDITY/DEWPOINT EFFECT
+    # ═══════════════════════════════════════
+    # High humidity makes it feel warmer/reduces cooling
+    # Low humidity enhances cooling (especially at night)
+    humidity_effect = 0.0
+    if humidity is not None and 0 <= humidity <= 100:
+        # Empirical formula: humidity affects perceived temperature
+        # High humidity (>70%): reduces nighttime cooling
+        # Low humidity (<40%): enhances cooling
+        if humidity > 70:
+            humidity_effect = (humidity - 70) * 0.02  # Up to +0.6°C at 100%
+        elif humidity < 40:
+            humidity_effect = (humidity - 40) * 0.015  # Up to -0.6°C at 0%
+    
+    # ═══════════════════════════════════════
+    # 6. WIND CHILL / HEAT INDEX
+    # ═══════════════════════════════════════
+    wind_effect = 0.0
+    if wind_speed is not None and wind_speed >= 0:
+        base_temp = current_temp + trend_change + diurnal_change + weather_adjustment
+        
+        # Wind chill (JAG/TI formula) for cold conditions (T < 10°C, wind > 1.39 m/s)
+        if base_temp < 10.0 and wind_speed > 1.39:  # 1.39 m/s = 5 km/h
+            # Convert m/s to km/h for formula
+            wind_kmh = wind_speed * 3.6
+            wind_chill = 13.12 + 0.6215 * base_temp - 11.37 * (wind_kmh ** 0.16) + \
+                        0.3965 * base_temp * (wind_kmh ** 0.16)
+            wind_effect = wind_chill - base_temp
+            _LOGGER.debug(
+                f"Wind chill: {wind_chill:.1f}°C (base: {base_temp:.1f}°C, "
+                f"wind: {wind_speed:.1f}m/s, effect: {wind_effect:+.1f}°C)"
+            )
+        
+        # Heat index for hot+humid conditions (T > 27°C, humidity > 40%)
+        elif base_temp > 27.0 and humidity is not None and humidity > 40:
+            # Simplified heat index (Rothfusz regression)
+            T = base_temp
+            RH = humidity
+            HI = -8.78469475556 + 1.61139411 * T + 2.33854883889 * RH - \
+                 0.14611605 * T * RH - 0.012308094 * T * T - \
+                 0.0164248277778 * RH * RH + 0.002211732 * T * T * RH + \
+                 0.00072546 * T * RH * RH - 0.000003582 * T * T * RH * RH
+            wind_effect = HI - base_temp
+            _LOGGER.debug(
+                f"Heat index: {HI:.1f}°C (base: {base_temp:.1f}°C, "
+                f"humidity: {humidity:.0f}%, effect: {wind_effect:+.1f}°C)"
+            )
+    
+    # ═══════════════════════════════════════
+    # 7. COMBINE ALL COMPONENTS
+    # ═══════════════════════════════════════
+    predicted = (current_temp + trend_change + diurnal_change + weather_adjustment + 
+                elevation_correction + humidity_effect + wind_effect)
     
     # Apply absolute limits
     predicted = max(-40.0, min(50.0, predicted))
@@ -846,7 +917,8 @@ def calculate_weather_aware_temperature(
     _LOGGER.debug(
         f"🌡️ Temperature h{hour}: {predicted:.1f}°C "
         f"(base={current_temp:.1f}, fcst_trend={trend_change:+.1f} [bias={forecast_bias:+.3f}°C/h], "
-        f"diurnal={diurnal_change:+.1f}, weather={weather_adjustment:+.1f})"
+        f"diurnal={diurnal_change:+.1f}, weather={weather_adjustment:+.1f}, "
+        f"elev={elevation_correction:+.1f}, humid={humidity_effect:+.1f}, wind={wind_effect:+.1f})"
     )
     
     return round(predicted, 1)
@@ -950,12 +1022,17 @@ def _get_weather_temperature_adjustment(
             adjustment = 0.7  # Moderate warming
     
     # ═══════════════════════════════════════
-    # CLOUDY/UNSETTLED: Cooling effect
+    # CLOUDY/UNSETTLED: Cooling effect (DYNAMIC)
     # ═══════════════════════════════════════
     elif 11 <= forecast_code <= 15:  # Unsettled, changeable (codes 11-15)
         # Heavy clouds block solar radiation → cooling
-        # Match behavior of external weather services
-        adjustment = -0.8  # Significant cooling due to cloud cover
+        # Dynamic adjustment based on actual cloud cover if available
+        if cloud_cover is not None:
+            # Linear relationship: 0% clouds = 0°C, 100% clouds = -1.5°C
+            adjustment = -0.015 * cloud_cover
+        else:
+            # Fallback: typical value for unsettled conditions
+            adjustment = -0.8  # Assume ~53% cloud cover
     
     return adjustment
 

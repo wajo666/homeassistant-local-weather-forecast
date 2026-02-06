@@ -537,7 +537,9 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                         longitude=longitude,
                         humidity=humidity,
                         cloud_cover=None,  # Will be estimated from humidity
-                        solar_radiation=solar_radiation
+                        solar_radiation=solar_radiation,
+                        wind_speed=wind_speed,
+                        elevation=elevation
                     )
                     _LOGGER.debug(
                         f"Forecast-aware temp using first_time: {predicted_temp:.1f}°C "
@@ -575,7 +577,9 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
                         longitude=longitude,
                         humidity=humidity,
                         cloud_cover=None,  # Will be estimated from humidity
-                        solar_radiation=solar_radiation
+                        solar_radiation=solar_radiation,
+                        wind_speed=wind_speed,
+                        elevation=elevation
                     )
                     _LOGGER.debug(
                         f"Forecast-aware temp using second_time: {predicted_temp:.1f}°C "

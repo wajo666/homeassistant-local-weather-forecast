@@ -213,7 +213,7 @@ class TestWeatherAdjustments:
         assert adj < 0.5  # Minimal effect
     
     def test_cloudy_neutral(self):
-        """Test cloudy/unsettled conditions cause cooling."""
+        """Test cloudy/unsettled conditions cause cooling (dynamic based on cloud cover)."""
         adj = _get_weather_temperature_adjustment(
             forecast_code=14,  # Unsettled
             future_hour=14,
@@ -221,8 +221,9 @@ class TestWeatherAdjustments:
             cloud_cover=80.0
         )
         # Unsettled weather should cool (clouds block solar radiation)
-        # Match behavior of external weather services
-        assert -1.0 <= adj <= -0.5  # Moderate cooling effect
+        # Dynamic formula: -0.015 * cloud_cover
+        # 80% clouds = -1.2°C cooling
+        assert -1.5 <= adj <= -1.0  # Strong cooling with high cloud cover
 
 
 class TestDiurnalAmplitude:
