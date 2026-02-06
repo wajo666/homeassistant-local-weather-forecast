@@ -1218,16 +1218,21 @@ class ZambrettiForecaster:
 
 
 class RainProbabilityCalculator:
-    """Calculate rain probability based on pressure evolution and weather conditions."""
+    """Calculate rain probability based on pressure evolution and weather conditions.
+    
+    UNIVERSAL for all forecast models (Zambretti, Negretti, Enhanced).
+    Uses forecast code (0-25) which is model-independent.
+    """
 
-    # Zambretti letter code to base rain probability mapping
-    # Based on forecast conditions: A-E (fine) = low, F-O (mixed) = medium, P-Z (poor) = high
-    LETTER_RAIN_PROB = {
-        'A': 5, 'B': 10, 'C': 15, 'D': 20, 'E': 25,  # Settled fine to fine
-        'F': 30, 'G': 35, 'H': 40, 'I': 45, 'J': 50,  # Fine becoming less settled
-        'K': 50, 'L': 55, 'M': 55, 'N': 60, 'O': 60,  # Showery, becoming unsettled
-        'P': 65, 'Q': 70, 'R': 75, 'S': 80, 'T': 85,  # Rain at times
-        'U': 85, 'V': 90, 'W': 90, 'X': 95, 'Y': 95, 'Z': 95  # Very wet, stormy
+    # Universal forecast code to base rain probability mapping (0-25)
+    # Based on forecast conditions: 0-5 (fine) = low, 6-15 (mixed) = medium, 16-25 (poor) = high
+    # Same mapping applies to Zambretti, Negretti, and Enhanced models
+    CODE_RAIN_PROB = {
+        0: 5, 1: 10, 2: 15, 3: 20, 4: 25, 5: 30,           # 0-5: Settled fine to fairly fine
+        6: 35, 7: 40, 8: 45, 9: 50, 10: 50,                # 6-10: Fair weather, possible showers
+        11: 55, 12: 55, 13: 60, 14: 60, 15: 65,            # 11-15: Unsettled, changeable
+        16: 70, 17: 75, 18: 80, 19: 85, 20: 85,            # 16-20: Rain at times
+        21: 90, 22: 90, 23: 95, 24: 95, 25: 95             # 21-25: Very wet, stormy
     }
 
     @staticmethod
@@ -1235,30 +1240,33 @@ class RainProbabilityCalculator:
         current_pressure: float,
         future_pressure: float,
         pressure_trend: str,
-        zambretti_code: int,
-        zambretti_letter: str = 'A'
+        forecast_code: int,
+        forecast_letter: str = 'A'  # Deprecated, kept for compatibility
     ) -> int:
         """Calculate rain probability percentage.
 
+        UNIVERSAL calculation for all forecast models (Zambretti/Negretti/Enhanced).
+        
         Based on:
-        - Zambretti letter code (weather condition)
+        - Forecast code (0-25) - MODEL INDEPENDENT
         - Pressure level and change
         - Pressure trend direction
 
         Args:
             current_pressure: Current pressure in hPa
             future_pressure: Forecasted pressure in hPa
-            pressure_trend: Trend string
-            zambretti_code: Zambretti forecast number (0-25)
-            zambretti_letter: Zambretti letter code (A-Z)
+            pressure_trend: Trend string (not used currently)
+            forecast_code: Universal forecast code (0-25)
+            forecast_letter: Letter code (deprecated, for backward compatibility)
 
         Returns:
             Rain probability 0-100%
         """
-        # Base probability from Zambretti letter code
-        base_prob = RainProbabilityCalculator.LETTER_RAIN_PROB.get(
-            zambretti_letter,
-            50  # Default middle value if letter unknown
+        # Base probability from forecast code (0-25)
+        # Works for ALL models: Zambretti, Negretti, Enhanced
+        base_prob = RainProbabilityCalculator.CODE_RAIN_PROB.get(
+            forecast_code,
+            50  # Default middle value if code unknown
         )
 
         # Adjust for absolute pressure level
@@ -1302,8 +1310,8 @@ class RainProbabilityCalculator:
         result = max(0, min(100, base_prob))
 
         _LOGGER.debug(
-            f"RainProb: letter={zambretti_letter} → {result}% "
-            f"(P={future_pressure:.1f}hPa, ΔP={pressure_change:+.1f}, base={RainProbabilityCalculator.LETTER_RAIN_PROB.get(zambretti_letter, 50)}%)"
+            f"RainProb: code={forecast_code} → {result}% "
+            f"(P={future_pressure:.1f}hPa, ΔP={pressure_change:+.1f}, base={RainProbabilityCalculator.CODE_RAIN_PROB.get(forecast_code, 50)}%)"
         )
 
         return result
@@ -1742,8 +1750,8 @@ class HourlyForecastGenerator:
                 current_pressure=self.pressure_model.current_pressure,
                 future_pressure=future_pressure,
                 pressure_trend=pressure_trend,
-                zambretti_code=forecast_num if forecast_num is not None else 13,
-                zambretti_letter=forecast_letter
+                forecast_code=forecast_num if forecast_num is not None else 13,
+                forecast_letter=forecast_letter
             )
 
             # ═══════════════════════════════════════════════════════════════
@@ -2032,8 +2040,8 @@ class HourlyForecastGenerator:
                 current_pressure=self.pressure_model.current_pressure,
                 future_pressure=pressure,
                 pressure_trend="steady",  # Already in forecast
-                zambretti_code=condition_code,
-                zambretti_letter=forecast_letter
+                forecast_code=condition_code,
+                forecast_letter=forecast_letter
             )
             
             # ═══════════════════════════════════════════════════════════════

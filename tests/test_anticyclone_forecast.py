@@ -78,8 +78,8 @@ class TestAnticycloneForecast:
             current_pressure=1037.0,
             future_pressure=1038.0,
             pressure_trend="steady",
-            zambretti_code=1,  # "Fine weather"
-            zambretti_letter="B"  # Base probability: 10%
+            forecast_code=1,  # "Fine weather"
+            forecast_letter="B"  # Base probability: 10%
         )
 
         # Should be significantly reduced:
@@ -91,8 +91,8 @@ class TestAnticycloneForecast:
             current_pressure=1039.0,
             future_pressure=1040.0,
             pressure_trend="steady",
-            zambretti_code=0,  # "Settled fine"
-            zambretti_letter="A"  # Base probability: 5%
+            forecast_code=0,  # "Settled fine"
+            forecast_letter="A"  # Base probability: 5%
         )
 
         # Should be near zero
@@ -103,8 +103,8 @@ class TestAnticycloneForecast:
             current_pressure=1027.0,
             future_pressure=1028.0,
             pressure_trend="steady",
-            zambretti_code=3,  # "Fine, becoming less settled"
-            zambretti_letter="D"  # Base probability: 20%
+            forecast_code=3,  # "Fine, becoming less settled"
+            forecast_letter="D"  # Base probability: 20%
         )
 
         # Should be reduced but not zero (20% - 15% = 5%)

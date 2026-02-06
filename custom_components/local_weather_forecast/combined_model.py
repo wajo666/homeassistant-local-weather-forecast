@@ -351,11 +351,16 @@ def calculate_combined_rain_probability(
     try:
         from .forecast_calculator import RainProbabilityCalculator
 
-        zambretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(
-            zambretti_letter, 50
+        # Convert letter to forecast code (A=0, B=1, ..., Z=25)
+        zambretti_code = ord(zambretti_letter) - ord('A')
+        negretti_code = ord(negretti_letter) - ord('A')
+
+        # Get base rain probability from universal CODE mapping
+        zambretti_rain = RainProbabilityCalculator.CODE_RAIN_PROB.get(
+            zambretti_code, 50
         )
-        negretti_rain = RainProbabilityCalculator.LETTER_RAIN_PROB.get(
-            negretti_letter, 50
+        negretti_rain = RainProbabilityCalculator.CODE_RAIN_PROB.get(
+            negretti_code, 50
         )
 
         # Weighted average
