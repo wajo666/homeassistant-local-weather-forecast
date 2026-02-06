@@ -1755,34 +1755,15 @@ class HourlyForecastGenerator:
             )
 
             # ═══════════════════════════════════════════════════════════════
-            # ✅ FIX v3.1.15: ADJUST CONDITION BASED ON RAIN PROBABILITY
-            # Scientific basis: WMO (2018) - precipitation forecast consistency
-            # Rain probability and condition must align for accurate forecasts
+            # ✅ v3.1.15: Rain probability COMPLEMENTS forecast, does not override
+            # Scientific basis: WMO (2018) - probability supplements deterministic forecast
+            # 
+            # Forecast condition from code mapping is AUTHORITATIVE
+            # - Code 13 "cloudy" already implies rain possibility (showers)
+            # - Code 19 "rainy" means rain is primary condition
+            # Rain probability provides additional QUANTITATIVE info but doesn't change icon
+            # The Zambretti/Negretti code already captured the weather condition correctly!
             # ═══════════════════════════════════════════════════════════════
-            original_condition_before_rain = condition
-            
-            if rain_prob >= 75 and condition not in ("rainy", "pouring", "lightning-rainy", "snowy", "snowy-rainy"):
-                # High rain probability (75%+) → upgrade to rainy if not already
-                _LOGGER.debug(
-                    f"🌧️ Forecast h{hour_offset}: RAIN PROB UPGRADE {condition} → rainy "
-                    f"(prob={rain_prob}% ≥ 75%, strong precipitation signal)"
-                )
-                condition = "rainy"
-            elif rain_prob >= 60 and condition in ("sunny", "clear-night", "partlycloudy"):
-                # Moderate-high rain probability (60-74%) → upgrade to cloudy minimum
-                _LOGGER.debug(
-                    f"☁️ Forecast h{hour_offset}: RAIN PROB UPGRADE {condition} → cloudy "
-                    f"(prob={rain_prob}% ≥ 60%, precipitation likely)"
-                )
-                condition = "cloudy"
-            elif rain_prob <= 15 and condition in ("rainy", "pouring", "lightning-rainy"):
-                # Very low rain probability (≤15%) → downgrade to cloudy
-                # This handles cases where Zambretti gives high code but conditions improved
-                _LOGGER.debug(
-                    f"☀️ Forecast h{hour_offset}: RAIN PROB DOWNGRADE {condition} → cloudy "
-                    f"(prob={rain_prob}% ≤ 15%, precipitation unlikely)"
-                )
-                condition = "cloudy"
 
             # Barometric models don't predict exact precipitation amounts
             # Only probability and conditions are predicted
@@ -2049,7 +2030,10 @@ class HourlyForecastGenerator:
             # Scientific basis: WMO (2018) - probability supplements deterministic forecast
             # 
             # Forecast condition from code mapping is AUTHORITATIVE
-            # Rain_prob provides additional context but should not contradict forecast
+            # - "cloudy" (code 13) already implies rain possibility
+            # - "partlycloudy" (code 6) implies scattered showers possible
+            # Rain_prob provides additional QUANTITATIVE context (e.g., 75%)
+            # but DOES NOT change the icon - the icon is already correct!
             # ═══════════════════════════════════════════════════════════════
             hour_offset = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600
             
