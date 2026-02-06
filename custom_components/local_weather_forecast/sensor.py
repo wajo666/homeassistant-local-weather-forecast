@@ -2571,34 +2571,35 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.debug(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
-        # ✅ FIXED v3.1.13: Use rain_prob from sensors (not LETTER_RAIN_PROB) for consistency
-        # All models should use the same rain probability source (rain_prob attribute)
-        # which already includes pressure adjustments from RainProbabilityCalculator
+        # ✅ FIXED v3.1.16: Removed duplicate enhancement layer
+        # Zambretti/Negretti already use RainProbabilityCalculator (pressure/trend adjustments)
+        # Enhanced model already does sophisticated dynamic weighting
+        # Additional humidity/dewpoint enhancement was TOO AGGRESSIVE (+50% increase)
+        # 
+        # Now: Use ONLY the weighted average from model outputs
+        # Example: Z=10% (weight=0.1) + N=40% (weight=0.9) = 37% (final)
         
         # Apply weights to the rain probabilities loaded earlier
         weighted_zambretti = zambretti_prob * zambretti_weight
         weighted_negretti = negretti_prob * negretti_weight
         
+        # Final probability is simply the weighted sum
+        probability = weighted_zambretti + weighted_negretti
+        
         _LOGGER.debug(
-            f"RainProb: [{forecast_model}] Applying weights - "
+            f"RainProb: [{forecast_model}] Weighted average - "
             f"Z: {zambretti_prob}% × {zambretti_weight:.2f} = {weighted_zambretti:.1f}%, "
-            f"N: {negretti_prob}% × {negretti_weight:.2f} = {weighted_negretti:.1f}%"
+            f"N: {negretti_prob}% × {negretti_weight:.2f} = {weighted_negretti:.1f}%, "
+            f"final={probability:.0f}%"
         )
-
-        # Use enhanced calculation with WEIGHTED probabilities
-        # This applies humidity and dewpoint enhancements on top of the weighted base
-        probability, confidence = calculate_rain_probability_enhanced(
-            int(weighted_zambretti),
-            int(weighted_negretti),
-            humidity,
-            dewpoint_spread,
-            temp,
-        )
-        _LOGGER.debug(
-            f"RainProb: [{forecast_model}] Result - "
-            f"base={weighted_zambretti + weighted_negretti:.0f}%, "
-            f"final={probability}% (confidence={confidence})"
-        )
+        
+        # Determine confidence based on model consensus
+        if abs(zambretti_prob - negretti_prob) <= 15:
+            confidence = "high"  # Models agree
+        elif abs(zambretti_prob - negretti_prob) <= 30:
+            confidence = "medium"  # Some disagreement
+        else:
+            confidence = "low"  # Models disagree significantly
 
         # Get current rain rate
         rain_rate_sensor_id = self.config_entry.options.get(CONF_RAIN_RATE_SENSOR) or self.config_entry.data.get(CONF_RAIN_RATE_SENSOR)
@@ -2719,38 +2720,21 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         self._state = round(probability)
         _LOGGER.debug(f"RainProb: Setting state to: {round(probability)}%")
 
-        # Calculate base probability based on selected model
-        # ✅ FIXED v3.1.10: Respect model selection AND use dynamic weights
-        if forecast_model == FORECAST_MODEL_ZAMBRETTI:
-            base_prob = zambretti_prob  # Only Zambretti
-        elif forecast_model == FORECAST_MODEL_NEGRETTI:
-            base_prob = negretti_prob   # Only Negretti
-        else:  # FORECAST_MODEL_ENHANCED
-            # ✅ NEW v3.1.10: Use weighted average, not simple average!
-            # Same logic as Enhanced sensor for consistency
-            base_prob = (zambretti_prob * zambretti_weight) + (negretti_prob * negretti_weight)
-            _LOGGER.debug(
-                f"RainProb: Weighted base_prob = "
-                f"({zambretti_prob}% × {zambretti_weight:.2f}) + "
-                f"({negretti_prob}% × {negretti_weight:.2f}) = {base_prob:.1f}%"
-            )
-
+        # ✅ v3.1.16: Simplified attributes - removed redundant intermediate values
+        # Only show final probability and key factors that influenced it
         self._attributes = {
-            "forecast_model": forecast_model,  # Show which model is used
-            "zambretti_probability": round(zambretti_prob),
-            "negretti_probability": round(negretti_prob),
-            "base_probability": round(base_prob),  # Now uses weighted average!
-            "enhanced_probability": round(probability),
+            "forecast_model": forecast_model,
+            "probability": round(probability),  # Final weighted probability
             "confidence": confidence,
-            "humidity": humidity,
-            "dewpoint_spread": dewpoint_spread,
-            "current_rain_rate": current_rain,
             "temperature": temperature,
             "precipitation_type": precipitation_type,
-            "factors_used": self._get_factors_used(forecast_model, humidity, dewpoint_spread),
-            # ✅ NEW v3.1.10: Export weights for transparency
+            "current_rain_rate": current_rain,
+            # Model weights (for Enhanced model only)
             "zambretti_weight": round(zambretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
             "negretti_weight": round(negretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
+            # Optional: Keep individual model values for debugging (can be removed later)
+            "zambretti_probability": round(zambretti_prob) if _LOGGER.isEnabledFor(logging.DEBUG) else None,
+            "negretti_probability": round(negretti_prob) if _LOGGER.isEnabledFor(logging.DEBUG) else None,
         }
 
     def _get_factors_used(self, forecast_model, humidity, dewpoint_spread):
