@@ -2037,33 +2037,19 @@ class HourlyForecastGenerator:
             )
             
             # ═══════════════════════════════════════════════════════════════
-            # ✅ v3.1.15: ADJUST CONDITION BASED ON RAIN PROBABILITY
-            # Same logic as legacy path - ensures consistency across all models
-            # Scientific basis: WMO (2018) - precipitation forecast consistency
+            # ✅ v3.1.15: Rain probability COMPLEMENTS forecast, does not override
+            # Scientific basis: WMO (2018) - probability supplements deterministic forecast
+            # 
+            # Forecast condition from code mapping is AUTHORITATIVE
+            # Rain_prob provides additional context but should not contradict forecast
             # ═══════════════════════════════════════════════════════════════
             hour_offset = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600
             
-            if rain_prob >= 75 and condition not in ("rainy", "pouring", "lightning-rainy", "snowy", "snowy-rainy"):
-                # High rain probability (75%+) → upgrade to rainy if not already
-                _LOGGER.debug(
-                    f"🌧️ Enhanced h{hour_offset:.0f}: RAIN PROB UPGRADE {condition} → rainy "
-                    f"(prob={rain_prob}% ≥ 75%, strong precipitation signal)"
-                )
-                condition = "rainy"
-            elif rain_prob >= 60 and condition in ("sunny", "clear-night", "partlycloudy"):
-                # Moderate-high rain probability (60-74%) → upgrade to cloudy minimum
-                _LOGGER.debug(
-                    f"☁️ Enhanced h{hour_offset:.0f}: RAIN PROB UPGRADE {condition} → cloudy "
-                    f"(prob={rain_prob}% ≥ 60%, precipitation likely)"
-                )
-                condition = "cloudy"
-            elif rain_prob <= 15 and condition in ("rainy", "pouring", "lightning-rainy"):
-                # Very low rain probability (≤15%) → downgrade to cloudy
-                _LOGGER.debug(
-                    f"☀️ Enhanced h{hour_offset:.0f}: RAIN PROB DOWNGRADE {condition} → cloudy "
-                    f"(prob={rain_prob}% ≤ 15%, precipitation unlikely)"
-                )
-                condition = "cloudy"
+            # Log for transparency
+            _LOGGER.debug(
+                f"Enhanced h{hour_offset:.0f}: condition={condition}, rain_prob={rain_prob}% "
+                f"(code={condition_code})"
+            )
             
             forecast: Forecast = {
                 "datetime": future_time.isoformat(),
