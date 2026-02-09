@@ -17,22 +17,25 @@ class TestForecastConditionMapping:
     def test_rain_codes_stay_rainy(self):
         """Test rain codes return correct condition based on timeframe.
 
-        - Codes 15-17: "Rain LATER" → cloudy (not raining yet)
-        - Codes 18+: "Rain NOW/frequent" → rainy (for forecast)
-
-        When temperature is below 2°C, rain is converted to snow for forecasts.
+        NEW (v3.1.16):
+        - Threshold lowered from 80% to 70% (code 16+ is rainy)
+        - Code 15: 65% → cloudy (below threshold)
+        - Codes 16+: 70%+ → rainy (above threshold)
+        - Current state WITH rain sensor: cloudy (sensor determines rain)
+        - Current state WITHOUT rain sensor: rainy (show forecast icon)
         """
-        # Code 15 = Some Rain (later) → cloudy (current state)
+        # Code 15 = Some Rain (65% probability) → cloudy (below 70% threshold)
         result = forecast_code_to_condition(15, is_night=False, temperature=10.0, is_current_state=True)
         assert result == "cloudy"
 
-        # Same code for forecast → still cloudy (rain comes later, not in 1-3h)
+        # Same code for forecast → still cloudy
         result = forecast_code_to_condition(15, is_night=False, temperature=0.0, is_current_state=False)
         assert result == "cloudy"
 
-        # Code 18 = Rain At Times → rainy (for FORECAST, not current)
-        result_current = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=True)
-        assert result_current == "cloudy"  # Current: sensor determines precipitation
+        # Code 18 = Rain At Times (80% probability) → rainy
+        # For CURRENT state WITHOUT rain sensor: show forecast icon (rainy)
+        result_current = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=True, has_rain_sensor=False)
+        assert result_current == "rainy"  # Current without sensor: show forecast icon
 
         # At -5°C, rain is converted to snow for forecast
         result_forecast = forecast_code_to_condition(18, is_night=False, temperature=-5.0, is_current_state=False)

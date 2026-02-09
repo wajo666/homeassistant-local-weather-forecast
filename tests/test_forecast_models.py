@@ -463,31 +463,33 @@ class TestUniversalConditionMapping:
         """Test unsettled weather during day for Zambretti."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Code 17 = "Unsettled, rain later" (letter R)
-        # This is NOT partlycloudy - it's heavy clouds with rain threat (rain LATER, not now)
-        # Correct HA condition: cloudy (overcast with rain approaching)
+        # Code 17 = "Unsettled, rain later" (letter R, 75% probability)
+        # NEW: Threshold lowered to 70%, so code 16+ is rainy
+        # For forecast: Show predicted precipitation (rainy)
         condition = map_forecast_to_condition(
             forecast_text="Nestále, neskôr dážď",  # "Unsettled, rain later"
             forecast_num=17,
             is_night_func=lambda: False,
-            source="Zambretti"
+            source="Zambretti",
+            is_current_state=False  # Forecast
         )
-        assert condition == "cloudy"  # Correct: heavy clouds/rain threat, not partly cloudy
+        assert condition == "rainy"  # NEW: 75% probability → rainy (threshold 70%)
 
     def test_zambretti_unsettled_night(self):
         """Test unsettled weather during night for Zambretti."""
         from custom_components.local_weather_forecast.forecast_mapping import map_forecast_to_condition
 
-        # Code 16 = "Unsettled, short fine intervals" (letter Q)
-        # This is heavy clouds with brief clear periods (rain threat)
-        # Correct HA condition: cloudy (overcast with rain threat, not partly cloudy)
+        # Code 16 = "Unsettled, short fine intervals" (letter Q, 70% probability)
+        # NEW: Threshold lowered to 70%, so code 16+ is rainy
+        # For forecast: Show predicted precipitation (rainy)
         condition = map_forecast_to_condition(
             forecast_text="Nestále, krátke jasné intervaly",  # "Unsettled, short fine intervals"
             forecast_num=16,
             is_night_func=lambda: True,
-            source="Zambretti"
+            source="Zambretti",
+            is_current_state=False  # Forecast
         )
-        assert condition == "cloudy"  # Correct: heavy clouds/rain threat
+        assert condition == "rainy"  # NEW: 70% probability → rainy (threshold 70%)
 
     def test_negretti_partly_cloudy(self):
         """Test partly cloudy for Negretti."""

@@ -120,7 +120,8 @@ def forecast_code_to_condition(
     code: int,
     is_night: bool = False,
     temperature: float | None = None,
-    is_current_state: bool = False
+    is_current_state: bool = False,
+    has_rain_sensor: bool = False
 ) -> str:
     """Map internal forecast code to Home Assistant weather condition.
 
@@ -131,8 +132,10 @@ def forecast_code_to_condition(
         is_night: Whether it's nighttime (for sunny → clear-night conversion)
         temperature: Temperature in °C (for rain → snow conversion)
         is_current_state: True if this is for CURRENT state (0h), False for future forecast
-                         Current state returns CLOUDINESS only (no precipitation type)
-                         Future forecast returns full prediction (including precipitation)
+        has_rain_sensor: True if rain sensor is available and active
+                        - If True + is_current_state: Show cloudiness only (sensor determines rain)
+                        - If False + is_current_state: Show forecast icon (rainy/pouring/etc.)
+                        - If False (forecast): Always show full prediction
 
     Returns:
         HA weather condition string
@@ -150,64 +153,62 @@ def forecast_code_to_condition(
         # 6-10: Fairly fine, possible showers
         condition = "partlycloudy"
 
-    # Unsettled/Changeable (11-17)
+    # Unsettled/Changeable (11-15)
     elif code <= 12:
         # 11-12: Unsettled but improving → cloudy (realistic for "unsettled")
         condition = "cloudy"
     elif code <= 14:
         # 13-14: Showery, bright intervals → cloudy (showers ≠ continuous rain!)
         condition = "cloudy"
-    elif code <= 17:
-        # 15-17: Changeable/Unsettled with "rain LATER" prediction
-        # These forecasts say "neskôr dáž��" (rain later, 3-6h), NOT "dážď teraz" (rain now)
-        # Example texts:
-        #   15: "Changeable, some rain" (premenlivé s občasným dažďom)
-        #   16: "Unsettled, short fine intervals" (nestále s krátkymi jasnými intervalmi)
-        #   17: "Unsettled, rain later" (nestále, NESKÔR dážď) ← KEY!
-        #
-        # CORRECT MAPPING:
-        # - Always map to "cloudy" (heavy clouds, rain threat, but NOT raining yet)
-        # - Rain sensor determines if actually precipitating
-        # - For 3-6h forecasts, these will naturally progress to rainy codes (18-23)
-        condition = "cloudy"  # Heavy clouds with rain threat (but not raining yet)
+    elif code == 15:
+        # 15: Changeable with some rain (65% probability)
+        # Borderline case - use cloudy as rain is described as "some" (občasný)
+        condition = "cloudy"
 
-    # Rainy weather (18-23)
+    # Rainy weather (16-23) - THRESHOLD LOWERED TO 70%
     elif code <= 23:
-        # 18-23: ACTIVE rain predictions ("rain at times", "frequent rain", "rain now")
-        # These forecasts say "dážď" (rain NOW/frequent), NOT "neskôr dážď" (rain later)
+        # 16-23: ACTIVE rain predictions ("rain", "rain at times", "frequent rain")
+        # Probability range: 70-95%
         # Example texts:
-        #   18: "Unsettled, rain at times" (nestále s občasným dažďom)
-        #   19: "Very unsettled, finer at times" (veľmi premenlivé a daždivé)
-        #   20: "Rain at times, worse later" (občasný dážď, neskôr zhoršenie)
-        #   21: "Rain at times, very unsettled" (občasný dážď, veľmi nestále)
-        #   22: "Rain at frequent intervals" (častý dážď)
-        #   23: "Very unsettled, rain" (dážď, veľmi nestále)
+        #   16: "Unsettled, short fine intervals" (nestále s krátkymi jasnými intervalmi) - 70%
+        #   17: "Unsettled, rain later" (nestále, neskôr dážď) - 75%
+        #   18: "Unsettled, rain at times" (nestále s občasným dažďom) - 80%
+        #   19: "Very unsettled, finer at times" (veľmi premenlivé a daždivé) - 85%
+        #   20: "Rain at times, worse later" (občasný dážď, neskôr zhoršenie) - 85%
+        #   21: "Rain at times, very unsettled" (občasný dážď, veľmi nestále) - 90%
+        #   22: "Rain at frequent intervals" (častý dážď) - 90%
+        #   23: "Very unsettled, rain" (dážď, veľmi nestále) - 95%
         #
-        # CORRECT MAPPING:
-        # - For CURRENT state (0h): Show cloudiness only (rain sensor determines actual precipitation)
-        # - For FORECAST (1-24h): Show predicted precipitation (rainy)
-        if is_current_state:
-            condition = "cloudy"  # Current: overcast (rain conditions, sensor determines if raining)
+        # LOGIC:
+        # - CURRENT state WITH rain sensor: Show cloudiness only (sensor determines actual rain)
+        # - CURRENT state WITHOUT rain sensor: Show forecast icon (rainy)
+        # - FORECAST (1-24h): Always show predicted precipitation (rainy)
+        if is_current_state and has_rain_sensor:
+            condition = "cloudy"  # Current: overcast (rain sensor determines if actually raining)
         else:
-            condition = "rainy"   # Forecast: predicted active precipitation
+            condition = "rainy"   # Forecast OR no sensor: predicted precipitation
 
     # Very unsettled, stormy (24-25)
     elif code == 24:
-        # 24: Stormy, possibly improving
-        # For CURRENT state (0h): Show cloudiness only
-        # For FUTURE forecast (1-24h): Show predicted precipitation
-        if is_current_state:
-            condition = "cloudy"  # Current: dark clouds (storm conditions)
+        # 24: Stormy, possibly improving (95% probability)
+        # LOGIC:
+        # - CURRENT state WITH rain sensor: Show cloudiness (sensor determines rain)
+        # - CURRENT state WITHOUT rain sensor: Show forecast icon (pouring)
+        # - FORECAST (1-24h): Always show predicted precipitation (pouring)
+        if is_current_state and has_rain_sensor:
+            condition = "cloudy"  # Current: dark clouds (sensor determines storm)
         else:
-            condition = "pouring"  # Future: predicted heavy rain
+            condition = "pouring"  # Forecast OR no sensor: predicted heavy rain
     else:
-        # 25: Stormy, much rain
-        # For CURRENT state (0h): Show cloudiness only
-        # For FUTURE forecast (1-24h): Show predicted precipitation
-        if is_current_state:
-            condition = "cloudy"  # Current: storm clouds (thunderstorm conditions)
+        # 25: Stormy, much rain (95% probability)
+        # LOGIC:
+        # - CURRENT state WITH rain sensor: Show cloudiness (sensor determines rain)
+        # - CURRENT state WITHOUT rain sensor: Show forecast icon (lightning-rainy)
+        # - FORECAST (1-24h): Always show predicted precipitation (lightning-rainy)
+        if is_current_state and has_rain_sensor:
+            condition = "cloudy"  # Current: storm clouds (sensor determines thunderstorm)
         else:
-            condition = "lightning-rainy"  # Future: predicted thunderstorm
+            condition = "lightning-rainy"  # Forecast OR no sensor: predicted thunderstorm
 
     # ✅ ENABLED: Automatic snow/mixed precipitation conversion FOR FORECASTS ONLY
     #
@@ -230,7 +231,7 @@ def forecast_code_to_condition(
     _LOGGER.debug(
         f"Code→Condition: code={code} → {condition} "
         f"(night={is_night}, temp={temperature if temperature is not None else 'N/A'}°C, "
-        f"current={is_current_state})"
+        f"current={is_current_state}, rain_sensor={has_rain_sensor})"
     )
 
     return condition
@@ -405,7 +406,8 @@ def map_forecast_to_condition(
     is_night_func: Callable[[], bool] | None = None,
     temperature: float | None = None,
     source: str = "Unknown",
-    is_current_state: bool = False
+    is_current_state: bool = False,
+    has_rain_sensor: bool = False
 ) -> str:
     """Universal forecast mapping: ANY input → HA condition.
 
@@ -426,6 +428,7 @@ def map_forecast_to_condition(
         temperature: Temperature in °C (for snow conversion)
         source: Source name for logging
         is_current_state: True if this is for CURRENT state (0h), False for future forecast
+        has_rain_sensor: True if rain sensor is available and active
 
     Returns:
         HA weather condition string
@@ -452,7 +455,7 @@ def map_forecast_to_condition(
     is_night = is_night_func() if is_night_func else False
 
     # Step 3: Map code → condition
-    condition = forecast_code_to_condition(code, is_night, temperature, is_current_state)
+    condition = forecast_code_to_condition(code, is_night, temperature, is_current_state, has_rain_sensor)
 
     _LOGGER.debug(
         f"🎯 UNIFIED[{source}]: text='{forecast_text}', num={forecast_num}, "

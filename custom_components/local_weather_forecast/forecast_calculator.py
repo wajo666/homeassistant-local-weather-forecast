@@ -1626,33 +1626,26 @@ class HourlyForecastGenerator:
             is_night = self._is_night(future_time)
             is_daytime = not is_night
 
-            # ✅ FIX: Determine if this is CURRENT state (0-1h) or FUTURE forecast (2h+)
+            # ✅ FIX: Hourly forecasts are PREDICTIONS, not current state
             # Logic:
-            # - 0-1h: Show cloudiness (smooth transition from current weather)
-            # - 2h+: Show predicted precipitation (based on forecast model)
+            # - ALL hourly forecasts (0-24h): Show PREDICTED precipitation
+            # - Rain sensor is ONLY for weather entity (current state)
+            # - Hour 0 is still a FORECAST (what's expected), not current state
             #
             # NOTE: Hourly forecasts use ONLY forecast model (Zambretti/Negretti/Enhanced)
             #       Rain sensor is used ONLY for current weather (weather entity state)
-            # For forecasts, is_current_state should be False to show predicted precipitation
+            # For all forecasts, is_current_state should be False to show predicted precipitation
             is_current_state = False
             
-            # ✅ SPECIAL CASE: Hour 0 with persistence model - use actual weather condition
-            # Persistence model should reflect CURRENT state, not forecast mapping
-            if hour_offset == 0 and self.forecast_model == FORECAST_MODEL_ENHANCED and self.current_condition:
-                condition = self.current_condition
-                _LOGGER.debug(
-                    f"🔒 Hour 0 (PERSISTENCE): Using actual weather condition → {condition}"
-                )
-            else:
-                # Normal forecast mapping
-                condition = map_forecast_to_condition(
-                    forecast_letter=forecast_letter,
-                    forecast_num=forecast_num,
-                    is_night_func=lambda: is_night,
-                    temperature=future_temp,
-                    source=f"HourlyForecast_{self.forecast_model}",
-                    is_current_state=is_current_state
-                )
+            # Normal forecast mapping for ALL hours (including hour 0)
+            condition = map_forecast_to_condition(
+                forecast_letter=forecast_letter,
+                forecast_num=forecast_num,
+                is_night_func=lambda: is_night,
+                temperature=future_temp,
+                source=f"HourlyForecast_{self.forecast_model}",
+                is_current_state=is_current_state
+            )
 
             _LOGGER.debug(
                 f"Final condition for {future_time.strftime('%H:%M')}: "
@@ -1661,19 +1654,19 @@ class HourlyForecastGenerator:
             )
 
             # ═══════════════════════════════════════════════════════════════
-            # HUMIDITY PREDICTION AND FINE-TUNING FOR FORECASTS
-            # Calculate future humidity based on temperature change (Clausius-Clapeyron)
-            # Then apply humidity adjustments to forecast conditions
+            # HUMIDITY PREDICTION FOR DERIVED PARAMETERS
+            # Calculate future humidity for dewpoint and apparent temperature
+            # NO condition adjustments - trust the barometric models!
             # ═══════════════════════════════════════════════════════════════
             humidity = None  # Default if no humidity data available
             
             if hasattr(self.temperature_model, 'humidity') and self.temperature_model.humidity is not None:
                 current_humidity = self.temperature_model.humidity
-                current_temp = self.temperature_model.current_temp  # ✅ Fixed: use current_temp not current_temperature
+                current_temp = self.temperature_model.current_temp
                 
                 # Only proceed if current data is valid
                 if 0 <= current_humidity <= 100 and current_temp is not None:
-                    # Calculate future humidity based on temperature change
+                    # Calculate future humidity based on temperature change (Clausius-Clapeyron)
                     from .calculations import calculate_future_humidity
                     
                     pressure_change = future_pressure - self.pressure_model.current_pressure
@@ -1693,55 +1686,6 @@ class HourlyForecastGenerator:
                             f"{current_humidity:.1f}% → {predicted_humidity:.1f}% "
                             f"(T: {current_temp:.1f}°C → {future_temp:.1f}°C, ΔP={pressure_change:+.1f}hPa)"
                         )
-                    
-                    # Apply humidity adjustments to forecast condition
-                    original_condition = condition
-                    
-                    # WORSEN conditions for high humidity
-                    if humidity > 90:
-                        # Very high humidity → worsen significantly
-                        if condition == "partlycloudy":
-                            condition = "cloudy"
-                            _LOGGER.debug(
-                                f"🌧️ Forecast h{hour_offset}: HUMIDITY ADJUSTED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% > 90%, very wet)"
-                            )
-                        elif condition in ("sunny", "clear-night"):
-                            condition = "partlycloudy"
-                            _LOGGER.debug(
-                                f"🌧️ Forecast h{hour_offset}: HUMIDITY ADJUSTED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% > 90%, moisture present)"
-                            )
-                    elif humidity > 80:
-                        # High humidity → worsen moderately
-                        if condition == "partlycloudy":
-                            condition = "cloudy"
-                            _LOGGER.debug(
-                                f"🌧️ Forecast h{hour_offset}: HUMIDITY ADJUSTED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% > 80%, high moisture)"
-                            )
-                        elif condition in ("sunny", "clear-night"):
-                            condition = "partlycloudy"
-                            _LOGGER.debug(
-                                f"🌧️ Forecast h{hour_offset}: HUMIDITY ADJUSTED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% > 80%, increased moisture)"
-                            )
-                    
-                    # IMPROVE conditions for low humidity
-                    elif humidity < 40:
-                        # Low humidity → improve conditions
-                        if condition == "cloudy":
-                            condition = "partlycloudy"
-                            _LOGGER.debug(
-                                f"☀️ Forecast h{hour_offset}: HUMIDITY IMPROVED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% < 40%, dry air)"
-                            )
-                        elif condition == "partlycloudy":
-                            condition = "clear-night" if is_night else "sunny"
-                            _LOGGER.debug(
-                                f"☀️ Forecast h{hour_offset}: HUMIDITY IMPROVED {original_condition} → {condition} "
-                                f"(predicted RH={humidity:.1f}% < 40%, very dry)"
-                            )
 
             # Calculate rain probability from selected model (Zambretti/Negretti/Enhanced)
             # NOTE: Rain override is NOT applied to forecasts - only to current weather display
@@ -2016,6 +1960,40 @@ class HourlyForecastGenerator:
                 is_current_state=is_current_state
             )
             
+            # ═══════════════════════════════════════════════════════════════
+            # HUMIDITY PREDICTION FOR DERIVED PARAMETERS
+            # Calculate future humidity for dewpoint and apparent temperature
+            # NO condition adjustments - trust the orchestrated models!
+            # ═══════════════════════════════════════════════════════════════
+            humidity = None
+            hour_offset = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600
+            
+            if hasattr(self.temperature_model, 'humidity') and self.temperature_model.humidity is not None:
+                current_humidity = self.temperature_model.humidity
+                current_temp = self.temperature_model.current_temp
+                
+                if 0 <= current_humidity <= 100 and current_temp is not None:
+                    # Calculate future humidity based on temperature change (Clausius-Clapeyron)
+                    from .calculations import calculate_future_humidity
+                    
+                    pressure_change = pressure - self.pressure_model.current_pressure
+                    predicted_humidity = calculate_future_humidity(
+                        current_temperature=current_temp,
+                        current_humidity=current_humidity,
+                        future_temperature=temperature,
+                        pressure_change=pressure_change
+                    )
+                    
+                    # Use predicted humidity if available, otherwise fall back to current
+                    humidity = predicted_humidity if predicted_humidity is not None else current_humidity
+                    
+                    if predicted_humidity is not None:
+                        _LOGGER.debug(
+                            f"💧 Enhanced h{hour_offset:.0f}: RH prediction "
+                            f"{current_humidity:.1f}% → {predicted_humidity:.1f}% "
+                            f"(T: {current_temp:.1f}°C → {temperature:.1f}°C, ΔP={pressure_change:+.1f}hPa)"
+                        )
+            
             # Calculate rain probability
             rain_prob = rain_calc.calculate(
                 current_pressure=self.pressure_model.current_pressure,
@@ -2035,13 +2013,30 @@ class HourlyForecastGenerator:
             # Rain_prob provides additional QUANTITATIVE context (e.g., 75%)
             # but DOES NOT change the icon - the icon is already correct!
             # ═══════════════════════════════════════════════════════════════
-            hour_offset = (future_time - datetime.now(timezone.utc)).total_seconds() / 3600
             
             # Log for transparency
             _LOGGER.debug(
                 f"Enhanced h{hour_offset:.0f}: condition={condition}, rain_prob={rain_prob}% "
                 f"(code={condition_code})"
             )
+            
+            # Calculate dew point from predicted temperature and humidity
+            dewpoint_temp = None
+            if humidity is not None and 0 < humidity <= 100:
+                from .calculations import calculate_dewpoint
+                dewpoint_temp = calculate_dewpoint(temperature, humidity)
+
+            # Calculate apparent temperature (feels-like) from predicted conditions
+            apparent_temp = None
+            if humidity is not None:
+                from .calculations import calculate_apparent_temperature
+                # Estimate future wind speed (currently use current, could be improved)
+                future_wind_speed = self.wind_speed  # TODO: Add wind speed prediction
+                apparent_temp = calculate_apparent_temperature(
+                    temperature,
+                    humidity,
+                    future_wind_speed
+                )
             
             forecast: Forecast = {
                 "datetime": future_time.isoformat(),
@@ -2052,6 +2047,14 @@ class HourlyForecastGenerator:
                 "precipitation": None,
                 "native_precipitation": None,
                 "is_daytime": not is_night,
+                # ✅ NEW: Additional forecast data (same as legacy path)
+                "pressure": round(pressure, 1) if pressure else None,
+                "native_pressure": round(pressure, 1) if pressure else None,
+                "humidity": round(humidity, 1) if humidity is not None else None,
+                "dew_point": round(dewpoint_temp, 1) if dewpoint_temp is not None else None,
+                "native_dew_point": round(dewpoint_temp, 1) if dewpoint_temp is not None else None,
+                "apparent_temperature": round(apparent_temp, 1) if apparent_temp is not None else None,
+                "native_apparent_temp": round(apparent_temp, 1) if apparent_temp is not None else None,
             }
             
             forecasts.append(forecast)
