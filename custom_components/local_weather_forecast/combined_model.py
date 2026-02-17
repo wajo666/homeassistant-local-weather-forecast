@@ -347,13 +347,24 @@ def calculate_combined_rain_probability(
     Returns:
         Combined rain probability (0-100)
     """
+    # ✅ FIXED: Handle None values for letter codes
+    # If letter is None or invalid, use default 'M' (middle forecast, 50% probability)
+    if zambretti_letter is None or not isinstance(zambretti_letter, str) or len(zambretti_letter) == 0:
+        _LOGGER.debug(f"Invalid zambretti_letter={zambretti_letter}, using default 'M'")
+        zambretti_letter = 'M'
+    
+    if negretti_letter is None or not isinstance(negretti_letter, str) or len(negretti_letter) == 0:
+        _LOGGER.debug(f"Invalid negretti_letter={negretti_letter}, using default 'M'")
+        negretti_letter = 'M'
+    
     # Import rain probability mapping
     try:
         from .forecast_calculator import RainProbabilityCalculator
 
         # Convert letter to forecast code (A=0, B=1, ..., Z=25)
-        zambretti_code = ord(zambretti_letter) - ord('A')
-        negretti_code = ord(negretti_letter) - ord('A')
+        # Clamp to valid range (A-Z) to prevent index errors
+        zambretti_code = max(0, min(25, ord(zambretti_letter.upper()) - ord('A')))
+        negretti_code = max(0, min(25, ord(negretti_letter.upper()) - ord('A')))
 
         # Get base rain probability from universal CODE mapping
         zambretti_rain = RainProbabilityCalculator.CODE_RAIN_PROB.get(

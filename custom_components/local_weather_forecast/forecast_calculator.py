@@ -1585,10 +1585,15 @@ class HourlyForecastGenerator:
                     if not forecast_letter:
                         forecast_letter = "A"  # Fallback
 
+                    # ✅ FIXED: Ensure letter codes are not None before calculating probability
+                    # If either letter is None, use fallback values
+                    safe_zambretti_letter = zambretti_letter if zambretti_letter else "M"
+                    safe_negretti_letter = negretti_letter if negretti_letter else "M"
+
                     # Calculate combined rain probability
                     combined_rain = calculate_combined_rain_probability(
-                        zambretti_letter=zambretti_letter,
-                        negretti_letter=negretti_letter,
+                        zambretti_letter=safe_zambretti_letter,
+                        negretti_letter=safe_negretti_letter,
                         zambretti_weight=zambretti_weight,
                         negretti_weight=negretti_weight
                     )
@@ -2088,10 +2093,12 @@ class DailyForecastGenerator:
             List of daily Forecast objects
         """
         # Generate detailed hourly forecasts
+        # ✅ IMPROVED: Use 1-hour intervals for better daily aggregation accuracy
+        # Previous 3-hour intervals could miss important weather changes
         total_hours = days * 24
         hourly_forecasts = self.hourly_generator.generate(
             hours_count=total_hours,
-            interval_hours=3  # 3-hour intervals for efficiency
+            interval_hours=1  # 1-hour intervals for accurate daily aggregation
         )
 
         if not hourly_forecasts:
@@ -2120,15 +2127,18 @@ class DailyForecastGenerator:
             daily_temp_max = round(max(temps), 1)
             daily_temp_min = round(min(temps), 1)
 
-            # Find most common condition (daytime hours only)
-            # If tie, select the worst (highest priority) condition
+            # ═══════════════════════════════════════════════════════════════
+            # ✅ IMPROVED: Weighted condition selection for daily forecast
+            # Strategy:
+            # 1. Priority-based: Precipitation always wins (rainy > cloudy > clear)
+            # 2. Time-weighted: Afternoon (12-16) has 2× weight vs morning/evening
+            # 3. Trend-aware: If conditions worsen, use worse condition
+            # ═══════════════════════════════════════════════════════════════
             daytime_hours = [
                 f for f in day_hours
                 if f.get("datetime") and 7 <= datetime.fromisoformat(f.get("datetime", "")).hour <= 19
             ]
             if daytime_hours:
-                conditions = [f.get("condition", "cloudy") for f in daytime_hours]
-
                 # Priority system: precipitation > cloudiness > clear
                 # Higher number = worse weather = higher priority
                 CONDITION_PRIORITY = {
@@ -2148,37 +2158,104 @@ class DailyForecastGenerator:
                     "exceptional": 9,      # Exceptional conditions
                 }
 
-                # Count frequency of each condition
-                from collections import Counter
-                condition_counts = Counter(conditions)
-
-                # Find maximum frequency
-                max_count = max(condition_counts.values())
-
-                # Get all conditions with maximum frequency (potential tie)
-                tied_conditions = [
-                    cond for cond, count in condition_counts.items()
-                    if count == max_count
+                # ✅ STEP 1: Check for ANY precipitation - it takes absolute priority
+                precipitation_conditions = ["lightning-rainy", "pouring", "rainy", "snowy-rainy", "snowy", "hail"]
+                has_precipitation = [
+                    f.get("condition") for f in daytime_hours
+                    if f.get("condition") in precipitation_conditions
                 ]
-
-                if len(tied_conditions) == 1:
-                    # No tie - use the most frequent
-                    daily_condition = tied_conditions[0]
+                
+                if has_precipitation:
+                    # Use the most severe precipitation condition
+                    daily_condition = max(has_precipitation, key=lambda c: CONDITION_PRIORITY.get(c, 0))
                     _LOGGER.debug(
-                        f"Daily condition (most frequent): {daily_condition} "
-                        f"({max_count}× out of {len(conditions)} hours)"
+                        f"Daily condition (precipitation priority): {daily_condition} "
+                        f"(found {len(has_precipitation)} precip hours out of {len(daytime_hours)} daytime)"
                     )
                 else:
-                    # Tie detected - select the worst (highest priority)
-                    daily_condition = max(
-                        tied_conditions,
-                        key=lambda c: CONDITION_PRIORITY.get(c, 0)
-                    )
-                    _LOGGER.debug(
-                        f"Daily condition (tie-break): {daily_condition} "
-                        f"(tied with {tied_conditions} at {max_count}×, "
-                        f"selected worst with priority={CONDITION_PRIORITY.get(daily_condition, 0)})"
-                    )
+                    # ✅ STEP 2: Check for WORSENING TREND
+                    # If conditions worsen significantly during the day, use worse condition
+                    # Compare morning (7-12) vs afternoon (12-19)
+                    morning_hours = [
+                        f for f in daytime_hours
+                        if 7 <= datetime.fromisoformat(f.get("datetime", "")).hour < 12
+                    ]
+                    afternoon_hours = [
+                        f for f in daytime_hours
+                        if 12 <= datetime.fromisoformat(f.get("datetime", "")).hour <= 19
+                    ]
+                    
+                    trend_adjusted = False
+                    if morning_hours and afternoon_hours:
+                        # Get worst condition in each period
+                        morning_worst = max(
+                            [f.get("condition", "sunny") for f in morning_hours],
+                            key=lambda c: CONDITION_PRIORITY.get(c, 0)
+                        )
+                        afternoon_worst = max(
+                            [f.get("condition", "sunny") for f in afternoon_hours],
+                            key=lambda c: CONDITION_PRIORITY.get(c, 0)
+                        )
+                        
+                        # If afternoon is significantly worse (≥2 priority levels)
+                        morning_priority = CONDITION_PRIORITY.get(morning_worst, 0)
+                        afternoon_priority = CONDITION_PRIORITY.get(afternoon_worst, 0)
+                        
+                        if afternoon_priority - morning_priority >= 2:
+                            # Worsening trend detected - use afternoon condition
+                            daily_condition = afternoon_worst
+                            trend_adjusted = True
+                            _LOGGER.debug(
+                                f"Daily condition (worsening trend): {daily_condition} "
+                                f"(morning={morning_worst}[{morning_priority}] → "
+                                f"afternoon={afternoon_worst}[{afternoon_priority}])"
+                            )
+                    
+                    if not trend_adjusted:
+                        # ✅ STEP 3: No precipitation, no trend - use WEIGHTED voting
+                        # Afternoon (12-16) gets 2× weight
+                        weighted_conditions = []
+                        for f in daytime_hours:
+                            hour = datetime.fromisoformat(f.get("datetime", "")).hour
+                            condition = f.get("condition", "cloudy")
+                            
+                            # Afternoon hours (12-16) have 2× weight
+                            weight = 2.0 if 12 <= hour <= 16 else 1.0
+                            
+                            # Add condition multiple times based on weight
+                            weighted_conditions.extend([condition] * int(weight))
+                        
+                        # Count weighted frequencies
+                        from collections import Counter
+                        condition_counts = Counter(weighted_conditions)
+                        
+                        # Find maximum frequency
+                        max_count = max(condition_counts.values())
+                        
+                        # Get all conditions with maximum frequency (potential tie)
+                        tied_conditions = [
+                            cond for cond, count in condition_counts.items()
+                            if count == max_count
+                        ]
+                        
+                        if len(tied_conditions) == 1:
+                            # No tie - use the most frequent (weighted)
+                            daily_condition = tied_conditions[0]
+                            _LOGGER.debug(
+                                f"Daily condition (weighted vote): {daily_condition} "
+                                f"(weight={max_count} out of {len(weighted_conditions)} weighted)"
+                            )
+                        else:
+                            # Tie detected - select the worst (highest priority)
+                            daily_condition = max(
+                                tied_conditions,
+                                key=lambda c: CONDITION_PRIORITY.get(c, 0)
+                            )
+                            _LOGGER.debug(
+                                f"Daily condition (tie-break): {daily_condition} "
+                                f"(tied with {tied_conditions} at weight={max_count}, "
+                                f"selected worst with priority={CONDITION_PRIORITY.get(daily_condition, 0)})"
+                            )
             else:
                 daily_condition = day_hours[len(day_hours) // 2].get("condition", "cloudy")
 
@@ -2186,14 +2263,33 @@ class DailyForecastGenerator:
             if daily_condition == "clear-night":
                 daily_condition = "sunny"
 
-            # Average rain probability
-            rain_probs = [
+            # ✅ IMPROVED: Weighted rain probability for daily forecast
+            # Strategy:
+            # 1. Use MAXIMUM probability during daytime hours (most relevant for planning)
+            # 2. Alternative: Weighted average with afternoon (12-16) having 2× weight
+            # Using maximum is more conservative and useful for planning
+            daytime_rain_probs = [
                 f.get("precipitation_probability", 0)
-                for f in day_hours
+                for f in daytime_hours
+                if f.get("precipitation_probability") is not None
             ]
-            # Filter None values before sum
-            valid_probs = [p for p in rain_probs if p is not None]
-            daily_rain_prob = round(sum(valid_probs) / len(valid_probs)) if valid_probs else 0
+            
+            if daytime_rain_probs:
+                # Use maximum daytime probability (most conservative, best for planning)
+                daily_rain_prob = max(daytime_rain_probs)
+                _LOGGER.debug(
+                    f"Daily rain probability: max={daily_rain_prob}% "
+                    f"(from {len(daytime_rain_probs)} daytime hours, "
+                    f"avg={sum(daytime_rain_probs)/len(daytime_rain_probs):.0f}%)"
+                )
+            else:
+                # Fallback: use all day hours
+                all_rain_probs = [
+                    f.get("precipitation_probability", 0)
+                    for f in day_hours
+                    if f.get("precipitation_probability") is not None
+                ]
+                daily_rain_prob = max(all_rain_probs) if all_rain_probs else 0
 
             # SNOW CONVERSION for daily forecasts
             # Convert rainy/pouring to snowy when daily average temperature is at or below freezing
