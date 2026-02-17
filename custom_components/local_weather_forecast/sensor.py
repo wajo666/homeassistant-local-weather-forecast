@@ -147,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.16",
+            "sw_version": "3.1.17",
         }
 
     async def _wait_for_entity(
@@ -2571,7 +2571,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         else:
             _LOGGER.debug(f"RainProb: Cannot calculate dewpoint - temp={temp}, humidity={humidity}")
 
-        # ✅ FIXED v3.1.16: Removed duplicate enhancement layer
+        # ✅ FIXED v3.1.17: Removed duplicate enhancement layer
         # Zambretti/Negretti already use RainProbabilityCalculator (pressure/trend adjustments)
         # Enhanced model already does sophisticated dynamic weighting
         # Additional humidity/dewpoint enhancement was TOO AGGRESSIVE (+50% increase)
@@ -2720,7 +2720,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         self._state = round(probability)
         _LOGGER.debug(f"RainProb: Setting state to: {round(probability)}%")
 
-        # ✅ v3.1.16: Simplified attributes - removed redundant intermediate values
+        # ✅ v3.1.17: Simplified attributes - removed redundant intermediate values
         # Only show final probability and key factors that influenced it
         self._attributes = {
             "forecast_model": forecast_model,
@@ -2732,9 +2732,9 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             # Model weights (for Enhanced model only)
             "zambretti_weight": round(zambretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
             "negretti_weight": round(negretti_weight, 2) if forecast_model == FORECAST_MODEL_ENHANCED else None,
-            # Optional: Keep individual model values for debugging (can be removed later)
-            "zambretti_probability": round(zambretti_prob) if _LOGGER.isEnabledFor(logging.DEBUG) else None,
-            "negretti_probability": round(negretti_prob) if _LOGGER.isEnabledFor(logging.DEBUG) else None,
+            # Individual model probabilities - always visible
+            "zambretti_probability": round(zambretti_prob),
+            "negretti_probability": round(negretti_prob),
         }
 
     def _get_factors_used(self, forecast_model, humidity, dewpoint_spread):

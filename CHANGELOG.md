@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.17] - 2026-02-17
+
+### Changed
+- Rain probability sensor: Individual model probabilities (`zambretti_probability`, `negretti_probability`) now always visible
+  - Previously only shown when DEBUG logging was enabled
+  - Allows better transparency of how the enhanced model combines predictions
+
+
 ## [3.1.16] - 2026-02-17
 
 ### Fixed
