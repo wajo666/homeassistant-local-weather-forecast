@@ -133,7 +133,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.18",
+            sw_version="3.1.19",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -257,6 +257,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
         # 1. Sensors that didn't load during startup (will auto-refresh when they appear)
         # 2. Normal sensor updates during operation
         sensors_to_track = list(configured_sensors.values())
+        sensors_to_track += [
+            "sensor.local_forecast_pressurechange",
+            "sensor.local_forecast_temperaturechange",
+        ]
 
         if sensors_to_track:
             _LOGGER.debug(
@@ -2002,9 +2006,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the daily forecast using advanced models."""
         _LOGGER.debug("async_forecast_daily called - generating with advanced models")
 
-        result = await self.hass.async_add_executor_job(
-            self._generate_advanced_daily_forecast, 3
-        )
+        result = self._generate_advanced_daily_forecast(3)
         _LOGGER.debug(f"async_forecast_daily returning {len(result) if result else 0} days")
         return result
 
@@ -2012,9 +2014,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Return the hourly forecast using advanced models."""
         _LOGGER.debug("async_forecast_hourly called - generating with advanced models")
 
-        result = await self.hass.async_add_executor_job(
-            self._generate_advanced_hourly_forecast, 24
-        )
+        result = self._generate_advanced_hourly_forecast(24)
         _LOGGER.debug(f"async_forecast_hourly returning {len(result) if result else 0} hours")
         return result
 

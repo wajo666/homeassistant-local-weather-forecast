@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.19] - 2026-03-09
+
+### Fixed
+- **Thread-safety crash in forecast generation** - `async_forecast_daily` and `async_forecast_hourly` were using `async_add_executor_job` to run methods that access `hass.states` and entity properties, which are not thread-safe; forecast now runs directly on the event loop
+- **Forecast not updating after HA restart** - Internal sensors `sensor.local_forecast_pressurechange` and `sensor.local_forecast_temperaturechange` were missing from `sensors_to_track`; weather entity now refreshes when these sensors become available after startup
+- **Main forecast sensor not recalculating on pressure trend update** - `sensor.local_forecast` now tracks `sensor.local_forecast_pressurechange`, `sensor.local_forecast_temperaturechange` and `sensor.local_forecast_zambretti_detail`; Zambretti recalculates when 3-hour pressure trend updates
+- **Enhanced sensor not reacting to detail sensor timer updates** - `sensor.local_forecast_enhanced` now tracks `sensor.local_forecast_zambretti_detail` and `sensor.local_forecast_neg_zam_detail`; updates when 10-minute forecast timer fires
+
+
 ## [3.1.18] - 2026-03-09
 
 ### Fixed

@@ -147,7 +147,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.18",
+            "sw_version": "3.1.19",
         }
 
     async def _wait_for_entity(
@@ -325,6 +325,14 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
         # Filter out None values
         sensors_to_track = [s for s in sensors_to_track if s]
+
+        # Also track internal sensors - they update independently and feed into Zambretti
+        # and temperature forecast calculations
+        sensors_to_track += [
+            "sensor.local_forecast_pressurechange",
+            "sensor.local_forecast_temperaturechange",
+            "sensor.local_forecast_zambretti_detail",
+        ]
 
         self.async_on_remove(
             async_track_state_change_event(
@@ -1832,6 +1840,8 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         entities_to_track = [
             "weather.local_weather_forecast_weather",  # Weather entity
             "sensor.local_forecast",  # Main forecast sensor
+            "sensor.local_forecast_zambretti_detail",  # Detail sensor with 10-min timer
+            "sensor.local_forecast_neg_zam_detail",    # Detail sensor with 10-min timer
         ]
 
         # Track ALL configured sensors for automatic updates
