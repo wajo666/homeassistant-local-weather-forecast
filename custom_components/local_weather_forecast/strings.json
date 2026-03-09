@@ -54,6 +54,7 @@
           "pressure_type": "Pressure Type",
           "hemisphere": "Hemisphere",
           "forecast_model": "Forecast Model",
+          "language": "Forecast Language",
           "enable_weather_entity": "Enable Weather Entity"
         },
         "data_description": {
@@ -64,6 +65,7 @@
           "solar_radiation_sensor": "Solar radiation sensor (W/m² or lux - automatically converted) for accurate cloudiness detection and feels-like temperature (optional)",
           "hemisphere": "Your hemisphere for seasonal weather adjustments. Auto-detected from Home Assistant location (latitude >= 0 = North, < 0 = South).",
           "forecast_model": "Choose forecast algorithm: Enhanced (combines both, recommended ~98% accuracy), Zambretti (classic, optimized for rising/falling pressure), or Negretti-Zambra (slide rule method, conservative).",
+          "language": "Select the language for forecast text output. Overrides the Home Assistant system language.",
           "enable_weather_entity": "Create a weather entity that can be used in weather cards and automations"
         }
       }

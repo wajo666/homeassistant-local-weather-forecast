@@ -291,7 +291,7 @@ class TestWeatherAwareTemperatureIntegration:
     def test_temperature_realistic_with_rain(self):
         """Test temperature behaves realistically with rainy forecast."""
         weather_data = {
-            "start_time": datetime.now(timezone.utc),
+            "start_time": datetime.now(timezone.utc).replace(hour=20, minute=0, second=0, microsecond=0),
             "temperature": 18.0,
             "temperature_trend": 0.0,
             "pressure": 1005.0,

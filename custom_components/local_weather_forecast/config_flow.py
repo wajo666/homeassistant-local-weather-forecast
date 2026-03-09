@@ -18,6 +18,7 @@ from .const import (
     CONF_FORECAST_MODEL,
     CONF_HEMISPHERE,
     CONF_HUMIDITY_SENSOR,
+    CONF_LANGUAGE,
     CONF_PRESSURE_SENSOR,
     CONF_PRESSURE_TYPE,
     CONF_RAIN_RATE_SENSOR,
@@ -30,6 +31,7 @@ from .const import (
     DEFAULT_ENABLE_WEATHER_ENTITY,
     DEFAULT_FORECAST_MODEL,
     DEFAULT_HEMISPHERE,
+    DEFAULT_LANGUAGE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
     FORECAST_MODEL_ENHANCED,
@@ -37,6 +39,7 @@ from .const import (
     FORECAST_MODEL_ZAMBRETTI,
     HEMISPHERE_NORTH,
     HEMISPHERE_SOUTH,
+    LANGUAGES,
     PRESSURE_TYPE_ABSOLUTE,
     PRESSURE_TYPE_RELATIVE,
 )
@@ -330,7 +333,7 @@ class LocalWeatherForecastConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                # CONF_LANGUAGE removed - now uses Home Assistant UI language automatically
+                # Language can be configured after setup in Options flow
             }
         )
 
@@ -720,7 +723,18 @@ class LocalWeatherForecastOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                # CONF_LANGUAGE removed - now uses Home Assistant UI language automatically
+                vol.Optional(
+                    CONF_LANGUAGE,
+                    default=current_config.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=lang_code, label=lang_label)
+                            for lang_code, lang_label in LANGUAGES.items()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 # Feature toggles
                 vol.Optional(
                     CONF_ENABLE_WEATHER_ENTITY,

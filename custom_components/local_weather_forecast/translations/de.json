@@ -54,6 +54,7 @@
           "pressure_type": "Drucktyp",
           "hemisphere": "Hemisphäre",
           "forecast_model": "Vorhersagemodell",
+          "language": "Vorhersagesprache",
           "enable_weather_entity": "Wetter-Entität aktivieren"
         },
         "data_description": {
@@ -64,6 +65,7 @@
           "solar_radiation_sensor": "Solarstrahlungssensor für Wolkenerkennung und gefühlte Temperatur. Unterstützt W/m², lux - automatisch konvertiert (optional)",
           "hemisphere": "Ihre Hemisphäre für saisonale Wetteranpassungen. Automatisch erkannt aus Home Assistant Position (Breitengrad >= 0 = Nord, < 0 = Süd).",
           "forecast_model": "Wählen Sie Vorhersagealgorithmus: Enhanced (kombiniert beide, empfohlen), Zambretti (klassisch, optimiert für steigenden/fallenden Druck), oder Negretti-Zambra (Rechenschiebermethode, konservativ).",
+          "language": "Wählen Sie die Sprache für den Vorhersagetext. Überschreibt die Home Assistant Systemsprache.",
           "enable_weather_entity": "Erstellen Sie eine Wetter-Entität für Wetterkarten und Automatisierungen"
         }
       }

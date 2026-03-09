@@ -400,3 +400,57 @@ def test_language_map_complete():
     for lang_code, index in LANGUAGE_MAP.items():
         assert 0 <= index <= 4
 
+
+# Tests for config_entry language override
+class MockEntry:
+    """Mock config entry with language option."""
+    def __init__(self, options_lang=None, data_lang=None):
+        self.options = {"language": options_lang} if options_lang else {}
+        self.data = {"language": data_lang} if data_lang else {}
+
+
+class MockConfigEntries:
+    """Mock config_entries registry."""
+    def __init__(self, entries):
+        self._entries = entries
+
+    def async_entries(self, domain):
+        return self._entries
+
+
+class MockHassWithEntry(MockHass):
+    """MockHass with config_entries support."""
+    def __init__(self, system_lang, entries):
+        super().__init__(system_lang)
+        self.config_entries = MockConfigEntries(entries)
+
+
+def test_get_language_index_config_entry_options_overrides_system():
+    """Test that config_entry options language overrides system language."""
+    hass = MockHassWithEntry("en", [MockEntry(options_lang="de")])
+    assert get_language_index(hass) == 0  # German, not English
+
+
+def test_get_language_index_config_entry_data_overrides_system():
+    """Test that config_entry data language overrides system language."""
+    hass = MockHassWithEntry("en", [MockEntry(data_lang="sk")])
+    assert get_language_index(hass) == 4  # Slovak, not English
+
+
+def test_get_language_index_options_takes_priority_over_data():
+    """Test that options language takes priority over data language."""
+    hass = MockHassWithEntry("en", [MockEntry(options_lang="de", data_lang="sk")])
+    assert get_language_index(hass) == 0  # German (options), not Slovak (data)
+
+
+def test_get_language_index_no_config_entry_falls_back_to_system():
+    """Test fallback to system language when config_entry has no language."""
+    hass = MockHassWithEntry("it", [MockEntry()])
+    assert get_language_index(hass) == 3  # Italian system language
+
+
+def test_get_language_index_no_entries_falls_back_to_system():
+    """Test fallback to system language when no config entries exist."""
+    hass = MockHassWithEntry("sk", [])
+    assert get_language_index(hass) == 4  # Slovak system language
+

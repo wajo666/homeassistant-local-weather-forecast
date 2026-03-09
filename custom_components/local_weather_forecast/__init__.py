@@ -101,6 +101,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         "humidity_sensor",
         "wind_gust_sensor",
         "rain_rate_sensor",
+        "solar_radiation_sensor",
     ]
 
     # Check if any sensor configuration changed
@@ -112,7 +113,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
             break
 
     # Check if critical settings changed
-    critical_keys = ["elevation", "pressure_type", "language", "enable_weather_entity"]
+    critical_keys = ["elevation", "pressure_type", "hemisphere", "forecast_model", "language", "enable_weather_entity"]
     critical_changed = False
     for key in critical_keys:
         if old_data.get(key) != new_data.get(key):

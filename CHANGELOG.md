@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.18] - 2026-03-09
+
+### Fixed
+- **Optional sensor NoneType crash** - Fixed `AttributeError: 'NoneType' object has no attribute 'lower'` when `rain_rate_sensor` or `solar_radiation_sensor` were not configured
+- **Language always English** - Restored language selector in options flow; forecast texts now respect the configured language instead of always defaulting to English
+- **Hardcoded English in forecast calculator** - `forecast_hour()` now uses the configured language instead of hardcoded index 1 (English)
+- **Config reload not triggered for solar sensor changes** - Adding or removing `solar_radiation_sensor` now correctly triggers integration reload and rebuilds sensor listeners
+- **Config reload not triggered for hemisphere/forecast model changes** - Changing `hemisphere` or `forecast_model` in options now correctly triggers integration reload
+
+
 ## [3.1.17] - 2026-02-17
 
 ### Changed

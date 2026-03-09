@@ -33,7 +33,12 @@ DEFAULT_LANGUAGE_INDEX = 1  # English
 
 
 def get_language_index(hass: HomeAssistant) -> int:
-    """Get language array index from Home Assistant UI language.
+    """Get language array index for forecast text generation.
+
+    Priority:
+    1. Explicit language set in integration options/data (config_entry)
+    2. Home Assistant system language (hass.config.language)
+    3. English fallback
 
     Args:
         hass: Home Assistant instance
@@ -45,11 +50,29 @@ def get_language_index(hass: HomeAssistant) -> int:
     if not hass or not hass.config:
         return DEFAULT_LANGUAGE_INDEX
 
+    # 1. Check integration config_entry for explicit language setting
+    try:
+        from .const import CONF_LANGUAGE
+        entries = hass.config_entries.async_entries("local_weather_forecast")
+        if entries:
+            entry = entries[0]
+            configured_lang = entry.options.get(CONF_LANGUAGE) or entry.data.get(CONF_LANGUAGE)
+            if configured_lang and configured_lang in LANGUAGE_MAP:
+                lang_index = LANGUAGE_MAP[configured_lang]
+                _LOGGER.debug(
+                    f"Language detection: config={configured_lang} → index={lang_index} "
+                    f"(0=de, 1=en, 2=el, 3=it, 4=sk)"
+                )
+                return lang_index
+    except (AttributeError, TypeError):
+        pass
+
+    # 2. Fall back to Home Assistant system language
     ha_language = hass.config.language
     lang_index = LANGUAGE_MAP.get(ha_language, DEFAULT_LANGUAGE_INDEX)
 
     _LOGGER.debug(
-        f"Language detection: HA language={ha_language} → index={lang_index} "
+        f"Language detection: HA system language={ha_language} → index={lang_index} "
         f"(0=de, 1=en, 2=el, 3=it, 4=sk)"
     )
 

@@ -133,7 +133,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.17",
+            sw_version="3.1.18",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -645,8 +645,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
         # Read each sensor ONCE and cache for entire condition() execution
         cache['pressure_change'] = self.hass.states.get("sensor.local_forecast_pressurechange")
         cache['enhanced'] = self.hass.states.get("sensor.local_forecast_enhanced")
-        cache['rain_rate'] = self.hass.states.get(self._get_config(CONF_RAIN_RATE_SENSOR))
-        cache['solar'] = self.hass.states.get(self._get_config(CONF_SOLAR_RADIATION_SENSOR))
+        rain_rate_sensor = self._get_config(CONF_RAIN_RATE_SENSOR)
+        cache['rain_rate'] = self.hass.states.get(rain_rate_sensor) if rain_rate_sensor else None
+        solar_sensor = self._get_config(CONF_SOLAR_RADIATION_SENSOR)
+        cache['solar'] = self.hass.states.get(solar_sensor) if solar_sensor else None
         cache['sun'] = self.hass.states.get("sun.sun")
         cache['rain_prob'] = self.hass.states.get("sensor.local_forecast_rain_probability")
         

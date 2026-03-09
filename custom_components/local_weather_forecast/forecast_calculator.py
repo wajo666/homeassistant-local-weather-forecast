@@ -1005,11 +1005,12 @@ class ZambrettiForecaster:
         wind_data = [wind_fak, wind_direction, dir_text, speed_fak]
 
         # Run Zambretti algorithm
+        from .language import get_language_index
         result = calculate_zambretti_forecast(
             p0=pressure,
             pressure_change=pressure_change,
             wind_data=wind_data,
-            lang_index=1  # English
+            lang_index=get_language_index(self.hass)
         )
 
         # Result is [forecast_text, forecast_number, letter_code]

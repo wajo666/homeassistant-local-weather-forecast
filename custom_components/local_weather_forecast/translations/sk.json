@@ -54,6 +54,7 @@
           "pressure_type": "Typ tlaku",
           "hemisphere": "Hemisféra",
           "forecast_model": "Model predpovede",
+          "language": "Jazyk predpovede",
           "enable_weather_entity": "Povoliť weather entitu"
         },
         "data_description": {
@@ -64,6 +65,7 @@
           "solar_radiation_sensor": "Senzor slnečného žiarenia pre detekciu oblačnosti a pocitovú teplotu. Podporuje W/m², lux - automaticky konvertované (voliteľné)",
           "hemisphere": "Vaša hemisféra pre sezónne úpravy počasia. Automaticky detekované z polohy Home Assistant (zemepisná šírka >= 0 = Sever, < 0 = Juh).",
           "forecast_model": "Vyberte algoritmus predpovede: Enhanced (kombinuje oba, odporúčané), Zambretti (klasický, optimalizovaný pre stúpajúci/klesajúci tlak), alebo Negretti-Zambra (metóda posuvného pravítka, konzervatívny).",
+          "language": "Vyberte jazyk pre text predpovede. Prepíše systémový jazyk Home Assistant.",
           "enable_weather_entity": "Vytvorte weather entitu ktorú možno použiť v kartách počasia a automatizáciách"
         }
       }

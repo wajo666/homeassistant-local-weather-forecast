@@ -54,6 +54,7 @@
           "pressure_type": "Tipo di pressione",
           "hemisphere": "Emisfero",
           "forecast_model": "Modello di previsione",
+          "language": "Lingua delle previsioni",
           "enable_weather_entity": "Abilita entità meteo"
         },
         "data_description": {
@@ -64,6 +65,7 @@
           "solar_radiation_sensor": "Sensore radiazione solare (W/m² o lux - conversione automatica) per rilevamento accurato nuvolosità e temperatura percepita (opzionale)",
           "hemisphere": "Il tuo emisfero per adattamenti stagionali meteo. Rilevato automaticamente dalla posizione Home Assistant (latitudine >= 0 = Nord, < 0 = Sud).",
           "forecast_model": "Scegli algoritmo di previsione: Enhanced (combina entrambi, consigliato), Zambretti (classico, ottimizzato per pressione crescente/calante), o Negretti-Zambra (metodo regolo calcolatore, conservativo).",
+          "language": "Seleziona la lingua per il testo delle previsioni. Sostituisce la lingua di sistema di Home Assistant.",
           "enable_weather_entity": "Crea un'entità meteo utilizzabile nelle schede meteo e nelle automazioni"
         }
       }
