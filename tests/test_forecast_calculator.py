@@ -689,6 +689,125 @@ class TestDailyForecastGenerator:
         assert temp_range >= 0  # At minimum, they should differ or be equal
 
 
+class TestDailyEstimateExtremes:
+    """Test _estimate_daily_extremes for Issue #18 fix.
+
+    Verifies that DailyForecastGenerator properly estimates full-day
+    temperature extremes even when only forward-looking hours are available.
+    """
+
+    def _make_daily_gen(self, current_temp=13.0, longitude=21.25):
+        """Create a DailyForecastGenerator with given parameters."""
+        mock_hass = create_mock_hass()
+        pressure_model = PressureModel(1013.25, 0.0)
+        temp_model = TemperatureModel(current_temp, 0.0)
+        zambretti = ZambrettiForecaster()
+        hourly_gen = HourlyForecastGenerator(
+            mock_hass, pressure_model, temp_model, zambretti,
+            longitude=longitude,
+        )
+        return DailyForecastGenerator(hourly_gen)
+
+    def test_midday_temp_low_below_current(self):
+        """At 11:00, estimated daily min should be below current temp (13°C)."""
+        gen = self._make_daily_gen(current_temp=13.0)
+        estimated_min, estimated_max = gen._estimate_daily_extremes(
+            current_temp=13.0,
+            current_hour=11.0,  # 11:00 UTC — well past sunrise
+            longitude=21.25,
+            month=3,  # March
+        )
+        assert estimated_min < 13.0, f"Expected min < 13°C, got {estimated_min}"
+
+    def test_midday_temp_high_above_current(self):
+        """At 11:00, estimated daily max should be above current temp (13°C)."""
+        gen = self._make_daily_gen(current_temp=13.0)
+        estimated_min, estimated_max = gen._estimate_daily_extremes(
+            current_temp=13.0,
+            current_hour=11.0,
+            longitude=21.25,
+            month=3,
+        )
+        assert estimated_max > 13.0, f"Expected max > 13°C, got {estimated_max}"
+
+    def test_evening_temp_high_above_current(self):
+        """At 20:00, estimated daily max should be above current temp (10°C)."""
+        gen = self._make_daily_gen(current_temp=10.0)
+        estimated_min, estimated_max = gen._estimate_daily_extremes(
+            current_temp=10.0,
+            current_hour=20.0,  # 20:00 UTC — past daily maximum
+            longitude=21.25,
+            month=3,
+        )
+        assert estimated_max > 10.0, f"Expected max > 10°C at 20:00, got {estimated_max}"
+
+    def test_near_sunrise_min_close_to_current(self):
+        """At ~05:30 (near temp minimum), estimated min ≈ current temp."""
+        gen = self._make_daily_gen(current_temp=2.0)
+        estimated_min, estimated_max = gen._estimate_daily_extremes(
+            current_temp=2.0,
+            current_hour=5.5,  # Near sunrise/minimum for longitude ~21°
+            longitude=21.25,
+            month=3,
+        )
+        # Near the daily minimum, estimated_min should be close to current_temp
+        assert abs(estimated_min - 2.0) < 3.0, f"Expected min ≈ 2°C at sunrise, got {estimated_min}"
+
+    def test_near_peak_max_close_to_current(self):
+        """At ~14:00 (near temp maximum), estimated max ≈ current temp."""
+        gen = self._make_daily_gen(current_temp=18.0)
+        estimated_min, estimated_max = gen._estimate_daily_extremes(
+            current_temp=18.0,
+            current_hour=14.4,  # ~14:24 UTC — near solar noon+2h for longitude 21.25°
+            longitude=21.25,
+            month=6,  # June — larger amplitude
+        )
+        # Near the daily maximum, estimated_max should be close to current_temp
+        assert abs(estimated_max - 18.0) < 3.0, f"Expected max ≈ 18°C at peak, got {estimated_max}"
+
+    def test_max_always_greater_than_min(self):
+        """Estimated max should always be > estimated min."""
+        gen = self._make_daily_gen()
+        for hour in [0, 3, 6, 9, 12, 15, 18, 21]:
+            estimated_min, estimated_max = gen._estimate_daily_extremes(
+                current_temp=15.0,
+                current_hour=float(hour),
+                longitude=21.25,
+                month=6,
+            )
+            assert estimated_max > estimated_min, (
+                f"At hour {hour}: max={estimated_max} should be > min={estimated_min}"
+            )
+
+    def test_cloud_cover_reduces_range(self):
+        """Cloud cover should reduce the temperature range."""
+        gen = self._make_daily_gen(current_temp=15.0)
+        min_clear, max_clear = gen._estimate_daily_extremes(
+            current_temp=15.0, current_hour=12.0, longitude=21.25, month=6,
+            cloud_cover=0.0,
+        )
+        min_cloudy, max_cloudy = gen._estimate_daily_extremes(
+            current_temp=15.0, current_hour=12.0, longitude=21.25, month=6,
+            cloud_cover=100.0,
+        )
+        range_clear = max_clear - min_clear
+        range_cloudy = max_cloudy - min_cloudy
+        assert range_cloudy < range_clear, (
+            f"Cloudy range ({range_cloudy:.1f}) should be < clear range ({range_clear:.1f})"
+        )
+
+    def test_summer_larger_range_than_winter(self):
+        """Summer months should have larger diurnal range than winter."""
+        gen = self._make_daily_gen(current_temp=15.0)
+        min_summer, max_summer = gen._estimate_daily_extremes(
+            current_temp=15.0, current_hour=12.0, longitude=21.25, month=7,
+        )
+        min_winter, max_winter = gen._estimate_daily_extremes(
+            current_temp=15.0, current_hour=12.0, longitude=21.25, month=1,
+        )
+        assert (max_summer - min_summer) > (max_winter - min_winter)
+
+
 class TestForecastCalculator:
     """Test ForecastCalculator facade."""
 

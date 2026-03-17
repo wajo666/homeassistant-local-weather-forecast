@@ -1372,7 +1372,8 @@ class HourlyForecastGenerator:
         current_rain_rate: float = 0.0,
         forecast_model: str = FORECAST_MODEL_ENHANCED,
         elevation: float = 0.0,
-        current_condition: str | None = None
+        current_condition: str | None = None,
+        longitude: float = 21.25
     ):
         """Initialize hourly forecast generator.
 
@@ -1388,6 +1389,7 @@ class HourlyForecastGenerator:
             forecast_model: Which model to use (FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED)
             elevation: Elevation in meters above sea level
             current_condition: Current weather condition from weather entity (e.g., 'snowy', 'rainy', 'cloudy')
+            longitude: Location longitude (for diurnal temperature model)
         """
         self.hass = hass
         self.pressure_model = pressure_model
@@ -1400,6 +1402,7 @@ class HourlyForecastGenerator:
         self.forecast_model = forecast_model
         self.elevation = elevation
         self.current_condition = current_condition
+        self.longitude = longitude
 
     def generate(
         self,
@@ -2084,6 +2087,96 @@ class DailyForecastGenerator:
         """
         self.hourly_generator = hourly_generator
 
+    def _estimate_daily_extremes(
+        self, current_temp: float, current_hour: float, longitude: float,
+        month: int, cloud_cover: float | None = None
+    ) -> tuple[float, float]:
+        """Estimate today's daily min and max using the diurnal cycle model.
+
+        When we only have forward-looking hourly forecasts (from now to midnight),
+        past extremes (pre-dawn low, afternoon high) are missed. This method
+        'unwinds' the current temperature to estimate what the full-day
+        extremes would be based on the diurnal cycle position.
+
+        Args:
+            current_temp: Current temperature in °C
+            current_hour: Current hour of day in UTC (0-23, fractional)
+            longitude: Location longitude (for solar noon calculation)
+            month: Current month (1-12) for seasonal amplitude
+            cloud_cover: Cloud cover in % (optional, reduces amplitude)
+
+        Returns:
+            Tuple of (estimated_min, estimated_max) temperatures
+        """
+        import math
+
+        # Calculate sun-based temperature timing
+        try:
+            solar_noon_offset = float(longitude) / 15.0
+        except (TypeError, ValueError):
+            solar_noon_offset = 0.0
+
+        solar_noon_hour = 12.0 + solar_noon_offset
+        temp_max_hour = solar_noon_hour + 2.0
+        sunrise_hour = solar_noon_hour - 6.0
+        temp_min_hour = sunrise_hour - 0.5
+
+        # Normalize temp_min_hour to 0-24 range
+        if temp_min_hour < 0:
+            temp_min_hour += 24
+
+        # Get seasonal amplitude
+        from .combined_model import _get_diurnal_amplitude
+        amplitude = _get_diurnal_amplitude(month)
+
+        # Cloud cover reduces amplitude
+        if cloud_cover is not None:
+            cloud_reduction = 1.0 - (cloud_cover / 200.0)
+            amplitude *= cloud_reduction
+
+        # Calculate hours-to-max from temp_min_hour
+        hours_to_max = temp_max_hour - temp_min_hour
+        if hours_to_max < 0:
+            hours_to_max += 24
+
+        def diurnal_position(hours_from_min: float) -> float:
+            """Calculate diurnal position (0=min, 1=max)."""
+            if hours_from_min < hours_to_max:
+                phase = (hours_from_min / hours_to_max) * (math.pi / 2)
+                return math.sin(phase)
+            else:
+                hours_from_max = hours_from_min - hours_to_max
+                hours_to_next_min = 24 - hours_to_max
+                if hours_to_next_min <= 0:
+                    return 0.0
+                phase = (hours_from_max / hours_to_next_min) * (math.pi / 2)
+                return math.cos(phase)
+
+        # Current position in diurnal cycle
+        current_hours_from_min = (current_hour - temp_min_hour) % 24
+        current_pos = diurnal_position(current_hours_from_min)
+
+        # Diurnal offset at current position: amplitude * (pos - 0.5)
+        # At minimum (pos=0): offset = -amplitude/2
+        # At maximum (pos=1): offset = +amplitude/2
+        # The current temp = base_mean + amplitude * (current_pos - 0.5) + other_factors
+        # We can estimate base_mean = current_temp - amplitude * (current_pos - 0.5)
+        # Then: estimated_min = base_mean + amplitude * (0 - 0.5) = base_mean - amplitude/2
+        #        estimated_max = base_mean + amplitude * (1 - 0.5) = base_mean + amplitude/2
+        current_diurnal_offset = amplitude * (current_pos - 0.5)
+        base_mean = current_temp - current_diurnal_offset
+
+        estimated_min = round(base_mean - amplitude / 2, 1)
+        estimated_max = round(base_mean + amplitude / 2, 1)
+
+        _LOGGER.debug(
+            f"📊 Daily extremes estimate: min={estimated_min:.1f}°C, max={estimated_max:.1f}°C "
+            f"(current={current_temp:.1f}°C at hour={current_hour:.1f}, "
+            f"diurnal_pos={current_pos:.2f}, amplitude={amplitude:.1f}°C)"
+        )
+
+        return estimated_min, estimated_max
+
     def generate(self, days: int = 3) -> list[Forecast]:
         """Generate daily forecasts.
 
@@ -2127,6 +2220,35 @@ class DailyForecastGenerator:
             temps = [f.get("temperature", 0.0) for f in day_hours]
             daily_temp_max = round(max(temps), 1)
             daily_temp_min = round(min(temps), 1)
+
+            # For today (day_offset=0), forward-only forecasts miss past extremes
+            # (pre-dawn low, afternoon high). Use diurnal model to estimate full-day range.
+            if day_offset == 0:
+                current_temp = self.hourly_generator.temperature_model.current_temp
+                longitude = self.hourly_generator.longitude
+                cloud_cover = getattr(self.hourly_generator.temperature_model, 'cloud_cover', None)
+
+                estimated_min, estimated_max = self._estimate_daily_extremes(
+                    current_temp=current_temp,
+                    current_hour=now.hour + now.minute / 60.0,
+                    longitude=longitude,
+                    month=now.month,
+                    cloud_cover=cloud_cover,
+                )
+
+                if estimated_min < daily_temp_min:
+                    _LOGGER.debug(
+                        f"📊 Today temp_low adjusted: {daily_temp_min}°C → {estimated_min}°C "
+                        f"(diurnal model estimate)"
+                    )
+                    daily_temp_min = estimated_min
+
+                if estimated_max > daily_temp_max:
+                    _LOGGER.debug(
+                        f"📊 Today temp_high adjusted: {daily_temp_max}°C → {estimated_max}°C "
+                        f"(diurnal model estimate)"
+                    )
+                    daily_temp_max = estimated_max
 
             # ═══════════════════════════════════════════════════════════════
             # ✅ IMPROVED: Weighted condition selection for daily forecast

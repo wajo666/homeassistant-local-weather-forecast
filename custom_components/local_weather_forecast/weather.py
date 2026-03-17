@@ -2222,7 +2222,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 elevation=elevation,
                 current_rain_rate=current_rain_rate,
                 forecast_model=forecast_model,
-                current_condition=self.condition
+                current_condition=self.condition,
+                longitude=longitude,
             )
 
             daily_gen = DailyForecastGenerator(hourly_gen)
@@ -2402,7 +2403,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 elevation=elevation,
                 current_rain_rate=current_rain_rate,
                 forecast_model=forecast_model,
-                current_condition=self.condition
+                current_condition=self.condition,
+                longitude=longitude,
             )
 
             # Generate forecast (1-hour intervals)
