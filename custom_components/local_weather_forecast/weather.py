@@ -153,11 +153,9 @@ class LocalWeatherForecastWeather(WeatherEntity):
             _LOGGER.debug(f"Weather: Rain sensor configured: {rain_sensor_id}")
 
     async def async_added_to_hass(self) -> None:
-        """Run when entity is added to hass - wait for ALL configured sensors to be ready."""
+        """Run when entity is added to hass - set up sensor tracking."""
         await super().async_added_to_hass()
 
-        import asyncio
-        from datetime import datetime
         from homeassistant.helpers.event import async_track_state_change_event
 
         # Collect ALL configured sensors from config_flow
@@ -184,79 +182,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 "Weather: No sensors configured! Weather entity will use defaults. "
                 "If you add sensors later through config, they will be used automatically."
             )
-            # Don't return - continue to set up basic entity
-            # This allows manual state writes and future sensor additions
 
-        # Log all configured sensors
+        # Log configured sensors (no blocking wait — entity updates reactively)
         if configured_sensors:
-            _LOGGER.debug(f"Weather: Found {len(configured_sensors)} configured sensors:")
+            _LOGGER.debug(
+                f"Weather: Found {len(configured_sensors)} configured sensors. "
+                f"Entity will update reactively as sensors become available."
+            )
             for key, sensor_id in configured_sensors.items():
                 is_required = "(REQUIRED)" if key == CONF_PRESSURE_SENSOR else "(optional)"
                 _LOGGER.debug(f"  - {key}: {sensor_id} {is_required}")
-
-            # Wait for sensors with timeout
-            start_time = datetime.now()
-            max_wait = 30  # Maximum 30 seconds wait
-            check_interval = 0.5  # Check every 500ms
-
-            _LOGGER.debug(f"Weather: Waiting up to {max_wait}s for sensors to become ready...")
-
-            sensors_ready = {}
-            elapsed = 0
-
-            while elapsed < max_wait:
-                # Check each configured sensor
-                all_ready = True
-                for key, sensor_id in configured_sensors.items():
-                    if key not in sensors_ready:  # Not yet ready
-                        state = self.hass.states.get(sensor_id)
-                        if state and state.state not in ("unknown", "unavailable"):
-                            sensors_ready[key] = sensor_id
-                            elapsed_time = (datetime.now() - start_time).total_seconds()
-                            _LOGGER.debug(
-                                f"Weather: ✅ {key} ready after {elapsed_time:.1f}s "
-                                f"({len(sensors_ready)}/{len(configured_sensors)})"
-                            )
-                        else:
-                            all_ready = False
-
-                # If all sensors ready, break early
-                if all_ready:
-                    elapsed_time = (datetime.now() - start_time).total_seconds()
-                    _LOGGER.debug(
-                        f"Weather: 🎉 All {len(configured_sensors)} sensors ready after {elapsed_time:.1f}s! "
-                        f"Weather entity is fully operational."
-                    )
-                    break
-
-                await asyncio.sleep(check_interval)
-                elapsed += check_interval
-
-            # Report timeout for sensors that didn't load
-            if elapsed >= max_wait:
-                missing_sensors = []
-                for key, sensor_id in configured_sensors.items():
-                    if key not in sensors_ready:
-                        missing_sensors.append(f"{key} ({sensor_id})")
-
-                if missing_sensors:
-                    _LOGGER.debug(
-                        f"Weather: ⏱️ Timeout after {max_wait}s. "
-                        f"{len(sensors_ready)}/{len(configured_sensors)} sensors ready. "
-                        f"Missing: {', '.join(missing_sensors)}"
-                    )
-
-                    # Check if pressure sensor (REQUIRED) is missing
-                    if CONF_PRESSURE_SENSOR not in sensors_ready:
-                        _LOGGER.debug(
-                            f"Weather: ❌ CRITICAL: Pressure sensor not ready! "
-                            f"Weather entity will show 'partlycloudy' until pressure sensor initializes."
-                        )
-                    else:
-                        _LOGGER.debug(
-                            f"Weather: ✅ Pressure sensor ready. Weather entity will work with available sensors. "
-                            f"Missing sensors will be used when they become available."
-                        )
 
         # Set up state change listeners for auto-refresh when sensors update
         # This handles both:
@@ -2067,7 +2002,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             )
 
             if pressure is None or temperature is None:
-                _LOGGER.warning("Missing pressure or temperature for advanced forecast")
+                _LOGGER.debug("Missing pressure or temperature for advanced forecast")
                 return None
 
             # Get pressure and temperature changes
