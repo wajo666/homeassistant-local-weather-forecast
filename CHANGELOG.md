@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.20] - 2026-03-17
+
+### Fixed
+- **Weather entity not converting absolute pressure to sea-level** (#19) - weather entity now applies QFE→QNH barometric conversion when pressure type is configured as "Absolute"
+- **Daily forecast min/max temperature always equals current temperature** (#18) - uses diurnal cycle model to estimate full-day extremes when only forward-looking hours are available
+- **Weather entity blocking HA startup for up to 30 seconds** (#17) - removed blocking polling loop from `async_added_to_hass`, entity updates reactively via state change listener
+
+
 ## [3.1.19] - 2026-03-09
 
 ### Fixed
