@@ -63,6 +63,7 @@ from .const import (
     CONF_HUMIDITY_SENSOR,
     CONF_LATITUDE,
     CONF_PRESSURE_SENSOR,
+    CONF_PRESSURE_TYPE,
     CONF_RAIN_RATE_SENSOR,
     CONF_SOLAR_RADIATION_SENSOR,
     CONF_TEMPERATURE_SENSOR,
@@ -70,14 +71,19 @@ from .const import (
     CONF_WIND_DIRECTION_SENSOR,
     CONF_WIND_GUST_SENSOR,
     CONF_WIND_SPEED_SENSOR,
-    DEFAULT_ENABLE_WEATHER_ENTITY,
     DEFAULT_ELEVATION,
+    DEFAULT_ENABLE_WEATHER_ENTITY,
     DEFAULT_FORECAST_MODEL,
     DEFAULT_LATITUDE,
+    DEFAULT_PRESSURE_TYPE,
     DOMAIN,
     FORECAST_MODEL_ENHANCED,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ZAMBRETTI,
+    GRAVITY_CONSTANT,
+    KELVIN_OFFSET,
+    LAPSE_RATE,
+    PRESSURE_TYPE_RELATIVE,
 )
 from .forecast_calculator import (
     DailyForecastGenerator,
@@ -317,7 +323,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
     @property
     def native_pressure(self) -> float | None:
-        """Return the pressure."""
+        """Return the pressure (sea-level / QNH)."""
         if not self.hass:
             return None
         pressure_sensor = self._get_config(CONF_PRESSURE_SENSOR)
@@ -329,11 +335,31 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     # Apply unit conversion
                     unit = state.attributes.get("unit_of_measurement")
                     if unit:
-                        return UnitConverter.convert_sensor_value(value, "pressure", unit)
+                        value = UnitConverter.convert_sensor_value(value, "pressure", unit)
+
+                    # Convert station pressure (QFE) to sea-level pressure (QNH) if needed
+                    pressure_type = self._get_config(CONF_PRESSURE_TYPE) or DEFAULT_PRESSURE_TYPE
+                    if pressure_type != PRESSURE_TYPE_RELATIVE:
+                        elevation = self._get_config(CONF_ELEVATION) or DEFAULT_ELEVATION
+                        temperature = self.native_temperature or 15.0
+                        value = self._calculate_sea_level_pressure(value, temperature, elevation)
+
                     return value
                 except (ValueError, TypeError):
                     pass
         return None
+
+    def _calculate_sea_level_pressure(
+        self, pressure: float, temperature: float, elevation: float
+    ) -> float:
+        """Calculate sea level pressure from station pressure."""
+        if elevation == 0:
+            return pressure
+
+        temp_kelvin = temperature + KELVIN_OFFSET
+        factor = 1 - ((LAPSE_RATE * elevation) / (temp_kelvin + LAPSE_RATE * elevation))
+        p0 = pressure * (factor ** (-GRAVITY_CONSTANT))
+        return p0
 
     @property
     def humidity(self) -> float | None:

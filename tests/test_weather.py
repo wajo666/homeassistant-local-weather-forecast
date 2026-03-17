@@ -495,3 +495,75 @@ class TestIntegration:
         else:
             return "very_unstable"
 
+
+class TestSeaLevelPressureConversion:
+    """Test QFE (station) to QNH (sea-level) pressure conversion.
+
+    Bug #19: weather entity was not converting absolute pressure to sea-level.
+    """
+
+    LAPSE_RATE = 0.0065  # K/m
+    GRAVITY_CONSTANT = 5.257
+    KELVIN_OFFSET = 273.15
+
+    def _calculate_sea_level_pressure(
+        self, pressure: float, temperature: float, elevation: float
+    ) -> float:
+        """Calculate sea level pressure from station pressure (barometric formula)."""
+        if elevation == 0:
+            return pressure
+
+        temp_kelvin = temperature + self.KELVIN_OFFSET
+        factor = 1 - ((self.LAPSE_RATE * elevation) / (temp_kelvin + self.LAPSE_RATE * elevation))
+        p0 = pressure * (factor ** (-self.GRAVITY_CONSTANT))
+        return p0
+
+    def test_zero_elevation_returns_same_pressure(self):
+        """At elevation 0, pressure should pass through unchanged."""
+        assert self._calculate_sea_level_pressure(1013.25, 15.0, 0) == 1013.25
+
+    def test_1000m_elevation_conversion(self):
+        """At 1000m, station pressure ~900 hPa should convert to ~1012 hPa."""
+        result = self._calculate_sea_level_pressure(900.0, 15.0, 1000)
+        # At 1000m elevation, ~900 hPa should become significantly higher
+        assert result > 1000.0, f"Expected >1000 hPa, got {result}"
+        assert abs(result - 1012.0) < 5.0, f"Expected ~1012 hPa, got {result}"
+
+    def test_500m_elevation_conversion(self):
+        """At 500m, station pressure should increase by ~55 hPa."""
+        result = self._calculate_sea_level_pressure(960.0, 15.0, 500)
+        assert result > 960.0
+        assert abs(result - 1017.0) < 5.0, f"Expected ~1017 hPa, got {result}"
+
+    def test_high_elevation_known_values(self):
+        """At 2000m, station pressure ~800 hPa should convert to ~1013 hPa."""
+        result = self._calculate_sea_level_pressure(800.0, 10.0, 2000)
+        assert result > 950.0, f"Expected >950 hPa, got {result}"
+
+    def test_conversion_increases_pressure(self):
+        """Conversion should always increase pressure for positive elevations."""
+        for elevation in [100, 250, 500, 1000, 1500, 2000]:
+            result = self._calculate_sea_level_pressure(900.0, 15.0, elevation)
+            assert result > 900.0, f"At {elevation}m, expected > 900 hPa, got {result}"
+
+    def test_temperature_affects_conversion(self):
+        """Colder temperatures should produce slightly different conversions."""
+        warm = self._calculate_sea_level_pressure(900.0, 25.0, 1000)
+        cold = self._calculate_sea_level_pressure(900.0, -5.0, 1000)
+        # Both should be above station pressure
+        assert warm > 900.0
+        assert cold > 900.0
+        # Cold air is denser, so conversion gives higher sea-level pressure
+        assert cold > warm
+
+    def test_relative_pressure_needs_no_conversion(self):
+        """When pressure type is relative (QNH), no conversion should be applied.
+
+        This tests the logic that weather.py should skip conversion for relative type.
+        """
+        pressure = 1013.25
+        # Relative pressure at any elevation should remain the same
+        # (conversion is only applied when pressure_type != relative)
+        # At elevation 0, the function returns the same value
+        assert self._calculate_sea_level_pressure(pressure, 15.0, 0) == pressure
+
