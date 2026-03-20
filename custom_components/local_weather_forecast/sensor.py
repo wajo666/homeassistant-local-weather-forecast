@@ -49,6 +49,10 @@ from .const import (
     PRESSURE_TYPE_RELATIVE,
     PRESSURE_MIN_RECORDS,
     TEMPERATURE_MIN_RECORDS,
+    CONF_FORECAST_MODEL,
+    FORECAST_MODEL_ENHANCED,
+    FORECAST_MODEL_NEGRETTI,
+    FORECAST_MODEL_ZAMBRETTI,
 )
 from .forecast_data import PRESSURE_SYSTEMS, CONDITIONS
 from .zambretti import calculate_zambretti_forecast
@@ -68,6 +72,11 @@ from .language import (
     get_fog_risk_text,
     get_snow_risk_text,
     get_frost_risk_text,
+)
+from .combined_model import (
+    calculate_combined_forecast,
+    calculate_weather_aware_temperature,
+    get_combined_forecast_text,
 )
 from .unit_conversion import UnitConverter
 
@@ -108,6 +117,22 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
         self._attr_should_poll = False
         self._last_update_time = None
         self._update_throttle_seconds = 30  # Minimum seconds between updates
+
+    async def _throttled_update(self, update_coro, *, throttle: bool = True):
+        """Run an update coroutine with optional throttle, then write state."""
+        if throttle:
+            now = dt_util.now()
+            if self._last_update_time is not None:
+                elapsed = (now - self._last_update_time).total_seconds()
+                if elapsed < self._update_throttle_seconds:
+                    _LOGGER.debug(
+                        "Skipping update for %s, only %.1fs since last update",
+                        self.entity_id, elapsed,
+                    )
+                    return
+            self._last_update_time = now
+        await update_coro()
+        self.async_write_ha_state()
 
     def _get_main_sensor_id(self) -> str:
         """Get the entity_id of the main sensor."""
@@ -350,19 +375,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
 
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
-        # Throttle updates to prevent flooding
-        now = dt_util.now()
-        if self._last_update_time is not None:
-            time_since_last_update = (now - self._last_update_time).total_seconds()
-            if time_since_last_update < self._update_throttle_seconds:
-                _LOGGER.debug(
-                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
-                )
-                return
-
-        self._last_update_time = now
-        await self.async_update()
-        self.async_write_ha_state()
+        await self._throttled_update(self.async_update)
 
     async def async_update(self) -> None:
         """Update the sensor."""
@@ -524,9 +537,6 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         # Get forecast code for forecast-aware temperature (from Zambretti detail)
         forecast_code = attrs.get("zambretti_number", 13)  # Default to middle value (13 = "Showery, bright intervals")
         _LOGGER.debug(f"Using forecast code {forecast_code} for temperature bias")
-
-        # Import calculate_weather_aware_temperature for forecast-aware prediction
-        from .combined_model import calculate_weather_aware_temperature
 
         # Try to get first_time
         first_time = attrs.get("first_time")
@@ -790,19 +800,7 @@ class LocalForecastPressureSensor(LocalWeatherForecastEntity):
 
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        # Throttle updates to prevent flooding
-        now = dt_util.now()
-        if self._last_update_time is not None:
-            time_since_last_update = (now - self._last_update_time).total_seconds()
-            if time_since_last_update < self._update_throttle_seconds:
-                _LOGGER.debug(
-                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
-                )
-                return
-
-        self._last_update_time = now
-        await self._update_from_main()
-        self.async_write_ha_state()
+        await self._throttled_update(self._update_from_main)
 
     @property
     def native_value(self) -> float | None:
@@ -856,19 +854,7 @@ class LocalForecastTemperatureSensor(LocalWeatherForecastEntity):
 
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        # Throttle updates to prevent flooding
-        now = dt_util.now()
-        if self._last_update_time is not None:
-            time_since_last_update = (now - self._last_update_time).total_seconds()
-            if time_since_last_update < self._update_throttle_seconds:
-                _LOGGER.debug(
-                    f"Skipping update for {self.entity_id}, only {time_since_last_update:.1f}s since last update"
-                )
-                return
-
-        self._last_update_time = now
-        await self._update_from_main()
-        self.async_write_ha_state()
+        await self._throttled_update(self._update_from_main)
 
     @property
     def native_value(self) -> float | None:
@@ -1370,8 +1356,7 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
 
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        await self._update_from_main()
-        self.async_write_ha_state()
+        await self._throttled_update(self._update_from_main, throttle=False)
 
     def _map_forecast_to_states(self, forecast_num: int) -> list[int]:
         """Map forecast number to weather states [6h, 12h].
@@ -1696,8 +1681,7 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
 
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
-        await self._update_from_main()
-        self.async_write_ha_state()
+        await self._throttled_update(self._update_from_main, throttle=False)
 
     def _map_forecast_to_states(self, forecast_num: int) -> list[int]:
         """Map forecast number to weather states [6h, 12h].
@@ -1884,20 +1868,7 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
-        # Throttle updates to prevent flooding
-        now = dt_util.now()
-        if self._last_update_time is not None:
-            time_since_last_update = (now - self._last_update_time).total_seconds()
-            if time_since_last_update < self._update_throttle_seconds:
-                _LOGGER.debug(
-                    f"Enhanced: Skipping update, only {time_since_last_update:.1f}s since last update"
-                )
-                return
-
-        self._last_update_time = now
-        _LOGGER.debug(f"Enhanced: Sensor update triggered by {event.data.get('entity_id')}")
-        await self.async_update()
-        self.async_write_ha_state()
+        await self._throttled_update(self.async_update)
 
     @property
     def native_value(self) -> str | None:
@@ -1998,7 +1969,6 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
     async def async_update(self) -> None:
         """Update the enhanced forecast."""
         # Get forecast model from config (options first, then data fallback, then default)
-        from .const import CONF_FORECAST_MODEL, FORECAST_MODEL_ENHANCED
         forecast_model = (
             self.config_entry.options.get(CONF_FORECAST_MODEL)
             or self.config_entry.data.get(CONF_FORECAST_MODEL)
@@ -2173,12 +2143,6 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
 
         # Build enhanced forecast text
         # Select base forecast based on model configuration
-        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
-        from .combined_model import (
-            calculate_combined_forecast,
-            get_combined_forecast_text
-        )
-
         # Initialize weights for export
         zambretti_weight = 0.5
         negretti_weight = 0.5
@@ -2402,20 +2366,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
-        # Throttle updates to prevent flooding
-        now = dt_util.now()
-        if self._last_update_time is not None:
-            time_since_last_update = (now - self._last_update_time).total_seconds()
-            if time_since_last_update < self._update_throttle_seconds:
-                _LOGGER.debug(
-                    f"RainProb: Skipping update, only {time_since_last_update:.1f}s since last update"
-                )
-                return
-
-        self._last_update_time = now
-        _LOGGER.debug("RainProb: Handling sensor update")
-        await self.async_update()
-        self.async_write_ha_state()
+        await self._throttled_update(self.async_update)
 
     @property
     def native_value(self) -> int | None:
@@ -2435,7 +2386,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         # Now: Use only the selected model's rain probability
 
         # Get forecast model from config (options first, then data fallback, then default)
-        from .const import CONF_FORECAST_MODEL, FORECAST_MODEL_ENHANCED
         forecast_model = (
             self.config_entry.options.get(CONF_FORECAST_MODEL)
             or self.config_entry.data.get(CONF_FORECAST_MODEL)
@@ -2473,8 +2423,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         negretti_weight = 0.5
 
         # Set weights based on selected model
-        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI, FORECAST_MODEL_ENHANCED
-
         if forecast_model == FORECAST_MODEL_ZAMBRETTI:
             # Use ONLY Zambretti for base_probability calculation
             zambretti_weight = 1.0
@@ -2494,7 +2442,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
 
             # ✅ Get dynamic weights from combined_model
             # Same logic as Enhanced sensor for consistency
-            from .combined_model import calculate_combined_forecast
 
             # Get current pressure
             current_pressure = 1013.25  # Default
@@ -2740,8 +2687,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         """Get list of factors used in calculation based on selected model."""
         # ✅ FIXED v3.1.10: Show only factors from selected model
         factors = []
-
-        from .const import FORECAST_MODEL_ZAMBRETTI, FORECAST_MODEL_NEGRETTI
 
         if forecast_model == FORECAST_MODEL_ZAMBRETTI:
             factors.append("Zambretti")
