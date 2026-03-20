@@ -52,8 +52,13 @@ from homeassistant.helpers.entity import DeviceInfo
 from .calculations import (
     calculate_apparent_temperature,
     calculate_dewpoint,
+    calculate_theoretical_max_solar_radiation,
+    calculate_uv_index_from_solar_radiation,
+    calculate_visibility_from_humidity,
     get_comfort_level,
     get_fog_risk,
+    get_frost_risk,
+    get_snow_risk,
 )
 from .const import (
     CONF_ELEVATION,
@@ -77,12 +82,34 @@ from .const import (
     DEFAULT_LATITUDE,
     DEFAULT_PRESSURE_TYPE,
     DOMAIN,
+    FOG_DEWPOINT_CRITICAL,
+    FOG_DEWPOINT_LIKELY,
+    FOG_DEWPOINT_MIST,
+    FOG_DEWPOINT_POSSIBLE,
+    FOG_HUMIDITY_CRITICAL,
+    FOG_HUMIDITY_HIGH,
+    FOG_HUMIDITY_MEDIUM,
+    FOG_HUMIDITY_MIST,
+    FOG_WIND_CALM,
+    FOG_WIND_LIGHT,
     FORECAST_MODEL_ENHANCED,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ZAMBRETTI,
     GRAVITY_CONSTANT,
+    HAIL_GUST_RATIO_MIN,
+    HAIL_HUMIDITY_MIN,
+    HAIL_TEMP_MAX,
+    HAIL_TEMP_MIN,
     KELVIN_OFFSET,
     LAPSE_RATE,
+    PRECIP_MIXED_HUMIDITY,
+    PRECIP_MIXED_TEMP_MAX,
+    PRECIP_MIXED_TEMP_MIN,
+    PRECIP_POURING_THRESHOLD,
+    PRECIP_SNOW_TEMP_MAX,
+    PRESSURE_BOMB_CYCLONE_CHANGE,
+    PRESSURE_EXTREME_HIGH_THRESHOLD,
+    PRESSURE_HURRICANE_THRESHOLD,
     PRESSURE_TYPE_RELATIVE,
 )
 from .forecast_calculator import (
@@ -93,6 +120,7 @@ from .forecast_calculator import (
     ZambrettiForecaster,
 )
 from .language import get_wind_type, get_visibility_estimate
+from .negretti_zambra import calculate_negretti_zambra_forecast
 from .unit_conversion import UnitConverter
 
 _LOGGER = logging.getLogger(__name__)
@@ -475,9 +503,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
             return None
 
         try:
-            from .unit_conversion import UnitConverter
-            from .calculations import calculate_theoretical_max_solar_radiation
-            
             # Get measured solar radiation
             raw_value = float(solar_state.state)
             unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
@@ -534,9 +559,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
         if humidity is None or temp is None:
             return None
 
-        # Calculate visibility from humidity and temperature (returns km)
-        from .calculations import calculate_visibility_from_humidity
-
         visibility_km = calculate_visibility_from_humidity(humidity, temp)
 
         # Further reduce visibility if fog conditions detected
@@ -584,7 +606,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
             solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
 
             # Calculate UV index from solar radiation
-            from .calculations import calculate_uv_index_from_solar_radiation
             uv = calculate_uv_index_from_solar_radiation(solar_radiation)
 
             return round(uv, 1) if uv is not None else None
@@ -651,12 +672,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 pass
 
         # EXCEPTIONAL: Extreme pressure (hurricane, bomb cyclone, extreme anticyclone)
-        from .const import (
-            PRESSURE_HURRICANE_THRESHOLD,
-            PRESSURE_EXTREME_HIGH_THRESHOLD,
-            PRESSURE_BOMB_CYCLONE_CHANGE,
-        )
-        
         if pressure < PRESSURE_HURRICANE_THRESHOLD:
             _LOGGER.debug(
                 f"⚠️ EXCEPTIONAL WEATHER: Hurricane-force low pressure detected! "
@@ -688,13 +703,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
             gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
 
         # Set internal flag if atmospheric conditions favor hail
-        from .const import (
-            HAIL_TEMP_MIN,
-            HAIL_TEMP_MAX,
-            HAIL_HUMIDITY_MIN,
-            HAIL_GUST_RATIO_MIN,
-        )
-        
         if temp is not None and humidity is not None and gust_ratio is not None:
             self._hail_conditions_present = (
                 HAIL_TEMP_MIN <= temp <= HAIL_TEMP_MAX and
@@ -723,19 +731,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 return ATTR_CONDITION_PARTLYCLOUDY
             
             # Import fog thresholds once at start (used in multiple places)
-            from .const import (
-                FOG_DEWPOINT_CRITICAL,
-                FOG_DEWPOINT_LIKELY,
-                FOG_DEWPOINT_POSSIBLE,
-                FOG_DEWPOINT_MIST,
-                FOG_HUMIDITY_CRITICAL,
-                FOG_HUMIDITY_HIGH,
-                FOG_HUMIDITY_MEDIUM,
-                FOG_HUMIDITY_MIST,
-                FOG_WIND_CALM,
-                FOG_WIND_LIGHT,
-            )
-            
             # PERFORMANCE: Cache all sensor values once at start
             # Reduces sensor reads from ~25 to ~8 (~68% reduction)
             _cache = self._cache_sensor_values()
@@ -825,14 +820,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             # Precipitation type: <-1°C snow, -1 to 4°C mixed, >4°C rain
 
                             if temp is not None:
-                                from .const import (
-                                    PRECIP_SNOW_TEMP_MAX,
-                                    PRECIP_MIXED_TEMP_MIN,
-                                    PRECIP_MIXED_TEMP_MAX,
-                                    PRECIP_MIXED_HUMIDITY,
-                                    PRECIP_POURING_THRESHOLD,
-                                )
-                                
                                 # Get humidity for wet bulb approximation
                                 current_humidity = humidity if humidity is not None else 70.0
 
@@ -1076,9 +1063,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 
                 if solar_state and sun_state and solar_state.state not in ("unknown", "unavailable", None):
                     try:
-                        from .unit_conversion import UnitConverter
-                        from .calculations import calculate_theoretical_max_solar_radiation
-                        
                         # Get measured solar radiation
                         raw_value = float(solar_state.state)
                         unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
@@ -1794,8 +1778,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 except (ValueError, TypeError):
                     pass
 
-            from .calculations import get_snow_risk, get_frost_risk
-
             # Calculate snow risk (pass dewpoint, not spread - function calculates spread internally)
             snow_risk = get_snow_risk(temp, humidity, dewpoint, int(rain_prob) if rain_prob else None)
             attrs["snow_risk"] = snow_risk
@@ -2129,7 +2111,6 @@ class LocalWeatherForecastWeather(WeatherEntity):
             elif forecast_model == FORECAST_MODEL_NEGRETTI:
                 # Negretti-Zambra: Conservative slide-rule method
                 # Note: We still use Zambretti class but with Negretti-optimized parameters
-                from .negretti_zambra import calculate_negretti_zambra_forecast as negretti_calc
                 zambretti = ZambrettiForecaster(
                     hass=self.hass,
                     latitude=latitude,
