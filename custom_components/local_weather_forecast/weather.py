@@ -116,7 +116,7 @@ async def async_setup_entry(
 
     _LOGGER.debug("Setting up Local Weather Forecast weather entity")
 
-    async_add_entities([LocalWeatherForecastWeather(entry)], True)
+    async_add_entities([LocalWeatherForecastWeather(entry)], False)
 
 
 class LocalWeatherForecastWeather(WeatherEntity):
@@ -139,7 +139,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.20",
+            sw_version="3.1.21",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)

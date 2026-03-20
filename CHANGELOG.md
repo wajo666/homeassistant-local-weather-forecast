@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.21] - 2026-03-20
+
+### Fixed
+- **Sensor platform setup taking over 10 seconds** (#20) - replaced `asyncio.sleep(10)` startup delays in `LocalForecastEnhancedSensor` and `LocalForecastRainProbabilitySensor` with `async_at_start` callback; removed `update_before_add=True` eager updates and blocking `_wait_for_entity(timeout=15)` call during `async_update`
+- **`@callback async def` antipattern** - removed `@callback` decorator from 7 async handler methods that use `await`; removed `async` keyword from 4 synchronous-only callback methods (`_handle_pressure_update`, `_handle_temperature_update`, `_periodic_update`)
+
+
 ## [3.1.20] - 2026-03-17
 
 ### Fixed

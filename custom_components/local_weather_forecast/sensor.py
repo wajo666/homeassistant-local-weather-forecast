@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.start import async_at_start
 from homeassistant.helpers import entity_registry as er
 from homeassistant.components.recorder import get_instance, history
 from homeassistant.util import dt as dt_util
@@ -93,7 +94,7 @@ async def async_setup_entry(
         LocalForecastRainProbabilitySensor(hass, config_entry),
     ]
 
-    async_add_entities(entities, True)
+    async_add_entities(entities, False)
 
 
 class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
@@ -147,7 +148,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.20",
+            "sw_version": "3.1.21",
         }
 
     async def _wait_for_entity(
@@ -340,11 +341,13 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             )
         )
 
-        # Initial update
-        await self.async_update()
-        self.async_write_ha_state()
+        # Schedule initial update after HA has finished starting up
+        async def _initial_update(_hass):
+            await self.async_update()
+            self.async_write_ha_state()
 
-    @callback
+        self.async_on_remove(async_at_start(self.hass, _initial_update))
+
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
         # Throttle updates to prevent flooding
@@ -785,7 +788,6 @@ class LocalForecastPressureSensor(LocalWeatherForecastEntity):
             if p0 is not None:
                 self._state = float(p0)
 
-    @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
         # Throttle updates to prevent flooding
@@ -852,7 +854,6 @@ class LocalForecastTemperatureSensor(LocalWeatherForecastEntity):
             if temp is not None:
                 self._state = float(temp)
 
-    @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
         # Throttle updates to prevent flooding
@@ -943,7 +944,7 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                     pass
 
     @callback
-    async def _handle_pressure_update(self, event):
+    def _handle_pressure_update(self, event):
         """Handle pressure sensor updates."""
         new_state = event.data.get("new_state")
         if new_state and new_state.state not in ("unknown", "unavailable"):
@@ -1084,7 +1085,7 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
                     pass
 
     @callback
-    async def _handle_temperature_update(self, event):
+    def _handle_temperature_update(self, event):
         """Handle temperature sensor updates."""
         new_state = event.data.get("new_state")
         if new_state and new_state.state not in ("unknown", "unavailable"):
@@ -1208,7 +1209,7 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
         self.async_write_ha_state()
 
     @callback
-    async def _periodic_update(self, now: datetime) -> None:
+    def _periodic_update(self, now: datetime) -> None:
         """Periodic update to refresh forecast times."""
         if self._state and self._attributes:
             # Recalculate forecast times with current time
@@ -1367,7 +1368,6 @@ class LocalForecastZambrettiDetailSensor(LocalWeatherForecastEntity):
 
         return [time_string, round(time_to_interval, 2)]
 
-    @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
         await self._update_from_main()
@@ -1535,7 +1535,7 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
         self.async_write_ha_state()
 
     @callback
-    async def _periodic_update(self, now: datetime) -> None:
+    def _periodic_update(self, now: datetime) -> None:
         """Periodic update to refresh forecast times."""
         if self._state and self._attributes:
             # Recalculate forecast times with current time
@@ -1694,7 +1694,6 @@ class LocalForecastNegZamDetailSensor(LocalWeatherForecastEntity):
 
         return [time_string, round(time_to_interval, 2)]
 
-    @callback
     async def _handle_main_update(self, event):
         """Handle main sensor updates."""
         await self._update_from_main()
@@ -1875,16 +1874,14 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             )
         )
 
-        # Schedule delayed update to wait for dependent sensors to load
-        async def delayed_startup_update():
-            await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
-            _LOGGER.debug("Enhanced: Running delayed startup update")
+        # Schedule initial update after HA has finished starting up
+        async def _initial_update(_hass):
+            _LOGGER.debug("Enhanced: Running startup update")
             await self.async_update()
             self.async_write_ha_state()
 
-        self.hass.async_create_task(delayed_startup_update())
+        self.async_on_remove(async_at_start(self.hass, _initial_update))
 
-    @callback
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
         # Throttle updates to prevent flooding
@@ -2395,16 +2392,14 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             )
         )
 
-        # Schedule delayed update to wait for dependent sensors to load
-        async def delayed_startup_update():
-            await asyncio.sleep(10)  # Wait 10 seconds for other integrations to load
-            _LOGGER.debug("RainProb: Running delayed startup update")
+        # Schedule initial update after HA has finished starting up
+        async def _initial_update(_hass):
+            _LOGGER.debug("RainProb: Running startup update")
             await self.async_update()
             self.async_write_ha_state()
 
-        self.hass.async_create_task(delayed_startup_update())
+        self.async_on_remove(async_at_start(self.hass, _initial_update))
 
-    @callback
     async def _handle_sensor_update(self, event):
         """Handle source sensor state changes."""
         # Throttle updates to prevent flooding
@@ -2616,12 +2611,6 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
         _LOGGER.debug(f"RainProb: Config rain rate sensor = {rain_rate_sensor_id}")
         current_rain = 0.0
         if rain_rate_sensor_id:
-            # Wait for entity to become available (useful during HA restart)
-            rain_state = self.hass.states.get(rain_rate_sensor_id)
-            if not rain_state or rain_state.state in ("unknown", "unavailable"):
-                _LOGGER.debug(f"RainProb: Rain sensor '{rain_rate_sensor_id}' not yet available, waiting...")
-                await self._wait_for_entity(rain_rate_sensor_id, timeout=15, retry_interval=0.5)
-
             # Extended debugging
             rain_state = self.hass.states.get(rain_rate_sensor_id)
             if rain_state:
