@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.23] - 2026-03-23
+
+### Fixed
+- **Pressure trend diluted by old data beyond 3-hour window** - regression was running over full buffer (up to 7.5h) instead of WMO-standard 180-minute window; separated storage buffer (resilience) from calculation window (strict 3h)
+- **Temperature trend completely inverted** - `newest - oldest` over 2h+ buffer showed -0.7°C (cooling) when actual 1h trend was +0.3°C (warming); replaced with linear regression over strict 60-minute window
+- **Temperature sensor missing input validation** - added QC checks (NaN/Inf rejection, spike detection >10°C between consecutive readings)
+
+
 ## [3.1.22] - 2026-03-23
 
 ### Fixed

@@ -53,6 +53,7 @@ from .const import (
     PRESSURE_TYPE_RELATIVE,
     PRESSURE_MIN_RECORDS,
     TEMPERATURE_MIN_RECORDS,
+    TEMPERATURE_SPIKE_LIMIT,
     CONF_FORECAST_MODEL,
     FORECAST_MODEL_ENHANCED,
     FORECAST_MODEL_NEGRETTI,
@@ -180,7 +181,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.22",
+            "sw_version": "3.1.23",
         }
 
     async def _wait_for_entity(
@@ -993,13 +994,21 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                     _LOGGER.debug(f"PressureChange: Kept {len(self._history)} records within 180-minute window")
 
                 # Calculate pressure change using linear regression (least-squares)
-                # Standard method for professional AWS (WMO Technical Note No. 71)
-                if len(self._history) >= 2:
-                    n = len(self._history)
+                # WMO standard: 3-hour pressure tendency (SYNOP group 5appp)
+                # Use ONLY data within 180-min window for meteorological accuracy
+                cutoff_for_calc = timestamp - timedelta(minutes=180)
+                calc_data = [(ts, p) for ts, p in self._history if ts > cutoff_for_calc]
+
+                # Fallback: if less than 2 points in 3h window, use all available
+                if len(calc_data) < 2:
+                    calc_data = self._history
+
+                if len(calc_data) >= 2:
+                    n = len(calc_data)
                     # Convert timestamps to minutes relative to first reading
-                    t0 = self._history[0][0]
-                    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in self._history]
-                    pressures = [p for _, p in self._history]
+                    t0 = calc_data[0][0]
+                    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in calc_data]
+                    pressures = [p for _, p in calc_data]
 
                     # Calculate means
                     t_mean = sum(times) / n
@@ -1019,7 +1028,7 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                     time_span = times[-1]
                     _LOGGER.debug(
                         f"PressureChange: Calculated change = {self._state} hPa "
-                        f"over {time_span:.1f} minutes ({n} points, regression)"
+                        f"over {time_span:.1f} minutes ({n}/{len(self._history)} points, regression)"
                     )
                     self.async_write_ha_state()
                 else:
@@ -1126,6 +1135,17 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
                 temperature = float(new_state.state)
                 timestamp = datetime.now()
 
+                # QC checks: reject invalid readings
+                if math.isnan(temperature) or math.isinf(temperature):
+                    _LOGGER.debug("TemperatureChange: Rejected reading (reason: NaN/Inf)")
+                    return
+                if self._history and abs(temperature - self._history[-1][1]) > TEMPERATURE_SPIKE_LIMIT:
+                    _LOGGER.debug(
+                        "TemperatureChange: Rejected reading %.1f°C (reason: spike from previous %.1f)",
+                        temperature, self._history[-1][1],
+                    )
+                    return
+
                 _LOGGER.debug(f"TemperatureChange: New temperature reading: {temperature}°C at {timestamp}")
 
                 # Add to history
@@ -1152,15 +1172,38 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
                     self._history = time_filtered
                     _LOGGER.debug(f"TemperatureChange: Kept {len(self._history)} records within 60-minute window")
 
-                # Calculate change if we have enough data
-                if len(self._history) >= 2:
-                    oldest = self._history[0][1]
-                    newest = self._history[-1][1]
-                    self._state = round(newest - oldest, 2)
-                    time_span = (self._history[-1][0] - self._history[0][0]).total_seconds() / 60
+                # Calculate temperature change using linear regression
+                # Use ONLY data within 60-min window for nowcasting accuracy
+                cutoff_for_calc = timestamp - timedelta(minutes=60)
+                calc_data = [(ts, t) for ts, t in self._history if ts > cutoff_for_calc]
+
+                # Fallback: if less than 2 points in 1h window, use all available
+                if len(calc_data) < 2:
+                    calc_data = self._history
+
+                if len(calc_data) >= 2:
+                    n = len(calc_data)
+                    t0 = calc_data[0][0]
+                    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in calc_data]
+                    temps = [t for _, t in calc_data]
+
+                    t_mean = sum(times) / n
+                    temp_mean = sum(temps) / n
+
+                    numerator = sum((t - t_mean) * (v - temp_mean) for t, v in zip(times, temps))
+                    denominator = sum((t - t_mean) ** 2 for t in times)
+
+                    if denominator > 0:
+                        slope = numerator / denominator  # °C per minute
+                        # Extrapolate to 60-minute (1h) change
+                        self._state = round(slope * 60, 2)
+                    else:
+                        self._state = 0.0
+
+                    time_span = times[-1]
                     _LOGGER.debug(
                         f"TemperatureChange: Calculated change = {self._state}°C "
-                        f"over {time_span:.1f} minutes ({oldest} → {newest}°C)"
+                        f"over {time_span:.1f} minutes ({n}/{len(self._history)} points, regression)"
                     )
                     self.async_write_ha_state()
                 else:

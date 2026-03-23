@@ -95,6 +95,7 @@ PRESSURE_TREND_FALLING: Final = -1.6
 PRESSURE_QC_MIN: Final = 870.0  # hPa - Lowest recorded sea-level pressure (Typhoon Tip, 1979)
 PRESSURE_QC_MAX: Final = 1084.0  # hPa - Highest recorded sea-level pressure (Agata, Siberia, 1968)
 PRESSURE_SPIKE_LIMIT: Final = 10.0  # hPa - Max allowed change between consecutive readings
+TEMPERATURE_SPIKE_LIMIT: Final = 10.0  # °C - Max allowed change between consecutive readings
 
 # Exceptional weather thresholds
 PRESSURE_HURRICANE_THRESHOLD: Final = 950.0  # hPa - Hurricane-force low pressure

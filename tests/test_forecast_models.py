@@ -116,15 +116,20 @@ class TestTemperatureModel:
 
     def test_predict_with_trend(self):
         """Test prediction with warming trend."""
-        model = TemperatureModel(
-            current_temp=15.0,
-            change_rate_1h=1.0
-        )
+        from unittest.mock import patch
+        # Fix time to morning so diurnal cycle supports warming
+        with patch('custom_components.local_weather_forecast.forecast_calculator.datetime') as mock_dt:
+            mock_dt.now.return_value = datetime(2025, 7, 15, 8, 0)
+            mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            model = TemperatureModel(
+                current_temp=15.0,
+                change_rate_1h=1.0
+            )
 
-        # After 2 hours: should be warmer (with decay)
-        result = model.predict(2)
-        assert result > 15.0
-        assert result < 19.0  # Allow more range for diurnal cycle effects
+            # After 2 hours: should be warmer (with decay)
+            result = model.predict(2)
+            assert result > 15.0
+            assert result < 25.0  # Trend + diurnal warming during morning
 
     def test_predict_diurnal_cycle(self):
         """Test diurnal cycle component."""

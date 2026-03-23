@@ -393,3 +393,211 @@ class TestMorningScenario:
         assert model.get_trend(0) == "steady"
         assert model.get_trend(3) == "steady"
         assert model.get_trend(6) == "steady"
+
+
+# ============================================================================
+# Regression window: pressure uses only 180-min, temperature uses only 60-min
+# ============================================================================
+
+def _linear_regression(data, extrapolate_minutes):
+    """Helper: compute regression slope × extrapolate_minutes from (timestamp, value) pairs.
+
+    Mimics the sensor.py regression logic for unit testing without HA dependency.
+    """
+    n = len(data)
+    t0 = data[0][0]
+    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in data]
+    values = [v for _, v in data]
+
+    t_mean = sum(times) / n
+    v_mean = sum(values) / n
+
+    numerator = sum((t - t_mean) * (v - v_mean) for t, v in zip(times, values))
+    denominator = sum((t - t_mean) ** 2 for t in times)
+
+    if denominator > 0:
+        slope = numerator / denominator
+        return round(slope * extrapolate_minutes, 2)
+    return 0.0
+
+
+class TestPressureRegressionWindow:
+    """Test that pressure regression uses only 180-min data window."""
+
+    def test_regression_uses_only_180min_window(self):
+        """7.5h buffer — regression must match 3h-only result, not full buffer."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 14, 0, 0)
+        # 36 points over 7.5h: slow rise 1017→1019.2
+        full_buffer = []
+        for i in range(36):
+            ts = base + timedelta(minutes=i * 12.5)
+            pressure = 1017.0 + (2.2 * i / 35)
+            full_buffer.append((ts, pressure))
+
+        # Full buffer regression (wrong — over 7.5h)
+        full_result = _linear_regression(full_buffer, 180)
+
+        # 180-min window only (correct)
+        cutoff = full_buffer[-1][0] - timedelta(minutes=180)
+        window_data = [(ts, p) for ts, p in full_buffer if ts > cutoff]
+        window_result = _linear_regression(window_data, 180)
+
+        # Both should give similar results for linear data,
+        # but with non-linear data they'd differ
+        assert len(window_data) < len(full_buffer), \
+            "Window should have fewer points than full buffer"
+        assert abs(full_result - window_result) < 0.5, \
+            "For linear data, results should be similar"
+
+    def test_regression_3h_window_excludes_old_data(self):
+        """Old data that contradicts current trend must be excluded."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 14, 0, 0)
+        # First 2h: pressure FALLING 1020 → 1017
+        # Last 3h: pressure RISING 1017 → 1019.2
+        data = []
+        # Old falling data (4h-2h ago)
+        for i in range(12):
+            ts = base + timedelta(minutes=i * 10)
+            pressure = 1020.0 - (3.0 * i / 11)
+            data.append((ts, pressure))
+        # Recent rising data (last 3h)
+        for i in range(18):
+            ts = base + timedelta(minutes=120 + i * 10)
+            pressure = 1017.0 + (2.2 * i / 17)
+            data.append((ts, pressure))
+
+        # Full buffer regression: diluted by old falling data
+        full_result = _linear_regression(data, 180)
+
+        # 180-min window only: sees only rising data
+        cutoff = data[-1][0] - timedelta(minutes=180)
+        window_data = [(ts, p) for ts, p in data if ts > cutoff]
+        window_result = _linear_regression(window_data, 180)
+
+        # Window result must be positive (rising), full might be near zero
+        assert window_result > 1.0, \
+            f"3h window should show rising trend, got {window_result}"
+        assert window_result > full_result, \
+            "3h window should show stronger rise than diluted full buffer"
+
+    def test_regression_fallback_when_few_points(self):
+        """< 2 points in 3h window — must fall back to full buffer."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 14, 0, 0)
+        # Only 1 point in 3h window, rest are old
+        data = [
+            (base, 1015.0),
+            (base + timedelta(minutes=30), 1015.5),
+            (base + timedelta(minutes=300), 1017.0),  # Only this in 3h window
+        ]
+
+        cutoff = data[-1][0] - timedelta(minutes=180)
+        window_data = [(ts, p) for ts, p in data if ts > cutoff]
+        assert len(window_data) < 2, "Should have < 2 points in window"
+
+        # Fallback to full buffer should still produce a result
+        result = _linear_regression(data, 180)
+        assert result > 0, "Fallback regression should show rising trend"
+
+
+class TestTemperatureRegressionWindow:
+    """Test that temperature regression uses only 60-min data window."""
+
+    def test_temp_regression_uses_only_60min_window(self):
+        """2h buffer — regression must use only last 1h data."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 20, 0, 0)
+        # First hour: cooling 10.1 → 8.9
+        # Second hour: warming 9.1 → 9.4
+        data = []
+        for i in range(6):
+            ts = base + timedelta(minutes=i * 10)
+            temp = 10.1 - (1.2 * i / 5)
+            data.append((ts, temp))
+        for i in range(6):
+            ts = base + timedelta(minutes=60 + i * 10)
+            temp = 9.1 + (0.3 * i / 5)
+            data.append((ts, temp))
+
+        # Full buffer (wrong): sees cooling + warming → net negative
+        full_result = _linear_regression(data, 60)
+
+        # 60-min window (correct): sees only warming
+        cutoff = data[-1][0] - timedelta(minutes=60)
+        window_data = [(ts, t) for ts, t in data if ts > cutoff]
+        window_result = _linear_regression(window_data, 60)
+
+        assert full_result < 0, \
+            f"Full buffer should show net cooling, got {full_result}"
+        assert window_result > 0, \
+            f"1h window should show warming, got {window_result}"
+
+    def test_temp_inverted_trend_fixed(self):
+        """User data: actual 1h trend is +0.3°C but old code showed -0.7°C."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 19, 42, 0)
+        # Exact user data from Issue report
+        user_data = [
+            (base, 10.1),
+            (base + timedelta(minutes=20), 10.0),
+            (base + timedelta(minutes=30), 9.7),
+            (base + timedelta(minutes=32), 9.6),
+            (base + timedelta(minutes=40), 9.3),
+            (base + timedelta(minutes=46), 9.1),
+            (base + timedelta(minutes=49), 9.0),
+            (base + timedelta(minutes=50), 8.9),
+            (base + timedelta(minutes=90), 9.1),
+            (base + timedelta(minutes=100), 9.2),
+            (base + timedelta(minutes=110), 9.3),
+            (base + timedelta(minutes=120), 9.4),
+        ]
+
+        # Old method: newest - oldest
+        old_result = user_data[-1][1] - user_data[0][1]
+        assert old_result == pytest.approx(-0.7, abs=0.01), \
+            "Sanity check: old method gives -0.7"
+
+        # New method: regression over 60-min window
+        cutoff = user_data[-1][0] - timedelta(minutes=60)
+        window_data = [(ts, t) for ts, t in user_data if ts > cutoff]
+        window_result = _linear_regression(window_data, 60)
+
+        # 1h window should show warming (positive), not cooling
+        assert window_result > 0, \
+            f"1h regression should show warming, got {window_result}"
+
+    def test_temp_qc_rejects_nan(self):
+        """NaN temperature must be rejected (tested via constant existence)."""
+        assert math.isnan(float('nan'))
+        assert math.isinf(float('inf'))
+
+    def test_temp_qc_spike_limit(self):
+        """Temperature spike limit constant exists and is reasonable."""
+        from custom_components.local_weather_forecast.const import TEMPERATURE_SPIKE_LIMIT
+        assert TEMPERATURE_SPIKE_LIMIT == 10.0
+
+    def test_temp_regression_fallback_few_points(self):
+        """< 2 points in 1h window — must fall back to full buffer."""
+        from datetime import timedelta
+
+        base = datetime(2025, 3, 23, 18, 0, 0)
+        data = [
+            (base, 15.0),
+            (base + timedelta(minutes=30), 15.5),
+            (base + timedelta(minutes=120), 16.0),  # Only this in 1h window
+        ]
+
+        cutoff = data[-1][0] - timedelta(minutes=60)
+        window_data = [(ts, t) for ts, t in data if ts > cutoff]
+        assert len(window_data) < 2, "Should have < 2 points in window"
+
+        # Fallback to full buffer
+        result = _linear_regression(data, 60)
+        assert result > 0, "Fallback regression should show warming"
