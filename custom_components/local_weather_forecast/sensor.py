@@ -50,6 +50,9 @@ from .const import (
     PRESSURE_SPIKE_LIMIT,
     PRESSURE_TREND_FALLING,
     PRESSURE_TREND_RISING,
+    SENSOR_QC_LIMITS,
+    TEMPERATURE_QC_MIN,
+    TEMPERATURE_QC_MAX,
     PRESSURE_TYPE_RELATIVE,
     PRESSURE_MIN_RECORDS,
     TEMPERATURE_MIN_RECORDS,
@@ -261,7 +264,20 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
                             f"Converted {sensor_id}: {value} {unit} → {converted_value:.2f} "
                             f"{UnitConverter.REQUIRED_UNITS.get(sensor_type, '')}"
                         )
-                    return converted_value
+                    value = converted_value
+
+            # QC validation: reject NaN/Inf and out-of-range values
+            if math.isnan(value) or math.isinf(value):
+                _LOGGER.debug("QC: Rejected %s reading (reason: NaN/Inf)", sensor_id)
+                return default
+            if sensor_type and sensor_type in SENSOR_QC_LIMITS:
+                qc_min, qc_max = SENSOR_QC_LIMITS[sensor_type]
+                if value < qc_min or value > qc_max:
+                    _LOGGER.debug(
+                        "QC: Rejected %s reading %.2f (reason: out of range [%.1f-%.1f])",
+                        sensor_id, value, qc_min, qc_max,
+                    )
+                    return default
 
             return value
 
@@ -1138,6 +1154,12 @@ class LocalForecastTemperatureChangeSensor(LocalWeatherForecastEntity):
                 # QC checks: reject invalid readings
                 if math.isnan(temperature) or math.isinf(temperature):
                     _LOGGER.debug("TemperatureChange: Rejected reading (reason: NaN/Inf)")
+                    return
+                if temperature < TEMPERATURE_QC_MIN or temperature > TEMPERATURE_QC_MAX:
+                    _LOGGER.debug(
+                        "TemperatureChange: Rejected reading %.1f°C (reason: out of range [%.1f-%.1f])",
+                        temperature, TEMPERATURE_QC_MIN, TEMPERATURE_QC_MAX,
+                    )
                     return
                 if self._history and abs(temperature - self._history[-1][1]) > TEMPERATURE_SPIKE_LIMIT:
                     _LOGGER.debug(

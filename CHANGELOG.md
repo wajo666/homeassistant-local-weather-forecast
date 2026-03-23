@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Temperature trend completely inverted** - `newest - oldest` over 2h+ buffer showed -0.7°C (cooling) when actual 1h trend was +0.3°C (warming); replaced with linear regression over strict 60-minute window
 - **Temperature sensor missing input validation** - added QC checks (NaN/Inf rejection, spike detection >10°C between consecutive readings)
 
+### Added
+- Input validation (NaN/Inf, range limits) for all configured sensors: humidity (0-100%), wind speed (0-114 m/s), wind direction (0-360°), wind gust, solar radiation (0-1500 W/m²), rain rate (0-500 mm/h)
+- Temperature range validation (-89.2°C to +56.7°C world records)
+- Centralized `SENSOR_QC_LIMITS` dict and QC in sensor reading pipeline — invalid readings logged and rejected with safe defaults
+
 
 ## [3.1.22] - 2026-03-23
 

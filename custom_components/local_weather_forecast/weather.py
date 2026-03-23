@@ -92,6 +92,7 @@ from .const import (
     KELVIN_OFFSET,
     LAPSE_RATE,
     PRESSURE_TYPE_RELATIVE,
+    SENSOR_QC_LIMITS,
     FOG_DEWPOINT_CRITICAL,
     FOG_DEWPOINT_LIKELY,
     FOG_DEWPOINT_MIST,
@@ -334,6 +335,24 @@ class LocalWeatherForecastWeather(WeatherEntity):
         """Calculate sea level pressure from station pressure."""
         return calculate_sea_level_pressure(pressure, temperature, elevation)
 
+    def _validate_sensor_value(
+        self, value: float, sensor_type: str, sensor_id: str = ""
+    ) -> float | None:
+        """Validate sensor value against QC limits. Returns value or None."""
+        import math
+        if math.isnan(value) or math.isinf(value):
+            _LOGGER.debug("QC: Rejected %s reading (reason: NaN/Inf)", sensor_id)
+            return None
+        if sensor_type in SENSOR_QC_LIMITS:
+            qc_min, qc_max = SENSOR_QC_LIMITS[sensor_type]
+            if value < qc_min or value > qc_max:
+                _LOGGER.debug(
+                    "QC: Rejected %s reading %.2f (reason: out of range [%.1f-%.1f])",
+                    sensor_id, value, qc_min, qc_max,
+                )
+                return None
+        return value
+
     @property
     def humidity(self) -> float | None:
         """Return the humidity."""
@@ -344,7 +363,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(humidity_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    return self._validate_sensor_value(value, "humidity", humidity_sensor)
                 except (ValueError, TypeError):
                     pass
         return None
@@ -360,11 +380,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if state and state.state not in ("unknown", "unavailable"):
                 try:
                     value = float(state.state)
-                    # Apply unit conversion
                     unit = state.attributes.get("unit_of_measurement")
                     if unit:
-                        return UnitConverter.convert_sensor_value(value, "wind_speed", unit)
-                    return value
+                        value = UnitConverter.convert_sensor_value(value, "wind_speed", unit)
+                    return self._validate_sensor_value(value, "wind_speed", wind_speed_sensor)
                 except (ValueError, TypeError):
                     pass
         return None
@@ -379,7 +398,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
             state = self.hass.states.get(wind_direction_sensor)
             if state and state.state not in ("unknown", "unavailable"):
                 try:
-                    return float(state.state)
+                    value = float(state.state)
+                    return self._validate_sensor_value(value, "wind_direction", wind_direction_sensor)
                 except (ValueError, TypeError):
                     pass
         return None
@@ -395,15 +415,13 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if state and state.state not in ("unknown", "unavailable"):
                 try:
                     value = float(state.state)
-                    # Apply unit conversion
                     unit = state.attributes.get("unit_of_measurement")
                     if unit:
-                        converted = UnitConverter.convert_sensor_value(value, "wind_speed", unit)
+                        value = UnitConverter.convert_sensor_value(value, "wind_speed", unit)
                         _LOGGER.debug(
-                            f"Weather: Wind gust converted: {value} {unit} → {converted:.2f} m/s"
+                            f"Weather: Wind gust converted: {value} {unit} → {value:.2f} m/s"
                         )
-                        return converted
-                    return value
+                    return self._validate_sensor_value(value, "wind_speed", wind_gust_sensor)
                 except (ValueError, TypeError):
                     pass
         return None
@@ -480,7 +498,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     raw_value = float(solar_state.state)
                     unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
                     # Convert to W/m² (from lux if needed)
-                    solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                    converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+                    solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
                 except (ValueError, TypeError):
                     pass
 
@@ -516,7 +535,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
             # Get measured solar radiation
             raw_value = float(solar_state.state)
             unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
-            solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+            converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+            solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
+            if solar_radiation is None:
+                return None
             
             # Calculate theoretical maximum
             solar_elevation_deg = sun_state.attributes.get("elevation", 0)
@@ -614,7 +636,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
         try:
             raw_value = float(solar_state.state)
             unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
-            solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+            converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+            solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
+            if solar_radiation is None:
+                return None
 
             # Calculate UV index from solar radiation
             uv = calculate_uv_index_from_solar_radiation(solar_radiation)
@@ -763,6 +788,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
                     try:
                         from datetime import datetime
                         current_rain = float(rain_sensor.state)
+                        # QC: validate rain rate
+                        validated = self._validate_sensor_value(current_rain, "precipitation", rain_rate_sensor_id)
+                        if validated is None:
+                            current_rain = 0.0
+                        else:
+                            current_rain = validated
                         now = datetime.now()
 
                         # Detect sensor type by device_class and unit_of_measurement
@@ -1076,7 +1107,10 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         # Get measured solar radiation
                         raw_value = float(solar_state.state)
                         unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
-                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
+                        if solar_radiation is None:
+                            raise ValueError("QC rejected")
                         
                         # Calculate theoretical maximum
                         solar_elevation_deg = sun_state.attributes.get("elevation", 0)
@@ -1983,6 +2017,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable"):
                     try:
                         current_rain_rate = float(rain_sensor.state)
+                        validated = self._validate_sensor_value(current_rain_rate, "precipitation", rain_rate_sensor_id)
+                        current_rain_rate = validated if validated is not None else 0.0
                         _LOGGER.debug(f"🌧️ Current rain rate: {current_rain_rate} mm/h")
                     except (ValueError, TypeError) as err:
                         _LOGGER.debug(f"🌧️ Failed to parse rain rate: {err}")
@@ -1999,7 +2035,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         raw_value = float(solar_state.state)
                         unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
                         # Convert to W/m² (from lux if needed)
-                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
                         _LOGGER.debug(f"☀️ Solar radiation: {solar_radiation} W/m²")
                     except (ValueError, TypeError):
                         pass
@@ -2169,6 +2206,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable"):
                     try:
                         current_rain_rate = float(rain_sensor.state)
+                        validated = self._validate_sensor_value(current_rain_rate, "precipitation", rain_rate_sensor_id)
+                        current_rain_rate = validated if validated is not None else 0.0
                         _LOGGER.debug(f"Current rain rate: {current_rain_rate} mm/h")
                     except (ValueError, TypeError) as err:
                         _LOGGER.debug(f"Failed to parse rain rate: {err}")
@@ -2185,7 +2224,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
                         raw_value = float(solar_state.state)
                         unit = solar_state.attributes.get("unit_of_measurement", "W/m²")
                         # Convert to W/m² (from lux if needed)
-                        solar_radiation = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        converted = UnitConverter.convert_solar_radiation(raw_value, unit)
+                        solar_radiation = self._validate_sensor_value(converted, "solar_radiation", solar_sensor_id)
                         _LOGGER.debug(f"Solar radiation for daily forecast: {solar_radiation} W/m²")
                     except (ValueError, TypeError):
                         pass

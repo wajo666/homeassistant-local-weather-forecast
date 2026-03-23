@@ -97,6 +97,39 @@ PRESSURE_QC_MAX: Final = 1084.0  # hPa - Highest recorded sea-level pressure (Ag
 PRESSURE_SPIKE_LIMIT: Final = 10.0  # hPa - Max allowed change between consecutive readings
 TEMPERATURE_SPIKE_LIMIT: Final = 10.0  # °C - Max allowed change between consecutive readings
 
+# Temperature QC thresholds
+TEMPERATURE_QC_MIN: Final = -89.2  # °C - Lowest recorded (Vostok Station, Antarctica, 1983)
+TEMPERATURE_QC_MAX: Final = 56.7  # °C - Highest recorded (Death Valley, USA, 1913)
+
+# Humidity QC thresholds
+HUMIDITY_QC_MIN: Final = 0.0  # %
+HUMIDITY_QC_MAX: Final = 100.0  # %
+
+# Wind QC thresholds
+WIND_SPEED_QC_MIN: Final = 0.0  # m/s
+WIND_SPEED_QC_MAX: Final = 114.0  # m/s - Highest recorded (Mt. Washington, 1934 + tropical cyclones)
+WIND_DIRECTION_QC_MIN: Final = 0.0  # degrees
+WIND_DIRECTION_QC_MAX: Final = 360.0  # degrees
+
+# Solar radiation QC thresholds
+SOLAR_RADIATION_QC_MIN: Final = 0.0  # W/m²
+SOLAR_RADIATION_QC_MAX: Final = 1500.0  # W/m² - Above solar constant (1361) with margin
+
+# Rain rate QC thresholds
+RAIN_RATE_QC_MIN: Final = 0.0  # mm/h
+RAIN_RATE_QC_MAX: Final = 500.0  # mm/h - Extreme tropical rainfall ceiling
+
+# Centralized QC limits: sensor_type → (min, max)
+SENSOR_QC_LIMITS: Final = {
+    "pressure": (PRESSURE_QC_MIN, PRESSURE_QC_MAX),
+    "temperature": (TEMPERATURE_QC_MIN, TEMPERATURE_QC_MAX),
+    "humidity": (HUMIDITY_QC_MIN, HUMIDITY_QC_MAX),
+    "wind_speed": (WIND_SPEED_QC_MIN, WIND_SPEED_QC_MAX),
+    "wind_direction": (WIND_DIRECTION_QC_MIN, WIND_DIRECTION_QC_MAX),
+    "solar_radiation": (SOLAR_RADIATION_QC_MIN, SOLAR_RADIATION_QC_MAX),
+    "precipitation": (RAIN_RATE_QC_MIN, RAIN_RATE_QC_MAX),
+}
+
 # Exceptional weather thresholds
 PRESSURE_HURRICANE_THRESHOLD: Final = 950.0  # hPa - Hurricane-force low pressure
 PRESSURE_EXTREME_HIGH_THRESHOLD: Final = 1050.0  # hPa - Extreme anticyclone
