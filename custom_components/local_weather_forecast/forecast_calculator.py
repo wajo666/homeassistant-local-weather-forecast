@@ -21,6 +21,8 @@ from .const import (
     FORECAST_MODEL_ZAMBRETTI,
     FORECAST_MODEL_NEGRETTI,
     FORECAST_MODEL_ENHANCED,
+    PRESSURE_TREND_FALLING,
+    PRESSURE_TREND_RISING,
 )
 from .zambretti import calculate_zambretti_forecast
 from .forecast_mapping import map_forecast_to_condition, ZAMBRETTI_LETTER_TO_CODE
@@ -77,14 +79,19 @@ class PressureModel:
         """
         self.current_pressure = current_pressure
         self.change_rate_3h = pressure_change_3h
-        self.change_rate_1h = pressure_change_3h / 3.0  # Convert to hourly rate
+        # Dead zone: sub-threshold pressure change = no extrapolation
+        # Prevents false -1.2 hPa artifacts from compounding to -5.54 hPa over 24h
+        if abs(pressure_change_3h) < abs(PRESSURE_TREND_FALLING):
+            self.change_rate_1h = 0.0
+        else:
+            self.change_rate_1h = pressure_change_3h / 3.0  # Convert to hourly rate
         self.smoothing_factor = smoothing_factor
         self.damping_factor = damping_factor
 
         # Backwards compatibility aliases for old tests
         self.current = current_pressure
         self.change_3h = pressure_change_3h
-        self.change_per_hour = pressure_change_3h / 3.0
+        self.change_per_hour = self.change_rate_1h
 
     def predict(self, hours_ahead: int) -> float:
         """Predict pressure N hours ahead.
@@ -143,9 +150,9 @@ class PressureModel:
         future_pressure = self.predict(hours_ahead)
         change = future_pressure - self.current_pressure
 
-        if change > 1.0:
+        if change > PRESSURE_TREND_RISING:
             return "rising"
-        elif change < -1.0:
+        elif change < PRESSURE_TREND_FALLING:
             return "falling"
         else:
             return "steady"
@@ -1294,14 +1301,14 @@ class RainProbabilityCalculator:
             base_prob = min(100, base_prob + 20)
         elif pressure_change < -3:
             base_prob = min(100, base_prob + 15)
-        elif pressure_change < -1:
+        elif pressure_change < PRESSURE_TREND_FALLING:
             base_prob = min(100, base_prob + 5)
         # Stable pressure in anticyclone = very dry
         elif pressure_change > 5:
             base_prob = max(0, base_prob - 20)
         elif pressure_change > 3:
             base_prob = max(0, base_prob - 15)
-        elif pressure_change > 1:
+        elif pressure_change > PRESSURE_TREND_RISING:
             base_prob = max(0, base_prob - 5)
         # Very stable anticyclone (minimal change, high pressure)
         elif abs(pressure_change) < 0.5 and future_pressure > 1030:
@@ -1878,7 +1885,7 @@ class HourlyForecastGenerator:
         zambretti_result = self.zambretti.forecast_hour(
             pressure=self.pressure_model.current_pressure,
             wind_direction=self.wind_direction,
-            pressure_change=0.0,  # Current state
+            pressure_change=self.pressure_model.change_rate_3h,
             wind_speed=self.wind_speed
         )
         
@@ -1889,7 +1896,7 @@ class HourlyForecastGenerator:
             
             negretti_data = calculate_negretti_zambra_forecast(
                 p0=self.pressure_model.current_pressure,
-                pressure_change=0.0,
+                pressure_change=self.pressure_model.change_rate_3h,
                 wind_data=[
                     get_beaufort_scale(self.wind_speed),
                     self.wind_direction,
@@ -1919,7 +1926,7 @@ class HourlyForecastGenerator:
             "latitude": self.latitude,  # NEW: For sun-based temperature model
             "longitude": getattr(self.hass.config, 'longitude', 21.25) if self.hass and self.hass.config else 21.25,  # NEW
             "solar_radiation": self.zambretti.solar_radiation if hasattr(self.zambretti, 'solar_radiation') else None,  # NEW
-            "cloud_cover": None,  # TODO: Add if available from sensors
+            "cloud_cover": getattr(self.temperature_model, 'cloud_cover', None),
         }
         
         # Generate forecasts using enhanced orchestration

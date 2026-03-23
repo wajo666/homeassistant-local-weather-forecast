@@ -29,7 +29,9 @@ def calculate_combined_forecast_with_time(
     current_pressure: float,
     pressure_change: float,
     hours_ahead: int = 0,
-    source: str = "CombinedModel"
+    source: str = "CombinedModel",
+    cloud_cover: float | None = None,
+    humidity: float | None = None,
 ) -> tuple[int, float, float, bool]:
     """Calculate Combined forecast WITH TIME DECAY.
     
@@ -82,6 +84,27 @@ def calculate_combined_forecast_with_time(
         # High Negretti weight - trust Negretti
         forecast_number = negretti_num
         decision = f"NEGRETTI (weight={negretti_weight:.0%})"
+
+    # Multi-level weather sanity check: cap physically impossible rain predictions
+    if forecast_number >= 13:
+        capped = False
+        if cloud_cover is not None and humidity is not None:
+            # Level 1: Full check — clear sky + dry air = no rain possible
+            if cloud_cover < 25 and humidity < 50:
+                forecast_number = min(forecast_number, 5)
+                capped = True
+                _LOGGER.debug(
+                    f"🛡️ Sanity check L1: cloud={cloud_cover}%%, humidity={humidity}%% → capped to {forecast_number}"
+                )
+        elif humidity is not None:
+            # Level 2: Humidity-only — very dry air = rain physically impossible
+            if humidity < 35:
+                forecast_number = min(forecast_number, 5)
+                capped = True
+                _LOGGER.debug(
+                    f"🛡️ Sanity check L2: humidity={humidity}%% → capped to {forecast_number}"
+                )
+        # Level 3: No sensors — skip, rely on threshold fixes
     
     _LOGGER.debug(
         f"🎯 {source}: P={current_pressure:.1f} hPa, ΔP={pressure_change:+.1f} hPa → "
@@ -530,7 +553,9 @@ def generate_enhanced_hourly_forecast(
                 current_pressure=weather_data.get("pressure", 1013.25),
                 pressure_change=weather_data.get("pressure_change", 0.0),
                 hours_ahead=hour,
-                source=f"Enhanced_h{hour}"
+                source=f"Enhanced_h{hour}",
+                cloud_cover=weather_data.get("cloud_cover"),
+                humidity=weather_data.get("humidity"),
             )
             
             # Blend: linear transition from WMO (h4) to TIME DECAY (h6)
@@ -575,7 +600,9 @@ def generate_enhanced_hourly_forecast(
                 current_pressure=weather_data.get("pressure", 1013.25),
                 pressure_change=weather_data.get("pressure_change", 0.0),
                 hours_ahead=hour,
-                source=f"Enhanced_h{hour}"
+                source=f"Enhanced_h{hour}",
+                cloud_cover=weather_data.get("cloud_cover"),
+                humidity=weather_data.get("humidity"),
             )
             
             # Get forecast text

@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.22] - 2026-03-23
+
+### Fixed
+- **Algorithm always predicts rain in the early morning hours** (#22) - morning temperature rise caused ~1.2 hPa QNH artifact that falsely triggered FALLING pressure classification; fixed by replacing simple pressure difference with linear regression, harmonizing all trend thresholds to ±1.6 hPa (Negretti-Zambra standard), adding PressureModel dead zone for sub-threshold changes, and multi-level weather sanity check (cloud cover + humidity) to cap physically impossible rain predictions
+
+### Added
+- AWS-grade pressure input validation (rejects NaN, out-of-range, and spike readings)
+- 36 new tests covering morning pressure artifact scenarios
+
+### Changed
+- Extracted shared utility functions (`calculate_sea_level_pressure`, `get_beaufort_number`, `get_atmosphere_stability`) to `calculations.py` to eliminate code duplication between sensor.py and weather.py
+- Fixed orchestration bug where `pressure_change=0.0` was hardcoded instead of using actual pressure trend
+- Fixed `cloud_cover=None` dead code in weather entity hourly forecast generation
+
+
 ## [3.1.21] - 2026-03-20
 
 ### Fixed

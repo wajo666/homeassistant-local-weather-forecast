@@ -105,19 +105,21 @@ class TestCalculateWMOTrendAdjustment:
         assert _calculate_wmo_trend_adjustment(5.0) == -3
     
     def test_steady_rise_moderate_improvement(self):
-        """Test steady rise (1-3 hPa) gives -2 adjustment."""
-        assert _calculate_wmo_trend_adjustment(1.0) == -2
+        """Test steady rise (1.6-3 hPa) gives -2 adjustment."""
+        assert _calculate_wmo_trend_adjustment(1.8) == -2
         assert _calculate_wmo_trend_adjustment(2.5) == -2
     
     def test_steady_no_change(self):
-        """Test steady (±1 hPa) gives 0 adjustment."""
+        """Test steady (±1.6 hPa) gives 0 adjustment."""
         assert _calculate_wmo_trend_adjustment(0.5) == 0
         assert _calculate_wmo_trend_adjustment(0.0) == 0
         assert _calculate_wmo_trend_adjustment(-0.5) == 0
+        assert _calculate_wmo_trend_adjustment(1.0) == 0
+        assert _calculate_wmo_trend_adjustment(-1.5) == 0
     
     def test_steady_fall_moderate_deterioration(self):
-        """Test steady fall (-1 to -3 hPa) gives +2 adjustment."""
-        assert _calculate_wmo_trend_adjustment(-1.5) == +2
+        """Test steady fall (-1.6 to -3 hPa) gives +2 adjustment."""
+        assert _calculate_wmo_trend_adjustment(-1.8) == +2
         assert _calculate_wmo_trend_adjustment(-2.5) == +2
     
     def test_rapid_fall_strong_deterioration(self):

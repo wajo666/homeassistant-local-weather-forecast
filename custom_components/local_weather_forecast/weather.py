@@ -52,9 +52,12 @@ from homeassistant.helpers.entity import DeviceInfo
 from .calculations import (
     calculate_apparent_temperature,
     calculate_dewpoint,
+    calculate_sea_level_pressure,
     calculate_theoretical_max_solar_radiation,
     calculate_uv_index_from_solar_radiation,
     calculate_visibility_from_humidity,
+    get_atmosphere_stability,
+    get_beaufort_number,
     get_comfort_level,
     get_fog_risk,
     get_frost_risk,
@@ -166,7 +169,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.21",
+            sw_version="3.1.22",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -285,9 +288,23 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
     @property
     def native_pressure(self) -> float | None:
-        """Return the pressure (sea-level / QNH)."""
+        """Return the pressure (sea-level / QNH).
+
+        Prefers the value from sensor.local_forecast_pressure (which already has
+        temp smoothing for QFE→QNH). Falls back to direct calculation if unavailable.
+        """
         if not self.hass:
             return None
+
+        # Prefer sensor entity (benefits from temp smoothing and input validation)
+        sensor_state = self.hass.states.get("sensor.local_forecast_pressure")
+        if sensor_state and sensor_state.state not in ("unknown", "unavailable"):
+            try:
+                return float(sensor_state.state)
+            except (ValueError, TypeError):
+                pass
+
+        # Fallback: calculate directly from source sensor
         pressure_sensor = self._get_config(CONF_PRESSURE_SENSOR)
         if pressure_sensor:
             state = self.hass.states.get(pressure_sensor)
@@ -315,13 +332,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         self, pressure: float, temperature: float, elevation: float
     ) -> float:
         """Calculate sea level pressure from station pressure."""
-        if elevation == 0:
-            return pressure
-
-        temp_kelvin = temperature + KELVIN_OFFSET
-        factor = 1 - ((LAPSE_RATE * elevation) / (temp_kelvin + LAPSE_RATE * elevation))
-        p0 = pressure * (factor ** (-GRAVITY_CONSTANT))
-        return p0
+        return calculate_sea_level_pressure(pressure, temperature, elevation)
 
     @property
     def humidity(self) -> float | None:
@@ -1883,66 +1894,16 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
     def _get_beaufort_number(self, wind_speed: float) -> int:
         """Get Beaufort scale number from wind speed (m/s)."""
-        if wind_speed < 0.5:
-            return 0  # Calm
-        elif wind_speed < 1.6:
-            return 1  # Light air
-        elif wind_speed < 3.4:
-            return 2  # Light breeze
-        elif wind_speed < 5.5:
-            return 3  # Gentle breeze
-        elif wind_speed < 8.0:
-            return 4  # Moderate breeze
-        elif wind_speed < 10.8:
-            return 5  # Fresh breeze
-        elif wind_speed < 13.9:
-            return 6  # Strong breeze
-        elif wind_speed < 17.2:
-            return 7  # High wind
-        elif wind_speed < 20.8:
-            return 8  # Gale
-        elif wind_speed < 24.5:
-            return 9  # Strong gale
-        elif wind_speed < 28.5:
-            return 10  # Storm
-        elif wind_speed < 32.7:
-            return 11  # Violent storm
-        else:
-            return 12  # Hurricane
+        return get_beaufort_number(wind_speed)
 
     def _get_beaufort_wind_type(self, wind_speed: float) -> str:
-        """Get wind type description from Beaufort scale in current HA language.
-
-        Args:
-            wind_speed: Wind speed in m/s
-
-        Returns:
-            Wind type description in user's language
-        """
-        beaufort = self._get_beaufort_number(wind_speed)
+        """Get wind type description from Beaufort scale in current HA language."""
+        beaufort = get_beaufort_number(wind_speed)
         return get_wind_type(self.hass, beaufort)
 
     def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
         """Determine atmospheric stability based on wind speed and gust ratio."""
-        if gust_ratio is None:
-            return "unknown"
-
-        # For low wind speeds (< 3 m/s), gust ratio is not reliable indicator
-        if wind_speed < 3.0:
-            if wind_speed < 1.0:
-                return "stable"
-            else:
-                return "moderate"
-
-        # For moderate to strong winds (≥ 3 m/s), use gust ratio
-        if gust_ratio < 1.3:
-            return "stable"
-        elif gust_ratio < 1.6:
-            return "moderate"
-        elif gust_ratio < 2.0:
-            return "unstable"
-        else:
-            return "very_unstable"
+        return get_atmosphere_stability(wind_speed, gust_ratio)
 
     async def async_forecast_daily(self) -> list[Forecast] | None:
         """Return the daily forecast using advanced models."""
@@ -2046,7 +2007,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
                 _LOGGER.debug("☀️ No solar radiation sensor configured")
 
             # Get cloud coverage for temperature model (optional)
-            cloud_cover = None
+            cloud_cover = self.cloud_coverage
 
             # Get humidity for cloud cover estimation (optional)
             humidity = self.humidity
@@ -2231,7 +2192,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
 
 
             # Get cloud coverage for temperature model (optional)
-            cloud_cover = None
+            cloud_cover = self.cloud_coverage
 
             # Get humidity for cloud cover estimation (optional)
             humidity = self.humidity

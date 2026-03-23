@@ -23,6 +23,8 @@ Version: 3.1.12
 import logging
 from typing import Optional
 
+from .const import PRESSURE_TREND_FALLING, PRESSURE_TREND_RISING
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -83,10 +85,10 @@ def _calculate_wmo_trend_adjustment(pressure_change_3h: float) -> int:
     if pressure_change_3h >= 3.0:
         # Rapid rise: Strong improvement
         return -3
-    elif pressure_change_3h >= 1.0:
+    elif pressure_change_3h >= PRESSURE_TREND_RISING:
         # Steady rise: Moderate improvement
         return -2
-    elif pressure_change_3h > -1.0:
+    elif pressure_change_3h > PRESSURE_TREND_FALLING:
         # Steady: No change
         return 0
     elif pressure_change_3h > -3.0:

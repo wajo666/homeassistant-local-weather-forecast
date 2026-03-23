@@ -423,7 +423,7 @@ def test_forecast_realistic_values(mock_datetime):
 
     # Realistic values from a weather station
     p0 = 1015.3
-    pressure_change = -1.2
+    pressure_change = -1.8
     wind_data = [1, 225.0, "SW", 1]
     lang_index = 1
     elevation = 314.0

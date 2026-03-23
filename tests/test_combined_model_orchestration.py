@@ -82,7 +82,7 @@ class TestGenerateEnhancedHourlyForecast:
             "start_time": datetime.now(timezone.utc),
             "temperature": 20.0,
             "pressure": 1020.0,
-            "pressure_change": 1.5,
+            "pressure_change": 1.8,
             "humidity": 65.0,
             "dewpoint": 13.0,
             "condition": "sunny",
@@ -322,7 +322,7 @@ class TestWeatherAwareTemperatureIntegration:
             "temperature": 18.0,
             "temperature_trend": 0.5,
             "pressure": 1025.0,
-            "pressure_change": 1.5,  # Rising - fine weather
+            "pressure_change": 1.8,  # Rising - fine weather
             "humidity": 50.0,
             "dewpoint": 8.0,
             "condition": "sunny",
@@ -379,7 +379,7 @@ class TestWeatherAwareTemperatureIntegration:
     def test_temperature_damping_prevents_extremes(self):
         """Test that temperature trend damping prevents unrealistic extremes."""
         weather_data = {
-            "start_time": datetime.now(timezone.utc),
+            "start_time": datetime.now(timezone.utc).replace(hour=8),  # Morning - diurnal cycle supports warming
             "temperature": 20.0,
             "temperature_trend": 3.0,  # Strong warming trend
             "pressure": 1015.0,

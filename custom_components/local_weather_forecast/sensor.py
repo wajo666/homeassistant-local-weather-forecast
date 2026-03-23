@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -44,6 +45,9 @@ from .const import (
     GRAVITY_CONSTANT,
     KELVIN_OFFSET,
     LAPSE_RATE,
+    PRESSURE_QC_MAX,
+    PRESSURE_QC_MIN,
+    PRESSURE_SPIKE_LIMIT,
     PRESSURE_TREND_FALLING,
     PRESSURE_TREND_RISING,
     PRESSURE_TYPE_RELATIVE,
@@ -60,6 +64,9 @@ from .negretti_zambra import calculate_negretti_zambra_forecast
 from .calculations import (
     calculate_dewpoint,
     calculate_rain_probability_enhanced,
+    calculate_sea_level_pressure,
+    get_atmosphere_stability,
+    get_beaufort_number,
     get_fog_risk,
     get_snow_risk,
     get_frost_risk,
@@ -173,7 +180,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.21",
+            "sw_version": "3.1.22",
         }
 
     async def _wait_for_entity(
@@ -331,6 +338,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         self._attr_icon = "mdi:weather-cloudy"
         self._state = None
         self._attributes = {}
+        self._temp_history: list[tuple[datetime, float]] = []
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -407,7 +415,13 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
             p0 = pressure
         else:
             # Sensor provides station pressure (QFE) - need to convert
-            p0 = self._calculate_sea_level_pressure(pressure or 1013.25, temperature or 15.0, elevation)
+            # Use 1h rolling average temperature to prevent QNH artifacts from rapid temp changes
+            now = datetime.now()
+            self._temp_history.append((now, temperature or 15.0))
+            cutoff = now - timedelta(minutes=60)
+            self._temp_history = [(ts, t) for ts, t in self._temp_history if ts > cutoff]
+            avg_temp = sum(t for _, t in self._temp_history) / len(self._temp_history)
+            p0 = self._calculate_sea_level_pressure(pressure or 1013.25, avg_temp, elevation)
 
         # Calculate wind factors
         wind_data = self._calculate_wind_data(wind_direction or 0.0, wind_speed or 0.0)
@@ -628,13 +642,7 @@ class LocalForecastMainSensor(LocalWeatherForecastEntity):
         self, pressure: float, temperature: float, elevation: float
     ) -> float:
         """Calculate sea level pressure from station pressure."""
-        if elevation == 0:
-            return pressure
-
-        temp_kelvin = temperature + KELVIN_OFFSET
-        factor = 1 - ((LAPSE_RATE * elevation) / (temp_kelvin + LAPSE_RATE * elevation))
-        p0 = pressure * (factor ** (-GRAVITY_CONSTANT))
-        return p0
+        return calculate_sea_level_pressure(pressure, temperature, elevation)
 
     def _calculate_wind_data(
         self, wind_direction: float, wind_speed: float
@@ -938,6 +946,26 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                 pressure = float(new_state.state)
                 timestamp = datetime.now()
 
+                # AWS Quality Control: reject invalid readings
+                if math.isnan(pressure) or math.isinf(pressure):
+                    _LOGGER.debug("PressureChange: Rejected reading (reason: NaN/Inf)")
+                    return
+                if pressure <= 0:
+                    _LOGGER.debug("PressureChange: Rejected reading %.1f hPa (reason: non-positive)", pressure)
+                    return
+                if pressure < PRESSURE_QC_MIN or pressure > PRESSURE_QC_MAX:
+                    _LOGGER.debug(
+                        "PressureChange: Rejected reading %.1f hPa (reason: out of range [%.0f-%.0f])",
+                        pressure, PRESSURE_QC_MIN, PRESSURE_QC_MAX,
+                    )
+                    return
+                if self._history and abs(pressure - self._history[-1][1]) > PRESSURE_SPIKE_LIMIT:
+                    _LOGGER.debug(
+                        "PressureChange: Rejected reading %.1f hPa (reason: spike from previous %.1f)",
+                        pressure, self._history[-1][1],
+                    )
+                    return
+
                 _LOGGER.debug(f"PressureChange: New pressure reading: {pressure} hPa at {timestamp}")
 
                 # Add to history
@@ -964,15 +992,34 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                     self._history = time_filtered
                     _LOGGER.debug(f"PressureChange: Kept {len(self._history)} records within 180-minute window")
 
-                # Calculate change if we have enough data
+                # Calculate pressure change using linear regression (least-squares)
+                # Standard method for professional AWS (WMO Technical Note No. 71)
                 if len(self._history) >= 2:
-                    oldest = self._history[0][1]
-                    newest = self._history[-1][1]
-                    self._state = round(newest - oldest, 2)
-                    time_span = (self._history[-1][0] - self._history[0][0]).total_seconds() / 60
+                    n = len(self._history)
+                    # Convert timestamps to minutes relative to first reading
+                    t0 = self._history[0][0]
+                    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in self._history]
+                    pressures = [p for _, p in self._history]
+
+                    # Calculate means
+                    t_mean = sum(times) / n
+                    p_mean = sum(pressures) / n
+
+                    # Calculate slope using least-squares linear regression
+                    numerator = sum((t - t_mean) * (p - p_mean) for t, p in zip(times, pressures))
+                    denominator = sum((t - t_mean) ** 2 for t in times)
+
+                    if denominator > 0:
+                        slope = numerator / denominator  # hPa per minute
+                        # Extrapolate to 180-minute (3h) change
+                        self._state = round(slope * 180, 2)
+                    else:
+                        self._state = 0.0
+
+                    time_span = times[-1]
                     _LOGGER.debug(
                         f"PressureChange: Calculated change = {self._state} hPa "
-                        f"over {time_span:.1f} minutes ({oldest} → {newest} hPa)"
+                        f"over {time_span:.1f} minutes ({n} points, regression)"
                     )
                     self.async_write_ha_state()
                 else:
@@ -1881,90 +1928,17 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
         return self._attributes
 
     def _get_beaufort_number(self, wind_speed: float) -> int:
-        """Get Beaufort scale number from wind speed (m/s).
-
-        Args:
-            wind_speed: Wind speed in m/s
-
-        Returns:
-            Beaufort number (0-12)
-        """
-        if wind_speed < 0.5:
-            return 0  # Calm
-        elif wind_speed < 1.6:
-            return 1  # Light air
-        elif wind_speed < 3.4:
-            return 2  # Light breeze
-        elif wind_speed < 5.5:
-            return 3  # Gentle breeze
-        elif wind_speed < 8.0:
-            return 4  # Moderate breeze
-        elif wind_speed < 10.8:
-            return 5  # Fresh breeze
-        elif wind_speed < 13.9:
-            return 6  # Strong breeze
-        elif wind_speed < 17.2:
-            return 7  # High wind
-        elif wind_speed < 20.8:
-            return 8  # Gale
-        elif wind_speed < 24.5:
-            return 9  # Strong gale
-        elif wind_speed < 28.5:
-            return 10  # Storm
-        elif wind_speed < 32.7:
-            return 11  # Violent storm
-        else:
-            return 12  # Hurricane
+        """Get Beaufort scale number from wind speed (m/s)."""
+        return get_beaufort_number(wind_speed)
 
     def _get_beaufort_wind_type(self, wind_speed: float) -> str:
-        """Get wind type description from Beaufort scale (multilingual).
-
-        Args:
-            wind_speed: Wind speed in m/s
-
-        Returns:
-            Wind type description based on Home Assistant UI language
-        """
-        beaufort = self._get_beaufort_number(wind_speed)
+        """Get wind type description from Beaufort scale (multilingual)."""
+        beaufort = get_beaufort_number(wind_speed)
         return get_wind_type(self.hass, beaufort)
 
-
     def _get_atmosphere_stability(self, wind_speed: float, gust_ratio: float | None) -> str:
-        """Determine atmospheric stability based on wind speed and gust ratio.
-
-        Args:
-            wind_speed: Wind speed in m/s
-            gust_ratio: Ratio of gust speed to average wind speed
-
-        Returns:
-            Stability description (Slovak/English): "stable", "moderate", "unstable", "very_unstable"
-        """
-        if gust_ratio is None:
-            return "unknown"
-
-        # For low wind speeds (< 3 m/s), gust ratio is not reliable indicator
-        if wind_speed < 3.0:
-            # Use only wind speed for very light conditions
-            if wind_speed < 1.0:
-                return "stable"  # Calm = stable
-            else:
-                return "moderate"  # Light breeze = moderate
-
-        # For moderate to strong winds (≥ 3 m/s), use gust ratio
-        # Meteorologically justified thresholds:
-        # - Ratio 1.0-1.3: Stable (smooth airflow)
-        # - Ratio 1.3-1.6: Moderate (normal turbulence)
-        # - Ratio 1.6-2.0: Unstable (significant turbulence)
-        # - Ratio > 2.0: Very unstable (severe turbulence, convection, storms)
-
-        if gust_ratio < 1.3:
-            return "stable"
-        elif gust_ratio < 1.6:
-            return "moderate"
-        elif gust_ratio < 2.0:
-            return "unstable"
-        else:
-            return "very_unstable"
+        """Determine atmospheric stability based on wind speed and gust ratio."""
+        return get_atmosphere_stability(wind_speed, gust_ratio)
 
     async def async_update(self) -> None:
         """Update the enhanced forecast."""

@@ -17,6 +17,10 @@ from .const import (
     FOG_RISK_LOW,
     FOG_RISK_MEDIUM,
     FOG_RISK_HIGH,
+    GRAVITY_CONSTANT,
+    KELVIN_OFFSET,
+    LAPSE_RATE,
+    PRESSURE_TREND_RISING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -207,7 +211,7 @@ def calculate_future_humidity(
         future_humidity = max(1.0, min(100.0, future_humidity))
         
         # Adiabatic correction for pressure changes (optional, small effect)
-        if abs(pressure_change) > 1.0:
+        if abs(pressure_change) > PRESSURE_TREND_RISING:
             # Rising pressure (compression) → slight moisture reduction
             # Falling pressure (expansion) → slight moisture increase
             # Rule of thumb: ±1% RH per ±10 hPa change
@@ -1272,6 +1276,70 @@ def get_uv_risk_category(uv_index: float) -> str:
         return "Very High"
     else:
         return "Extreme"
+
+
+def calculate_sea_level_pressure(
+    pressure: float, temperature: float, elevation: float
+) -> float:
+    """Calculate sea level pressure from station pressure."""
+    if elevation == 0:
+        return pressure
+
+    temp_kelvin = temperature + KELVIN_OFFSET
+    factor = 1 - ((LAPSE_RATE * elevation) / (temp_kelvin + LAPSE_RATE * elevation))
+    p0 = pressure * (factor ** (-GRAVITY_CONSTANT))
+    return p0
+
+
+def get_beaufort_number(wind_speed: float) -> int:
+    """Get Beaufort scale number from wind speed (m/s)."""
+    if wind_speed < 0.5:
+        return 0  # Calm
+    elif wind_speed < 1.6:
+        return 1  # Light air
+    elif wind_speed < 3.4:
+        return 2  # Light breeze
+    elif wind_speed < 5.5:
+        return 3  # Gentle breeze
+    elif wind_speed < 8.0:
+        return 4  # Moderate breeze
+    elif wind_speed < 10.8:
+        return 5  # Fresh breeze
+    elif wind_speed < 13.9:
+        return 6  # Strong breeze
+    elif wind_speed < 17.2:
+        return 7  # High wind
+    elif wind_speed < 20.8:
+        return 8  # Gale
+    elif wind_speed < 24.5:
+        return 9  # Strong gale
+    elif wind_speed < 28.5:
+        return 10  # Storm
+    elif wind_speed < 32.7:
+        return 11  # Violent storm
+    else:
+        return 12  # Hurricane
+
+
+def get_atmosphere_stability(wind_speed: float, gust_ratio: float | None) -> str:
+    """Determine atmospheric stability based on wind speed and gust ratio."""
+    if gust_ratio is None:
+        return "unknown"
+
+    if wind_speed < 3.0:
+        if wind_speed < 1.0:
+            return "stable"
+        else:
+            return "moderate"
+
+    if gust_ratio < 1.3:
+        return "stable"
+    elif gust_ratio < 1.6:
+        return "moderate"
+    elif gust_ratio < 2.0:
+        return "unstable"
+    else:
+        return "very_unstable"
 
 
 

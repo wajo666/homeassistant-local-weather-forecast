@@ -355,7 +355,7 @@ class TestCalculateZambrettiForecast:
 
         # Typical weather station readings
         p0 = 1015.3  # Normal pressure
-        pressure_change = -1.2  # Slight falling
+        pressure_change = -1.8  # Falling (exceeds -1.6 threshold)
         wind_data = [1, 225.0, "SW", 1]  # Southwest wind with correction
         lang_index = 1  # English
 
@@ -441,7 +441,7 @@ class TestConsistency:
         mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
 
         p0 = 1013.0
-        pressure_change = -1.5
+        pressure_change = -1.8
         wind_data = [1, 180.0, "S", 1]
         lang_index = 1
 
@@ -621,7 +621,7 @@ class TestSeasonalIconMapping:
         mock_datetime.now.return_value = datetime(2025, 1, 15, 12, 0)
 
         p0 = 1030.0  # High pressure
-        pressure_change = 1.5  # Rising
+        pressure_change = 1.8  # Rising (exceeds +1.6 threshold)
         wind_data = [0, 0.0, "N", 0]
         lang_index = 1
 

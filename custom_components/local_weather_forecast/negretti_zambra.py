@@ -8,6 +8,8 @@
 from datetime import datetime
 import logging
 
+from .const import PRESSURE_TREND_FALLING, PRESSURE_TREND_RISING
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,9 +149,9 @@ def calculate_negretti_zambra_forecast(
     current_month = datetime.now().month
     is_summer = 2 < current_month < 11
 
-    if pressure_change <= -1.6:
+    if pressure_change <= PRESSURE_TREND_FALLING:
         trend = -1
-    elif pressure_change >= 1.6:
+    elif pressure_change >= PRESSURE_TREND_RISING:
         trend = 1
     else:
         trend = 0
