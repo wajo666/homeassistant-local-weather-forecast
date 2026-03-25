@@ -33,6 +33,8 @@ def mock_config_entry():
     entry.data = {
         "pressure_sensor": "sensor.test_pressure",
         "temperature_sensor": "sensor.test_temperature",
+        "pressure_type": "absolute",
+        "elevation": 314.0,
     }
     entry.options = {}
     entry.entry_id = "test_entry_id"

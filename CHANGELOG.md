@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.24] - 2026-03-25
+
+### Fixed
+- **False pressure trends at high elevations** - QFE→QNH barometric conversion introduces temperature-dependent artifact (~3.5 hPa/3h at 1200m during morning warming); PressureChangeSensor now tracks source QFE sensor directly when pressure_type=ABSOLUTE, eliminating the artifact (Issue #22)
+
+### Added
+- Unit conversion for source pressure sensor in trend calculation (inHg, kPa, mmHg → hPa)
+
+
 ## [3.1.23] - 2026-03-23
 
 ### Fixed
