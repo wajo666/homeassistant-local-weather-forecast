@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.25] - 2026-03-26
+
+### Fixed
+- **Pressure trend frozen after upgrade to v3.1.24** - restored QNH history (~1021 hPa) caused spike rejection of all QFE readings (~897 hPa) due to 124 hPa gap exceeding spike limit; upgrade guard now detects stale history and clears it to allow fresh QFE tracking
+
+
 ## [3.1.24] - 2026-03-25
 
 ### Fixed

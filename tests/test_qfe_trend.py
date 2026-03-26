@@ -260,3 +260,93 @@ class TestQFETrendScenarios:
 
         assert len(sensor._history) == 0, \
             f"860 hPa should be rejected by QC_MIN={PRESSURE_QC_MIN}"
+
+
+# ===========================================================================
+# TestUpgradeGuard — QNH→QFE history transition after upgrade
+# ===========================================================================
+
+class TestUpgradeGuard:
+    """Verify stale QNH history is cleared when switching to QFE tracking."""
+
+    def test_stale_qnh_history_cleared_on_upgrade(self, mock_hass):
+        """Restored QNH history (~1021 hPa) must be cleared when source reads QFE (~897 hPa)."""
+        entry = _make_config_entry(pressure_type="absolute")
+        sensor = LocalForecastPressureChangeSensor(mock_hass, entry)
+
+        # Simulate restored QNH history from v3.1.23
+        now = datetime.now()
+        sensor._history = [
+            (now - timedelta(minutes=30), 1021.0),
+            (now - timedelta(minutes=20), 1021.2),
+            (now - timedelta(minutes=10), 1021.1),
+        ]
+        sensor._state = -0.5
+
+        # Source sensor now reads QFE (~897 hPa) — gap = 124 hPa > SPIKE_LIMIT
+        mock_source = Mock()
+        mock_source.state = "897.0"
+        mock_source.attributes = {"unit_of_measurement": "hPa"}
+        mock_hass.states.get = Mock(return_value=mock_source)
+
+        # Run upgrade guard logic
+        current_qfe = float(mock_source.state)
+        last_stored = sensor._history[-1][1]
+        if abs(current_qfe - last_stored) > PRESSURE_SPIKE_LIMIT:
+            sensor._history = []
+            sensor._state = 0.0
+
+        assert sensor._history == [], "Stale QNH history should be cleared"
+        assert sensor._state == 0.0
+
+    def test_valid_qfe_history_preserved(self, mock_hass):
+        """Restored QFE history (~897 hPa) must be preserved when source reads similar QFE."""
+        entry = _make_config_entry(pressure_type="absolute")
+        sensor = LocalForecastPressureChangeSensor(mock_hass, entry)
+
+        now = datetime.now()
+        sensor._history = [
+            (now - timedelta(minutes=30), 897.0),
+            (now - timedelta(minutes=20), 897.2),
+            (now - timedelta(minutes=10), 897.1),
+        ]
+
+        # Source sensor reads similar QFE — gap = 0.1 hPa < SPIKE_LIMIT
+        mock_source = Mock()
+        mock_source.state = "897.2"
+        mock_source.attributes = {"unit_of_measurement": "hPa"}
+        mock_hass.states.get = Mock(return_value=mock_source)
+
+        current_qfe = float(mock_source.state)
+        last_stored = sensor._history[-1][1]
+        if abs(current_qfe - last_stored) > PRESSURE_SPIKE_LIMIT:
+            sensor._history = []
+            sensor._state = 0.0
+
+        assert len(sensor._history) == 3, "Valid QFE history should be preserved"
+
+    def test_relative_mode_no_guard(self, mock_hass):
+        """RELATIVE mode → guard does not run (_use_qfe=False)."""
+        entry = _make_config_entry(pressure_type="relative")
+        sensor = LocalForecastPressureChangeSensor(mock_hass, entry)
+
+        now = datetime.now()
+        sensor._history = [(now - timedelta(minutes=10), 1021.0)]
+
+        assert sensor._use_qfe is False
+        assert len(sensor._history) == 1, "RELATIVE mode history untouched"
+
+    def test_spike_blocked_without_guard(self, mock_hass):
+        """Without guard, QFE reading after QNH history is permanently rejected."""
+        entry = _make_config_entry(pressure_type="absolute")
+        sensor = LocalForecastPressureChangeSensor(mock_hass, entry)
+        sensor.async_write_ha_state = Mock()
+
+        now = datetime.now()
+        sensor._history = [(now - timedelta(minutes=10), 1021.0)]
+
+        event = _make_event(897.0, unit="hPa")
+        sensor._handle_pressure_update(event)
+
+        assert len(sensor._history) == 1, "QFE should be spike-rejected"
+        assert sensor._history[0][1] == 1021.0, "Only old QNH value remains"

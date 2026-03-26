@@ -184,7 +184,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.24",
+            "sw_version": "3.1.25",
         }
 
     async def _wait_for_entity(
@@ -941,6 +941,29 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                         )
             except (ValueError, TypeError):
                 pass
+
+        # Upgrade guard: restored history may contain QNH values (~1021 hPa)
+        # while sensor now tracks QFE (~897 hPa). The 124 hPa gap would trigger
+        # spike rejection on every new reading, permanently blocking updates.
+        if self._use_qfe and self._history:
+            source_state = self.hass.states.get(self._source_sensor_id)
+            if source_state and source_state.state not in ("unknown", "unavailable"):
+                try:
+                    current_qfe = float(source_state.state)
+                    unit = source_state.attributes.get("unit_of_measurement")
+                    if unit and unit != UnitOfPressure.HPA:
+                        current_qfe = UnitConverter.convert_pressure(current_qfe, unit)
+                    last_stored = self._history[-1][1]
+                    if abs(current_qfe - last_stored) > PRESSURE_SPIKE_LIMIT:
+                        _LOGGER.info(
+                            "PressureChange: Clearing restored history — stored values ~%.1f hPa "
+                            "but source sensor reads %.1f hPa (QNH→QFE transition after upgrade)",
+                            last_stored, current_qfe,
+                        )
+                        self._history = []
+                        self._state = 0.0
+                except (ValueError, TypeError):
+                    pass
 
         # Track pressure sensor — source QFE when ABSOLUTE, internal QNH when RELATIVE
         self.async_on_remove(
