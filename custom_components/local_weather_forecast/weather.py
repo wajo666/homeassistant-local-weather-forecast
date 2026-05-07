@@ -103,10 +103,13 @@ from .const import (
     FOG_HUMIDITY_MIST,
     FOG_WIND_CALM,
     FOG_WIND_LIGHT,
+    HAIL_GUST_MIN,
     HAIL_GUST_RATIO_MIN,
     HAIL_HUMIDITY_MIN,
+    HAIL_PRESSURE_MAX,
     HAIL_TEMP_MAX,
     HAIL_TEMP_MIN,
+    LIGHTNING_PRESSURE_MAX,
     PRECIP_MIXED_HUMIDITY,
     PRECIP_MIXED_TEMP_MAX,
     PRECIP_MIXED_TEMP_MIN,
@@ -170,7 +173,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.25",
+            sw_version="3.1.26",
         )
         self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
         self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
@@ -680,6 +683,7 @@ class LocalWeatherForecastWeather(WeatherEntity):
         cache['humidity'] = self.humidity
         cache['dewpoint'] = self.native_dew_point
         cache['wind_speed'] = self.native_wind_speed
+        cache['wind_gust'] = self.native_wind_gust_speed
         
         return cache
 
@@ -738,19 +742,28 @@ class LocalWeatherForecastWeather(WeatherEntity):
         if enhanced_sensor and enhanced_sensor.state not in ("unknown", "unavailable"):
             gust_ratio = enhanced_sensor.attributes.get("gust_ratio")
 
+        # Wind gust from dedicated sensor (via cache)
+        wind_gust = cache['wind_gust']
+
         # Set internal flag if atmospheric conditions favor hail
-        if temp is not None and humidity is not None and gust_ratio is not None:
+        # ALL values must be non-None — if any sensor is missing, flag stays False
+        if (pressure is not None and temp is not None and humidity is not None
+                and gust_ratio is not None and wind_gust is not None):
             self._hail_conditions_present = (
+                pressure < HAIL_PRESSURE_MAX and
                 HAIL_TEMP_MIN <= temp <= HAIL_TEMP_MAX and
                 humidity > HAIL_HUMIDITY_MIN and
-                gust_ratio > HAIL_GUST_RATIO_MIN
+                gust_ratio > HAIL_GUST_RATIO_MIN and
+                wind_gust >= HAIL_GUST_MIN
             )
 
             if self._hail_conditions_present:
                 _LOGGER.debug(
                     f"Weather: ⚠️ HAIL-FAVORABLE conditions detected! "
+                    f"Pressure={pressure:.1f} hPa (<{HAIL_PRESSURE_MAX}), "
                     f"Temp={temp:.1f}°C (convective zone), Humidity={humidity:.0f}% (high), "
-                    f"Gust ratio={gust_ratio:.2f} (very unstable). "
+                    f"Gust ratio={gust_ratio:.2f} (very unstable), "
+                    f"Wind gust={wind_gust:.1f} m/s (>={HAIL_GUST_MIN}). "
                     f"Will return HAIL if active precipitation is detected."
                 )
         else:
@@ -936,17 +949,34 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                 # Note: Other transition zone cases already returned SNOW (temp ≤1°C, dry)
                                 #       or MIXED (temp 1-3°C or temp 3-4°C with humidity ≤85%)
 
-                                # ✅ NEW v3.1.10: Check for HAIL before returning rain/pouring
-                                # Hail occurs during severe thunderstorms with:
-                                # - Active precipitation (already confirmed above)
-                                # - Convective temperature (15-30°C)
-                                # - High humidity (>80%)
-                                # - Very unstable atmosphere (gust_ratio >2.5)
+                                # ✅ NEW v3.1.10: Check for LIGHTNING-RAINY and HAIL before returning rain/pouring
+                                # Uses pressure-gated logic (Groenemeijer & van Delden 2007, ESSL ESWD):
+                                # 1. P < 980 hPa (deep cyclone) + rain → lightning-rainy (or hail if conditions met)
+                                # 2. P 980-1000 hPa + hail conditions → hail
+                                # 3. P >= 1000 hPa → normal rain/pouring (no hail/lightning possible)
+                                pressure = _cache['pressure']
+
+                                # SEVERE STORM: Deep cyclone + active rain
+                                if pressure is not None and pressure < LIGHTNING_PRESSURE_MAX:
+                                    if hasattr(self, '_hail_conditions_present') and self._hail_conditions_present:
+                                        _LOGGER.debug(
+                                            f"🧊 HAIL DETECTED! Deep cyclone P={pressure:.1f} hPa + "
+                                            f"hail-favorable conditions. Returning HAIL."
+                                        )
+                                        return ATTR_CONDITION_HAIL
+                                    else:
+                                        _LOGGER.debug(
+                                            f"⛈️ LIGHTNING-RAINY DETECTED! Deep cyclone P={pressure:.1f} hPa "
+                                            f"(<{LIGHTNING_PRESSURE_MAX}) + active rain. "
+                                            f"Returning LIGHTNING-RAINY."
+                                        )
+                                        return ATTR_CONDITION_LIGHTNING_RAINY
+
+                                # HAIL: Moderate low pressure + all hail conditions
                                 if hasattr(self, '_hail_conditions_present') and self._hail_conditions_present:
                                     _LOGGER.debug(
-                                        f"🧊 HAIL DETECTED! Active precipitation + hail-favorable atmospheric conditions. "
-                                        f"Temp={temp:.1f}°C (convective), Humidity={current_humidity:.0f}% (high), "
-                                        f"Gust ratio >2.5 (very unstable). Returning HAIL condition."
+                                        f"🧊 HAIL DETECTED! Active precipitation + hail-favorable conditions. "
+                                        f"Pressure={pressure} hPa, Temp={temp:.1f}°C. Returning HAIL."
                                     )
                                     return ATTR_CONDITION_HAIL
 

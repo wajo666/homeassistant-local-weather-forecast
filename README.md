@@ -119,10 +119,9 @@ The integration uses a **6-phase intelligent decision system** to determine curr
 #### 🔴 PHASE 1: Hard Overrides (Definitive Detection)
 
 **Priority 0: Exceptional Weather** ⚠️
-- Pressure < 920 hPa → `exceptional` (Hurricane)
-- Pressure > 1070 hPa → `exceptional` (Extreme high)  
-- Rapid change > 10 hPa/3h → `exceptional` (Bomb cyclone)
-- Storm conditions + 15-30°C + RH>80% + unstable → `hail`
+- Pressure < 950 hPa → `exceptional` (Hurricane)
+- Pressure > 1050 hPa → `exceptional` (Extreme high)  
+- Rapid change > 24 hPa/3h → `exceptional` (Bomb cyclone)
 
 **Priority 1: Rain Sensor** 🌧️
 - Active precipitation detected → Immediate classification
@@ -131,9 +130,13 @@ The integration uses a **6-phase intelligent decision system** to determine curr
   - Cold+Dry (≤1°C, RH<85%) → `snowy`
   - Warm+Humid (≥3°C, RH>85%) → `rainy`
   - Otherwise → `snowy-rainy`
-- Temp > 4°C:
+- Temp > 4°C (liquid precipitation):
+  - P < 980 hPa + hail conditions → `hail`
+  - P < 980 hPa → `lightning-rainy`
+  - P 980–1000 hPa + hail conditions → `hail`
   - Rate >7.5 mm/h → `pouring`
   - Otherwise → `rainy`
+- Hail conditions: 18–35°C + RH>65% + gust_ratio>2.0 + gust≥15 m/s + P<1000 hPa
 
 **Priority 2: Fog Detection** 🌫️
 - Critical (always): Spread <0.5°C + RH>95%

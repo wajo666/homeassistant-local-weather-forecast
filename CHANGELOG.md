@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.26] - 2026-05-07
+
+### Fixed
+- **False hail triggering** - added pressure gate (<1000 hPa), minimum gust speed (≥15 m/s), and science-based thresholds (temp 18–35°C, humidity >65%, gust ratio >2.0); hail no longer fires during anticyclone or light wind
+- **`lightning-rainy` never shown with rain sensor active** - active precipitation + deep cyclone (P<980 hPa) now correctly returns `lightning-rainy` instead of falling through to `rainy`/`pouring`
+
+
 ## [3.1.25] - 2026-03-26
 
 ### Fixed

@@ -135,11 +135,16 @@ PRESSURE_HURRICANE_THRESHOLD: Final = 950.0  # hPa - Hurricane-force low pressur
 PRESSURE_EXTREME_HIGH_THRESHOLD: Final = 1050.0  # hPa - Extreme anticyclone
 PRESSURE_BOMB_CYCLONE_CHANGE: Final = 24.0  # hPa/3h - Rapid pressure drop (bomb cyclone)
 
-# Hail detection thresholds
-HAIL_TEMP_MIN: Final = 10.0  # °C - Minimum temperature for hail
-HAIL_TEMP_MAX: Final = 25.0  # °C - Maximum temperature for hail
-HAIL_HUMIDITY_MIN: Final = 60.0  # % - Minimum humidity for hail
-HAIL_GUST_RATIO_MIN: Final = 1.5  # ratio - Minimum gust/wind ratio for hail
+# Hail detection thresholds (Brooks et al. 2003, Allen & Karoly 2014, ESSL, Bradbury et al. 1994)
+HAIL_PRESSURE_MAX: Final = 1000.0  # hPa - Organized convective forcing (ESSL: >80% sig. hail below this)
+HAIL_TEMP_MIN: Final = 18.0  # °C - Min CAPE proxy (Brooks et al. 2003, Allen & Karoly 2014)
+HAIL_TEMP_MAX: Final = 35.0  # °C - Max before freezing level too high (NOAA "Florida effect")
+HAIL_HUMIDITY_MIN: Final = 65.0  # % - Surface moisture for thunderstorm (SPC: Td>13°C equivalent)
+HAIL_GUST_RATIO_MIN: Final = 2.0  # ratio - Severe convective outflow (Bradbury et al. 1994)
+HAIL_GUST_MIN: Final = 15.0  # m/s - Min gust speed to prevent false ratio at light wind (WMO severe)
+
+# Lightning-rainy detection threshold (Groenemeijer & van Delden 2007)
+LIGHTNING_PRESSURE_MAX: Final = 980.0  # hPa - Deep cyclone, embedded thunderstorms
 
 # Fog detection thresholds (WMO compliant)
 FOG_DEWPOINT_CRITICAL: Final = 0.5  # °C - Dense fog (vis <400m)

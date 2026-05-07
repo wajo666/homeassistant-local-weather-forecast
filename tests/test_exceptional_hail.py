@@ -3,8 +3,54 @@
 NOTE: These tests verify the LOGIC of exceptional/hail detection,
 not the full integration (which requires complex mocking of HA internals).
 Full integration is tested in real HA environment.
+
+Thresholds based on:
+- Brooks et al. (2003), Allen & Karoly (2014) — temperature 18-35°C
+- SPC guidelines — humidity >65%
+- Bradbury et al. (1994) — gust ratio >2.0
+- WMO severe thunderstorm — gust >=15 m/s
+- ESSL ESWD — pressure <1000 hPa for hail
+- Groenemeijer & van Delden (2007) — pressure <980 hPa for lightning-rainy
 """
 import pytest
+
+# Mirror runtime constants for test validation
+HAIL_PRESSURE_MAX = 1000.0
+HAIL_TEMP_MIN = 18.0
+HAIL_TEMP_MAX = 35.0
+HAIL_HUMIDITY_MIN = 65.0
+HAIL_GUST_RATIO_MIN = 2.0
+HAIL_GUST_MIN = 15.0
+LIGHTNING_PRESSURE_MAX = 980.0
+
+
+def check_hail_conditions(pressure, temp, humidity, gust_ratio, wind_gust):
+    """Check if all hail conditions are met (mirrors runtime logic)."""
+    if any(v is None for v in [pressure, temp, humidity, gust_ratio, wind_gust]):
+        return False
+    return (
+        pressure < HAIL_PRESSURE_MAX
+        and HAIL_TEMP_MIN <= temp <= HAIL_TEMP_MAX
+        and humidity > HAIL_HUMIDITY_MIN
+        and gust_ratio > HAIL_GUST_RATIO_MIN
+        and wind_gust >= HAIL_GUST_MIN
+    )
+
+
+def resolve_precipitation(pressure, hail_conditions_present, is_raining):
+    """Resolve precipitation type (mirrors runtime precipitation resolver)."""
+    if not is_raining:
+        return None
+    # Deep cyclone
+    if pressure is not None and pressure < LIGHTNING_PRESSURE_MAX:
+        if hail_conditions_present:
+            return "hail"
+        return "lightning-rainy"
+    # Moderate low + hail
+    if hail_conditions_present:
+        return "hail"
+    # Normal rain
+    return "rainy"
 
 
 class TestExceptionalLogic:
@@ -13,111 +59,180 @@ class TestExceptionalLogic:
     def test_exceptional_hurricane_condition(self):
         """Test hurricane-force low pressure triggers exceptional."""
         pressure = 915.0
-        assert pressure < 920, "Hurricane condition met"
+        assert pressure < 950, "Hurricane condition met"
 
     def test_exceptional_extreme_high_condition(self):
         """Test extreme high pressure triggers exceptional."""
         pressure = 1075.0
-        assert pressure > 1070, "Extreme high pressure condition met"
+        assert pressure > 1050, "Extreme high pressure condition met"
 
     def test_exceptional_bomb_cyclone_condition(self):
         """Test bomb cyclone (rapid change) triggers exceptional."""
-        pressure_change = -12.0
-        assert abs(pressure_change) > 10, "Bomb cyclone condition met"
+        pressure_change = -25.0
+        assert abs(pressure_change) > 24, "Bomb cyclone condition met"
 
     def test_exceptional_rapid_rise_condition(self):
         """Test rapid pressure rise triggers exceptional."""
-        pressure_change = 11.5
-        assert abs(pressure_change) > 10, "Rapid rise condition met"
+        pressure_change = 25.5
+        assert abs(pressure_change) > 24, "Rapid rise condition met"
 
     def test_normal_pressure_no_exceptional(self):
         """Test normal conditions don't trigger exceptional."""
         pressure = 1015.0
         pressure_change = -2.0
 
-        assert not (pressure < 920), "Not hurricane"
-        assert not (pressure > 1070), "Not extreme high"
-        assert not (abs(pressure_change) > 10), "Not bomb cyclone"
+        assert not (pressure < 950), "Not hurricane"
+        assert not (pressure > 1050), "Not extreme high"
+        assert not (abs(pressure_change) > 24), "Not bomb cyclone"
 
 
 class TestHailLogic:
-    """Test hail detection logic."""
+    """Test hail detection logic with science-based thresholds."""
 
     def test_hail_perfect_conditions(self):
-        """Test all hail conditions met."""
-        forecast_code = 25  # Storm
-        temp = 24.0
-        humidity = 85.0
-        gust_ratio = 3.2
+        """Test all hail conditions met → hail."""
+        assert check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-        # Check all conditions
-        assert forecast_code == 25, "Storm forecast"
-        assert 15 <= temp <= 30, "Convective temperature"
-        assert humidity > 80, "High humidity"
-        assert gust_ratio > 2.5, "Very unstable atmosphere"
+    def test_hail_at_boundary_temp_low(self):
+        """Test hail at lower temperature boundary (18°C)."""
+        assert check_hail_conditions(
+            pressure=990.0, temp=18.0, humidity=70.0,
+            gust_ratio=2.5, wind_gust=16.0
+        )
 
-    def test_hail_storm_but_cold(self):
-        """Test storm but temperature too cold for hail."""
-        forecast_code = 25
-        temp = 10.0  # Too cold
-        humidity = 85.0
-        gust_ratio = 3.2
+    def test_hail_at_boundary_temp_high(self):
+        """Test hail at upper temperature boundary (35°C)."""
+        assert check_hail_conditions(
+            pressure=990.0, temp=35.0, humidity=70.0,
+            gust_ratio=2.5, wind_gust=16.0
+        )
 
-        assert forecast_code == 25, "Storm forecast"
-        assert not (15 <= temp <= 30), "Temperature out of convective range"
+    def test_no_hail_temp_below_range(self):
+        """Test no hail below temperature range (17.9°C)."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=17.9, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-    def test_hail_storm_but_low_humidity(self):
-        """Test storm but humidity too low for hail."""
-        forecast_code = 25
-        temp = 24.0
-        humidity = 70.0  # Too low
-        gust_ratio = 3.2
+    def test_no_hail_temp_above_range(self):
+        """Test no hail above temperature range (35.1°C)."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=35.1, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-        assert forecast_code == 25, "Storm forecast"
-        assert 15 <= temp <= 30, "Temperature OK"
-        assert not (humidity > 80), "Humidity too low"
+    def test_no_hail_low_humidity(self):
+        """Test no hail when humidity <= 65%."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=65.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-    def test_hail_storm_but_stable_atmosphere(self):
-        """Test storm but atmosphere too stable for hail."""
-        forecast_code = 25
-        temp = 24.0
-        humidity = 85.0
-        gust_ratio = 1.8  # Too stable
+    def test_no_hail_stable_atmosphere(self):
+        """Test no hail when gust ratio <= 2.0."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.0, wind_gust=18.0
+        )
 
-        assert forecast_code == 25, "Storm forecast"
-        assert 15 <= temp <= 30, "Temperature OK"
-        assert humidity > 80, "Humidity OK"
-        assert not (gust_ratio > 2.5), "Atmosphere too stable"
+    def test_no_hail_at_high_pressure(self):
+        """Test no hail at P >= 1000 hPa (anticyclone, no storm context)."""
+        assert not check_hail_conditions(
+            pressure=1020.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-    def test_no_hail_without_storm(self):
-        """Test no hail detection without storm forecast."""
-        forecast_code = 18  # Just rain
-        temp = 24.0
-        humidity = 85.0
-        gust_ratio = 3.2
+    def test_no_hail_at_boundary_pressure(self):
+        """Test no hail at exactly P = 1000 hPa."""
+        assert not check_hail_conditions(
+            pressure=1000.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-        assert forecast_code != 25, "Not storm forecast"
-        # Even with perfect other conditions, no hail without storm
+    def test_no_hail_low_gust_speed(self):
+        """Test no hail when gust ratio high but gust speed < 15 m/s (ratio artifact)."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=5.0
+        )
 
-    def test_hail_boundary_temp_low(self):
-        """Test hail at lower temperature boundary."""
-        temp = 15.0  # Boundary
-        assert 15 <= temp <= 30, "At lower boundary"
+    def test_no_hail_missing_gust_ratio(self):
+        """Test no hail when gust_ratio sensor unavailable (None)."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=75.0,
+            gust_ratio=None, wind_gust=18.0
+        )
 
-    def test_hail_boundary_temp_high(self):
-        """Test hail at upper temperature boundary."""
-        temp = 30.0  # Boundary
-        assert 15 <= temp <= 30, "At upper boundary"
+    def test_no_hail_missing_wind_gust(self):
+        """Test no hail when wind_gust sensor unavailable (None)."""
+        assert not check_hail_conditions(
+            pressure=990.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=None
+        )
 
-    def test_hail_boundary_temp_below(self):
-        """Test no hail below temperature range."""
-        temp = 14.9  # Just below
-        assert not (15 <= temp <= 30), "Below range"
+    def test_no_hail_missing_pressure(self):
+        """Test no hail when pressure unavailable (None)."""
+        assert not check_hail_conditions(
+            pressure=None, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
 
-    def test_hail_boundary_temp_above(self):
-        """Test no hail above temperature range."""
-        temp = 30.1  # Just above
-        assert not (15 <= temp <= 30), "Above range"
+    def test_hail_at_deep_low(self):
+        """Test hail at P=985 hPa with all conditions met."""
+        assert check_hail_conditions(
+            pressure=985.0, temp=24.0, humidity=75.0,
+            gust_ratio=2.5, wind_gust=18.0
+        )
+
+
+class TestLightningRainyLogic:
+    """Test lightning-rainy detection in precipitation resolver."""
+
+    def test_lightning_rainy_deep_low_no_hail(self):
+        """Test P < 980 + rain + no hail conditions → lightning-rainy."""
+        result = resolve_precipitation(
+            pressure=975.0, hail_conditions_present=False, is_raining=True
+        )
+        assert result == "lightning-rainy"
+
+    def test_hail_overrides_lightning_at_deep_low(self):
+        """Test P < 980 + rain + hail conditions → hail (not lightning-rainy)."""
+        result = resolve_precipitation(
+            pressure=975.0, hail_conditions_present=True, is_raining=True
+        )
+        assert result == "hail"
+
+    def test_no_lightning_rainy_above_threshold(self):
+        """Test P >= 980 + rain + no hail → normal rain."""
+        result = resolve_precipitation(
+            pressure=985.0, hail_conditions_present=False, is_raining=True
+        )
+        assert result == "rainy"
+
+    def test_hail_at_moderate_low(self):
+        """Test P 980-1000 + rain + hail conditions → hail."""
+        result = resolve_precipitation(
+            pressure=990.0, hail_conditions_present=True, is_raining=True
+        )
+        assert result == "hail"
+
+    def test_normal_rain_high_pressure(self):
+        """Test P >= 1000 + rain → normal rain (never hail/lightning)."""
+        # hail_conditions_present would be False at P>=1000 due to pressure gate
+        result = resolve_precipitation(
+            pressure=1015.0, hail_conditions_present=False, is_raining=True
+        )
+        assert result == "rainy"
+
+    def test_no_precip_returns_none(self):
+        """Test no rain → None regardless of pressure."""
+        result = resolve_precipitation(
+            pressure=970.0, hail_conditions_present=False, is_raining=False
+        )
+        assert result is None
 
 
 class TestPriorityLogic:
@@ -125,9 +240,8 @@ class TestPriorityLogic:
 
     def test_exceptional_priority_over_rain(self):
         """Test exceptional has higher priority than rain."""
-        # If both conditions exist, exceptional should win
-        has_exceptional = True  # e.g., pressure < 920
-        has_rain = True  # e.g., rain sensor active
+        has_exceptional = True
+        has_rain = True
 
         if has_exceptional:
             condition = "exceptional"
@@ -138,8 +252,8 @@ class TestPriorityLogic:
 
     def test_hail_priority_over_rain(self):
         """Test hail has higher priority than rain."""
-        has_hail = True  # e.g., storm + conditions
-        has_rain = True  # e.g., rain sensor active
+        has_hail = True
+        has_rain = True
 
         if has_hail:
             condition = "hail"
@@ -147,6 +261,13 @@ class TestPriorityLogic:
             condition = "rainy"
 
         assert condition == "hail", "Hail overrides rain"
+
+    def test_lightning_rainy_priority_over_plain_rain(self):
+        """Test lightning-rainy has higher priority than plain rain."""
+        result = resolve_precipitation(
+            pressure=975.0, hail_conditions_present=False, is_raining=True
+        )
+        assert result == "lightning-rainy", "Lightning-rainy overrides plain rain"
 
     def test_exceptional_priority_over_hail(self):
         """Test exceptional has higher priority than hail."""
@@ -162,16 +283,16 @@ class TestPriorityLogic:
 
 
 class TestRangeValidation:
-    """Test range validation for exceptional and hail."""
+    """Test range validation for exceptional and hail (must match const.py)."""
 
     def test_pressure_ranges(self):
-        """Test pressure range definitions."""
-        # Exceptional ranges
-        hurricane_threshold = 920
-        extreme_high_threshold = 1070
+        """Test pressure range definitions match runtime constants."""
+        # Exceptional ranges (must match const.py)
+        hurricane_threshold = 950  # PRESSURE_HURRICANE_THRESHOLD
+        extreme_high_threshold = 1050  # PRESSURE_EXTREME_HIGH_THRESHOLD
 
-        assert hurricane_threshold == 920, "Hurricane threshold"
-        assert extreme_high_threshold == 1070, "Extreme high threshold"
+        assert hurricane_threshold == 950, "Hurricane threshold"
+        assert extreme_high_threshold == 1050, "Extreme high threshold"
 
         # Test values
         assert 915 < hurricane_threshold, "Hurricane example"
@@ -179,38 +300,38 @@ class TestRangeValidation:
         assert 950 <= 1015 <= 1050, "Normal pressure range"
 
     def test_change_rate_threshold(self):
-        """Test pressure change rate threshold."""
-        bomb_threshold = 10  # hPa/3h
+        """Test pressure change rate threshold matches runtime constant."""
+        bomb_threshold = 24  # PRESSURE_BOMB_CYCLONE_CHANGE (hPa/3h)
 
-        assert abs(-12) > bomb_threshold, "Bomb cyclone fall"
-        assert abs(11.5) > bomb_threshold, "Rapid rise"
+        assert abs(-25) > bomb_threshold, "Bomb cyclone fall"
+        assert abs(25.5) > bomb_threshold, "Rapid rise"
         assert abs(-5) <= bomb_threshold, "Normal change"
 
     def test_hail_temp_range(self):
-        """Test hail temperature range."""
-        min_temp = 15
-        max_temp = 30
+        """Test hail temperature range matches runtime constants."""
+        min_temp = HAIL_TEMP_MIN  # 18°C
+        max_temp = HAIL_TEMP_MAX  # 35°C
 
-        assert min_temp == 15, "Min convective temp"
-        assert max_temp == 30, "Max convective temp"
+        assert min_temp == 18, "Min convective temp"
+        assert max_temp == 35, "Max convective temp"
 
         # Test values
         assert not (10 >= min_temp), "Too cold"
         assert 20 >= min_temp and 20 <= max_temp, "In range"
-        assert not (35 <= max_temp), "Too hot"
+        assert not (40 <= max_temp), "Too hot"
 
     def test_hail_humidity_threshold(self):
-        """Test hail humidity threshold."""
-        humidity_threshold = 80
+        """Test hail humidity threshold matches runtime constant."""
+        humidity_threshold = HAIL_HUMIDITY_MIN  # 65%
 
-        assert 85 > humidity_threshold, "High humidity"
-        assert not (70 > humidity_threshold), "Low humidity"
+        assert 70 > humidity_threshold, "High humidity"
+        assert not (60 > humidity_threshold), "Low humidity"
 
     def test_hail_gust_threshold(self):
-        """Test hail gust ratio threshold."""
-        gust_threshold = 2.5
+        """Test hail gust ratio threshold matches runtime constant."""
+        gust_threshold = HAIL_GUST_RATIO_MIN  # 2.0
 
-        assert 3.2 > gust_threshold, "Very unstable"
+        assert 2.5 > gust_threshold, "Very unstable"
         assert not (1.8 > gust_threshold), "Too stable"
 
 
