@@ -321,3 +321,34 @@ def get_frost_risk_text(hass: HomeAssistant, frost_risk: str) -> str:
     result = FROST_RISK_LEVELS["none"][lang_index]
     _LOGGER.debug(f"Frost risk text fallback for invalid '{frost_risk}': {result}")
     return result
+
+
+def get_convective_risk_text(hass: HomeAssistant, convective_risk: str) -> str:
+    """Get convective storm risk level text in user's language.
+
+    Args:
+        hass: Home Assistant instance
+        convective_risk: Convective risk level (none, low, high)
+
+    Returns:
+        Convective risk text in user's language
+    """
+    lang_index = get_language_index(hass)
+
+    # Convective risk level translations
+    # Format: [German, English, Greek, Italian, Slovak]
+    CONVECTIVE_RISK_LEVELS = {
+        "none": ("Kein Gewitterrisiko", "No storm risk", "Χωρίς κίνδυνο καταιγίδας", "Nessun rischio temporale", "Žiadne riziko búrky"),
+        "low": ("Gewitter möglich", "Thunderstorm possible", "Πιθανή καταιγίδα", "Temporale possibile", "Búrka možná"),
+        "high": ("Gewitter wahrscheinlich", "Thunderstorm likely", "Πιθανολογείται καταιγίδα", "Temporale probabile", "Búrka pravdepodobná"),
+    }
+
+    if convective_risk in CONVECTIVE_RISK_LEVELS:
+        result = CONVECTIVE_RISK_LEVELS[convective_risk][lang_index]
+        _LOGGER.debug(f"Convective risk text for '{convective_risk}': {result}")
+        return result
+
+    # Fallback to none
+    result = CONVECTIVE_RISK_LEVELS["none"][lang_index]
+    _LOGGER.debug(f"Convective risk text fallback for invalid '{convective_risk}': {result}")
+    return result

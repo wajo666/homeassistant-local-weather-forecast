@@ -136,7 +136,7 @@ PRESSURE_EXTREME_HIGH_THRESHOLD: Final = 1050.0  # hPa - Extreme anticyclone
 PRESSURE_BOMB_CYCLONE_CHANGE: Final = 24.0  # hPa/3h - Rapid pressure drop (bomb cyclone)
 
 # Hail detection thresholds (Brooks et al. 2003, Allen & Karoly 2014, ESSL, Bradbury et al. 1994)
-HAIL_PRESSURE_MAX: Final = 1000.0  # hPa - Organized convective forcing (ESSL: >80% sig. hail below this)
+HAIL_PRESSURE_MAX: Final = 1015.0  # hPa - Thunderstorm with hail (ESSL: significant hail <1000, general hail up to 1015 hPa)
 HAIL_TEMP_MIN: Final = 18.0  # °C - Min CAPE proxy (Brooks et al. 2003, Allen & Karoly 2014)
 HAIL_TEMP_MAX: Final = 35.0  # °C - Max before freezing level too high (NOAA "Florida effect")
 HAIL_HUMIDITY_MIN: Final = 65.0  # % - Surface moisture for thunderstorm (SPC: Td>13°C equivalent)
@@ -234,6 +234,11 @@ FROST_RISK_LOW: Final = "low"
 FROST_RISK_MEDIUM: Final = "medium"
 FROST_RISK_HIGH: Final = "high"
 FROST_RISK_CRITICAL: Final = "critical"
+
+# Convective risk levels
+CONVECTIVE_RISK_NONE: Final = "none"
+CONVECTIVE_RISK_LOW: Final = "low"    # Thunderstorm possible
+CONVECTIVE_RISK_HIGH: Final = "high"  # Thunderstorm likely
 
 # Trend states
 TREND_IMPROVING: Final = "improving"

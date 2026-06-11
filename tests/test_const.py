@@ -28,6 +28,9 @@ from custom_components.local_weather_forecast.const import (
     FROST_RISK_LOW,
     FROST_RISK_MEDIUM,
     FROST_RISK_NONE,
+    CONVECTIVE_RISK_NONE,
+    CONVECTIVE_RISK_LOW,
+    CONVECTIVE_RISK_HIGH,
     GRAVITY_CONSTANT,
     KELVIN_OFFSET,
     LANGUAGE_INDEX,
@@ -192,6 +195,17 @@ class TestRiskLevelConstants:
             FROST_RISK_HIGH, FROST_RISK_CRITICAL
         }
         assert len(frost_levels) == 5
+
+    def test_convective_risk_levels(self):
+        """Test convective risk levels are defined."""
+        assert CONVECTIVE_RISK_NONE == "none"
+        assert CONVECTIVE_RISK_LOW == "low"
+        assert CONVECTIVE_RISK_HIGH == "high"
+
+    def test_convective_risk_has_three_levels(self):
+        """Test that convective risk has exactly 3 levels."""
+        convective_levels = {CONVECTIVE_RISK_NONE, CONVECTIVE_RISK_LOW, CONVECTIVE_RISK_HIGH}
+        assert len(convective_levels) == 3
 
 
 class TestComfortLevelConstants:

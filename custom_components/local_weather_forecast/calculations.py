@@ -1103,6 +1103,95 @@ def get_frost_risk(
     return FROST_RISK_NONE
 
 
+def get_convective_risk(
+    temperature: float,
+    humidity: float,
+    pressure: float,
+    hour: int,
+    dewpoint: Optional[float] = None
+) -> str:
+    """
+    Calculate convective thunderstorm risk from temperature, humidity, pressure and hour.
+
+    Convective (local) storms are NOT detected by barometric models — they form from
+    thermal instability and moisture, often with RISING pressure (mesohigh outflow).
+    This function provides a complementary risk signal for the Enhanced sensor.
+
+    Conditions required (all must be met):
+    - Convective hours: 10–23 (solar heating needed)
+    - Temperature >= 18°C (surface heating for CAPE)
+    - Pressure 1005–1022 hPa (not anticyclone, not synoptic low)
+    - Dewpoint >= 10°C (sufficient moisture)
+
+    Risk levels:
+    - HIGH: T>=22°C, Td>=14°C, RH>=65%, hour 12–21
+    - LOW:  T>=18°C, Td>=10°C, RH>=55%
+    - NONE: conditions not met
+
+    Args:
+        temperature: Temperature in °C
+        humidity: Relative humidity in %
+        pressure: Sea-level pressure in hPa
+        hour: Current hour (0–23)
+        dewpoint: Dew point in °C (calculated from humidity if None)
+
+    Returns:
+        Convective risk level: 'none', 'low', or 'high'
+    """
+    from .const import CONVECTIVE_RISK_NONE, CONVECTIVE_RISK_LOW, CONVECTIVE_RISK_HIGH
+
+    # Calculate dewpoint if not provided: Magnus approximation
+    if dewpoint is None:
+        dewpoint = temperature - ((100.0 - humidity) / 5.0)
+
+    # Guard: convective heating only during daytime hours
+    if not (10 <= hour <= 23):
+        _LOGGER.debug(f"ConvectiveRisk: none - hour={hour} (outside 10-23)")
+        return CONVECTIVE_RISK_NONE
+
+    # Guard: minimum temperature for convective available potential energy
+    if temperature < 18.0:
+        _LOGGER.debug(f"ConvectiveRisk: none - T={temperature:.1f}°C (<18°C)")
+        return CONVECTIVE_RISK_NONE
+
+    # Guard: anticyclone suppresses convection
+    if pressure > 1022.0:
+        _LOGGER.debug(f"ConvectiveRisk: none - P={pressure:.1f} hPa (anticyclone >1022)")
+        return CONVECTIVE_RISK_NONE
+
+    # Guard: synoptic low — different mechanism, not local convection
+    if pressure < 1005.0:
+        _LOGGER.debug(f"ConvectiveRisk: none - P={pressure:.1f} hPa (synoptic low <1005)")
+        return CONVECTIVE_RISK_NONE
+
+    # Guard: insufficient moisture
+    if dewpoint < 10.0:
+        _LOGGER.debug(f"ConvectiveRisk: none - Td={dewpoint:.1f}°C (<10°C, dry air)")
+        return CONVECTIVE_RISK_NONE
+
+    # HIGH risk: warm, moist, peak convective hours
+    if temperature >= 22.0 and dewpoint >= 14.0 and humidity >= 65.0 and (12 <= hour <= 21):
+        _LOGGER.debug(
+            f"ConvectiveRisk: HIGH - T={temperature:.1f}°C, Td={dewpoint:.1f}°C, "
+            f"RH={humidity:.1f}%, P={pressure:.1f} hPa, h={hour}"
+        )
+        return CONVECTIVE_RISK_HIGH
+
+    # LOW risk: warm and moist enough for possible convection
+    if temperature >= 18.0 and dewpoint >= 10.0 and humidity >= 55.0:
+        _LOGGER.debug(
+            f"ConvectiveRisk: LOW - T={temperature:.1f}°C, Td={dewpoint:.1f}°C, "
+            f"RH={humidity:.1f}%, P={pressure:.1f} hPa, h={hour}"
+        )
+        return CONVECTIVE_RISK_LOW
+
+    _LOGGER.debug(
+        f"ConvectiveRisk: none - conditions not met "
+        f"(T={temperature:.1f}°C, Td={dewpoint:.1f}°C, RH={humidity:.1f}%, P={pressure:.1f} hPa)"
+    )
+    return CONVECTIVE_RISK_NONE
+
+
 def get_uv_protection_level(uv_index: float) -> str:
     """
     Get sun protection recommendation based on UV Index.

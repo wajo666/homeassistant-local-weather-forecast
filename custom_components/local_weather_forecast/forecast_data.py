@@ -118,5 +118,7 @@ ADJUSTMENT_TEMPLATES = {
     "low_fog_risk": ("Niedriges Nebelrisiko (Spread {value}°C)", "Low fog risk (spread {value}°C)", "Χαμηλός κίνδυνος ομίχλης (διαφορά {value}°C)", "Basso rischio nebbia (differenza {value}°C)", "Nízke riziko hmly (spread {value}°C)"),
     "very_unstable": ("Sehr instabile Atmosphäre (Böenverhältnis {value})", "Very unstable atmosphere (gust ratio {value})", "Πολύ ασταθής ατμόσφαιρα (αναλογία ριπών {value})", "Atmosfera molto instabile (rapporto raffiche {value})", "Veľmi nestabilná atmosféra (gust ratio {value})"),
     "unstable": ("Instabile Atmosphäre (Böenverhältnis {value})", "Unstable atmosphere (gust ratio {value})", "Ασταθής ατμόσφαιρα (αναλογία ριπών {value})", "Atmosfera instabile (rapporto raffiche {value})", "Nestabilná atmosféra (gust ratio {value})"),
+    "convective_risk_low": ("Gewitter möglich (Td={value}°C)", "Thunderstorm possible (Td={value}°C)", "Πιθανή καταιγίδα (Td={value}°C)", "Temporale possibile (Td={value}°C)", "Búrka možná (Td={value}°C)"),
+    "convective_risk_high": ("Gewitter wahrscheinlich (Td={value}°C)", "Thunderstorm likely (Td={value}°C)", "Πιθανολογείται καταιγίδα (Td={value}°C)", "Temporale probabile (Td={value}°C)", "Búrka pravdepodobná (Td={value}°C)"),
 }
 

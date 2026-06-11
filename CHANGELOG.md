@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [3.1.27] - 2026-06-11
+
+### Added
+- **Convective storm risk detection** — new `convective_risk` adjustment in Enhanced sensor; detects local thunderstorm conditions (T≥18°C, Td≥10°C, RH≥55%, pressure 1005–1022 hPa, hours 10–23) without requiring a wind sensor; shows "Thunderstorm possible/likely" in all 5 languages (DE/EN/GR/IT/SK)
+- **Weather entity shows `lightning-rainy` for convective storms** — when convective risk is HIGH and rain is active, weather entity now returns `lightning-rainy` (consistent with met.no/PirateWeather); complements barometric detection for local heat-driven thunderstorms at normal pressure (1005–1022 hPa)
+- **Rain sensor setup guide in README** — new section documenting sensor types, supported `device_class` values, and template sensor examples for Netatmo (Option B) and generic accumulation sensors (Option C trigger-based)
+
+### Fixed
+- **3-hour pressure change uses WMO SYNOP standard** — replaced linear regression with simple difference P(now)−P(oldest in 3h window); matches industry standard (Garmin, SYNOP group 5appp); more responsive to rapid pressure changes
+- **Hail detection blocked at typical summer pressures** — `HAIL_PRESSURE_MAX` raised from 1000 to 1015 hPa; existing guards (gust≥15 m/s, gust_ratio>2.0, RH>65%, active rain) prevent false positives
+- **`pouring` never detected for accumulation sensors** — rain detection now branches on `device_class`: `precipitation_intensity` (mm/h, in/h) → full support (rainy + pouring); `precipitation` (mm/in accumulation, e.g. Netatmo raw, Ecowitt) → basic support (rainy only); pouring for accumulation sensors requires a mm/h template sensor (see README)
+
+### Changed
+- **Rain sensor config UI label** updated from "Precipitation Detection Sensor (5-min increments)" to "Precipitation Rate Sensor (mm/h or in/h)" across all 5 languages — the old label was Netatmo-specific and misleading
+- **Rain sensor config UI description** updated in all 5 languages (EN, SK, DE, IT, GR) to clearly explain `precipitation_intensity` vs `precipitation` support levels and link to README for template examples
+- **Dead code removed from `weather.py`** — `_last_rain_time`, `_last_rain_value`, `_last_rain_check_time` instance variables were initialized but never meaningfully used; removed along with the misleading first-run log message "detected as ACCUMULATION sensor"
+
+
 ## [3.1.26] - 2026-05-07
 
 ### Fixed

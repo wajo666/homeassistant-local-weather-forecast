@@ -74,6 +74,7 @@ from .calculations import (
     get_fog_risk,
     get_snow_risk,
     get_frost_risk,
+    get_convective_risk,
 )
 from .language import (
     get_language_index,
@@ -83,6 +84,7 @@ from .language import (
     get_fog_risk_text,
     get_snow_risk_text,
     get_frost_risk_text,
+    get_convective_risk_text,
 )
 from .combined_model import (
     calculate_combined_forecast,
@@ -184,7 +186,7 @@ class LocalWeatherForecastEntity(RestoreEntity, SensorEntity):
             "name": "Local Weather Forecast",
             "manufacturer": "Local Weather Forecast",
             "model": "Zambretti Forecaster",
-            "sw_version": "3.1.26",
+            "sw_version": "3.1.27",
         }
 
     async def _wait_for_entity(
@@ -1066,31 +1068,15 @@ class LocalForecastPressureChangeSensor(LocalWeatherForecastEntity):
                     calc_data = self._history
 
                 if len(calc_data) >= 2:
-                    n = len(calc_data)
-                    # Convert timestamps to minutes relative to first reading
-                    t0 = calc_data[0][0]
-                    times = [(ts - t0).total_seconds() / 60.0 for ts, _ in calc_data]
-                    pressures = [p for _, p in calc_data]
+                    # WMO SYNOP group 5appp: P(now) - P(oldest in 3h window)
+                    oldest = calc_data[0][1]
+                    newest = calc_data[-1][1]
+                    self._state = round(newest - oldest, 2)
 
-                    # Calculate means
-                    t_mean = sum(times) / n
-                    p_mean = sum(pressures) / n
-
-                    # Calculate slope using least-squares linear regression
-                    numerator = sum((t - t_mean) * (p - p_mean) for t, p in zip(times, pressures))
-                    denominator = sum((t - t_mean) ** 2 for t in times)
-
-                    if denominator > 0:
-                        slope = numerator / denominator  # hPa per minute
-                        # Extrapolate to 180-minute (3h) change
-                        self._state = round(slope * 180, 2)
-                    else:
-                        self._state = 0.0
-
-                    time_span = times[-1]
+                    time_span = (calc_data[-1][0] - calc_data[0][0]).total_seconds() / 60.0
                     _LOGGER.debug(
                         f"PressureChange: Calculated change = {self._state} hPa "
-                        f"over {time_span:.1f} minutes ({n}/{len(self._history)} points, regression)"
+                        f"over {time_span:.1f} minutes ({len(calc_data)}/{len(self._history)} points, WMO simple diff)"
                     )
                     self.async_write_ha_state()
                 else:
@@ -2356,6 +2342,28 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
                 f"wind_speed={wind_speed:.1f} m/s)"
             )
 
+        # Get convective storm risk (búrka)
+        convective_risk = "none"
+        current_pressure = None
+        pressure_sensor_id = self.config_entry.options.get(CONF_PRESSURE_SENSOR) or self.config_entry.data.get(CONF_PRESSURE_SENSOR)
+        if pressure_sensor_id:
+            pressure_sensor = self.hass.states.get("sensor.local_forecast_pressure")
+            if pressure_sensor and pressure_sensor.state not in ("unknown", "unavailable"):
+                try:
+                    current_pressure = float(pressure_sensor.state)
+                except (ValueError, TypeError):
+                    pass
+        if temp is not None and humidity is not None and current_pressure is not None:
+            from datetime import datetime as _dt
+            current_hour = _dt.now().hour
+            convective_risk = get_convective_risk(temp, humidity, current_pressure, current_hour, dewpoint)
+            if convective_risk != "none":
+                risk_key = f"convective_risk_{convective_risk}"
+                dewpoint_str = f"{dewpoint:.1f}" if dewpoint is not None else "?"
+                adjustments.append(risk_key)
+                adjustment_details.append(get_adjustment_text(self.hass, risk_key, dewpoint_str))
+                _LOGGER.debug(f"Enhanced: Convective risk={convective_risk} (Td={dewpoint_str}°C)")
+
         self._state = enhanced_text
         _LOGGER.debug(f"Enhanced: Setting state to: {enhanced_text}")
 
@@ -2379,10 +2387,12 @@ class LocalForecastEnhancedSensor(LocalWeatherForecastEntity):
             "fog_risk": fog_risk,  # "none", "low", "medium", "high", "critical"
             "snow_risk": snow_risk,  # "none", "low", "medium", "high"
             "frost_risk": frost_risk,  # "none", "low", "medium", "high", "critical"
+            "convective_risk": convective_risk,  # "none", "low", "high"
             # Translated values for UI display
             "fog_risk_text": get_fog_risk_text(self.hass, fog_risk),
             "snow_risk_text": get_snow_risk_text(self.hass, snow_risk),
             "frost_risk_text": get_frost_risk_text(self.hass, frost_risk),
+            "convective_risk_text": get_convective_risk_text(self.hass, convective_risk),
             "wind_speed": round(wind_speed, 2) if wind_speed is not None else None,
             "wind_gust": round(wind_gust, 2) if wind_gust is not None else None,
             "gust_ratio": round(gust_ratio, 2) if gust_ratio is not None else None,
@@ -2661,7 +2671,7 @@ class LocalForecastRainProbabilitySensor(LocalWeatherForecastEntity):
             _LOGGER.debug("RainProb: No rain rate sensor configured!")
 
         # If currently raining, override probability to HIGH
-        if current_rain > 0.01:  # More than 0.01 mm/h = active precipitation (lowered from 0.1)
+        if current_rain > 0.01:  # More than 0.01 mm = active precipitation (works for both mm and mm/h sensors)
             _LOGGER.debug(
                 f"RainProb: Active precipitation detected ({current_rain:.3f} mm/h), "
                 f"overriding probability from {probability}% to 95%"

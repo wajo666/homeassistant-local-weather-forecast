@@ -17,7 +17,7 @@ WMO Pressure Trend Classifications:
 - Steady fall (-1 to -3 hPa/3h): Gradual deterioration
 - Rapid fall (<-3 hPa/3h): Storm approaching
 
-Version: 3.1.12
+Version: 3.1.27
 """
 
 import logging

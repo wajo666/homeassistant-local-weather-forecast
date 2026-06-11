@@ -742,6 +742,36 @@ cards:
           entity: sensor.local_forecast_enhanced
   
   # ========================================================================
+  # BÚRKA A KONVEKTÍVNE RIZIKO
+  # ========================================================================
+  - type: markdown
+    content: |
+      ### ⛈️ Búrka a konvektívne riziko
+
+  - type: custom:mushroom-template-card
+    primary: |
+      {% set risk = state_attr("sensor.local_forecast_enhanced", "convective_risk") | lower %}
+      {% if risk == "high" %}⚡ Búrka pravdepodobná
+      {% elif risk == "low" %}⛈️ Búrka možná
+      {% else %}✅ Žiadne riziko búrky{% endif %}
+    secondary: |
+      {% set td = state_attr("sensor.local_forecast_enhanced", "dew_point") %}
+      {% set rh = state_attr("sensor.local_forecast_enhanced", "humidity") %}
+      {% set text = state_attr("sensor.local_forecast_enhanced", "convective_risk_text") %}
+      {{ text }} | Td: {{ td }}°C | RH: {{ rh }}%
+    icon: mdi:weather-lightning
+    icon_color: |
+      {% set risk = state_attr("sensor.local_forecast_enhanced", "convective_risk") | lower %}
+      {% if risk == "high" %}red
+      {% elif risk == "low" %}orange
+      {% else %}green{% endif %}
+    layout: vertical
+    multiline_secondary: true
+    tap_action:
+      action: more-info
+      entity: sensor.local_forecast_enhanced
+
+  # ========================================================================
   # PREDPOVEĎ NA 6H A 12H (ZAMBRETTI DETAIL)
   # ========================================================================
   - type: markdown
@@ -957,6 +987,21 @@ entities:
     type: attribute
     attribute: frost_risk
     name: Frost Risk
+  - entity: sensor.local_forecast_enhanced
+    type: attribute
+    attribute: frost_risk_text
+    name: Frost Warning
+
+  - type: section
+    label: ⛈️ Convective Storm Risk
+  - entity: sensor.local_forecast_enhanced
+    type: attribute
+    attribute: convective_risk
+    name: Convective Risk
+  - entity: sensor.local_forecast_enhanced
+    type: attribute
+    attribute: convective_risk_text
+    name: Storm Warning
   
   # Precipitation Forecast
   - type: section
@@ -1254,10 +1299,12 @@ cards:
   - `fog_risk` - "none", "low", "medium", "high", "critical"
   - `snow_risk` - "none", "low", "medium", "high"
   - `frost_risk` - "none", "low", "medium", "high", "critical"
+  - `convective_risk` - "none", "low", "high"
 - **Risk Attributes (Translated for UI):**
   - `fog_risk_text` - e.g., "Žiadne riziko hmly", "KRITICKÉ riziko hmly"
   - `snow_risk_text` - e.g., "Žiadne riziko snehu", "Vysoké riziko snehu"
   - `frost_risk_text` - e.g., "Žiadne riziko námrazy", "Vysoké riziko námrazy"
+  - `convective_risk_text` - e.g., "Žiadne riziko búrky", "Búrka pravdepodobná"
 - `visibility_estimate`
 - `rain_probability`, `rain_confidence` - Precipitation probability (covers both rain and snow)
 - `forecast_zambretti`, `zambretti_number`
@@ -1265,7 +1312,7 @@ cards:
 - `forecast_short_term`, `forecast_confidence`
 - `forecast_adjustments`, `forecast_adjustment_details`
 
-**💡 Tip:** Use RAW values (`fog_risk`, `snow_risk`, `frost_risk`) in templates for comparisons. Use `_text` versions for direct display.
+**💡 Tip:** Use RAW values (`fog_risk`, `snow_risk`, `frost_risk`, `convective_risk`) in templates for comparisons. Use `_text` versions for direct display.
 
 ---
 

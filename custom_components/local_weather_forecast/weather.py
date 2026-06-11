@@ -62,6 +62,7 @@ from .calculations import (
     get_fog_risk,
     get_frost_risk,
     get_snow_risk,
+    get_convective_risk,
 )
 from .const import (
     CONF_ELEVATION,
@@ -104,6 +105,7 @@ from .const import (
     FOG_WIND_CALM,
     FOG_WIND_LIGHT,
     HAIL_GUST_MIN,
+    CONVECTIVE_RISK_HIGH,
     HAIL_GUST_RATIO_MIN,
     HAIL_HUMIDITY_MIN,
     HAIL_PRESSURE_MAX,
@@ -173,11 +175,8 @@ class LocalWeatherForecastWeather(WeatherEntity):
             name="Local Weather Forecast",
             manufacturer="Local Weather Forecast",
             model="Zambretti/Negretti-Zambra",
-            sw_version="3.1.26",
+            sw_version="3.1.27",
         )
-        self._last_rain_time = None  # Track when it last rained (for 15-min timeout)
-        self._last_rain_value = None  # Track last rain sensor value (for accumulation sensors)
-        self._last_rain_check_time = None  # Track when we last checked (for rate calculation)
         self._hail_conditions_present = False  # Track if atmospheric conditions favor hail (v3.1.10)
         self._theoretical_max_solar = None  # Cache calculated theoretical max (for solar_radiation_enhanced.yaml)
 
@@ -793,13 +792,12 @@ class LocalWeatherForecastWeather(WeatherEntity):
             if exceptional:
                 return exceptional
 
-            # PRIORITY 1: Check if currently raining (Netatmo INCREMENT sensor detection)
+            # PRIORITY 1: Check if currently raining
             rain_rate_sensor_id = self._get_config(CONF_RAIN_RATE_SENSOR)
             if rain_rate_sensor_id:
                 rain_sensor = _cache['rain_rate']  # Use cached value
                 if rain_sensor and rain_sensor.state not in ("unknown", "unavailable", None):
                     try:
-                        from datetime import datetime
                         current_rain = float(rain_sensor.state)
                         # QC: validate rain rate
                         validated = self._validate_sensor_value(current_rain, "precipitation", rain_rate_sensor_id)
@@ -807,47 +805,36 @@ class LocalWeatherForecastWeather(WeatherEntity):
                             current_rain = 0.0
                         else:
                             current_rain = validated
-                        now = datetime.now()
 
-                        # Detect sensor type by device_class and unit_of_measurement
+                        # Detect sensor type by device_class
                         attrs = rain_sensor.attributes or {}
                         device_class = attrs.get("device_class", "")
                         unit = attrs.get("unit_of_measurement", "")
 
-                        # Log sensor detection on first run
-                        if self._last_rain_value is None and self._last_rain_time is None:
-                            _LOGGER.debug(
-                                f"Weather: Rain sensor detected as ACCUMULATION sensor (mm): "
-                                f"entity={rain_rate_sensor_id}, "
-                                f"device_class={device_class}, "
-                                f"unit={unit}, "
-                                f"current_value={current_rain}"
-                            )
+                        _LOGGER.debug(
+                            f"Weather: Rain sensor: entity={rain_rate_sensor_id}, "
+                            f"device_class={device_class}, unit={unit}, value={current_rain}"
+                        )
 
-                        is_raining_now = False
-
-                        # For Netatmo ACCUMULATION sensors (device_class=precipitation, unit=mm):
-                        # - Value > 0 means it rained recently (last 5 minutes)
-                        # - Value resets to 0 when no rain detected for ~5 minutes
-                        if device_class == "precipitation" and unit == "mm":
-                            if current_rain > 0:
-                                # Netatmo shows last increment (0.101, 0.202, etc.)
-                                is_raining_now = True
-                                _LOGGER.debug(
-                                    f"Weather: Netatmo rain detected: {current_rain} mm → RAINING"
-                                )
-                            else:
-                                # No rain detected (sensor = 0)
-                                _LOGGER.debug(f"Weather: No rain detected (sensor = {current_rain} mm)")
-                        else:
-                            # For other rain sensors (mm/h rate sensors)
-                            if current_rain > 0.1:
-                                is_raining_now = True
+                        # precipitation_intensity (mm/h or in/h) — full support: rainy + pouring
+                        # everything else (mm/in accumulation, unknown) — basic: rainy only
+                        if device_class == "precipitation_intensity":
+                            # Rate sensor: mm/h or in/h (auto-converted by UnitConverter)
+                            is_raining_now = current_rain > 0.1
+                            is_pouring_capable = True
+                            if is_raining_now:
                                 _LOGGER.debug(f"Weather: Rain rate sensor: {current_rain} mm/h → RAINING")
-
-                        # Update last value and time for next check
-                        self._last_rain_value = current_rain
-                        self._last_rain_check_time = now
+                        else:
+                            # Accumulation sensor (mm/in) or unknown — value > 0 means raining
+                            # Pouring not available: cannot determine rate without known interval
+                            # For pouring support: create a mm/h template sensor (see README)
+                            is_raining_now = current_rain > 0
+                            is_pouring_capable = False
+                            if is_raining_now:
+                                _LOGGER.debug(
+                                    f"Weather: Accumulation sensor: {current_rain} {unit} → RAINING "
+                                    f"(pouring not available for device_class='{device_class}', see README)"
+                                )
 
                         # If precipitation is detected, check temperature to determine if it's rain or snow
                         if is_raining_now:
@@ -980,16 +967,33 @@ class LocalWeatherForecastWeather(WeatherEntity):
                                     )
                                     return ATTR_CONDITION_HAIL
 
-                                # RAIN or POURING - Liquid precipitation
-                                # Detect intensity based on sensor value (works for both mm and mm/h)
-                                # WMO: > 7.5 mm/h = heavy rain (pouring)
-                                # Note: Some sensors report mm but are actually mm/h (Netatmo misconfiguration)
+                                # CONVECTIVE LIGHTNING-RAINY: Local thunderstorm + active rain
+                                # Complements barometric models — detects heat/moisture-driven storms
+                                # that occur at normal pressure (1005-1022 hPa) with stable/rising trend
+                                if temp is not None and humidity is not None and pressure is not None:
+                                    from datetime import datetime as _convective_dt
+                                    _conv_risk = get_convective_risk(
+                                        temp, humidity, pressure,
+                                        _convective_dt.now().hour,
+                                        dewpoint
+                                    )
+                                    if _conv_risk == CONVECTIVE_RISK_HIGH:
+                                        _LOGGER.debug(
+                                            f"⛈️ CONVECTIVE LIGHTNING-RAINY! Local thunderstorm conditions: "
+                                            f"T={temp:.1f}°C, RH={humidity:.0f}%, P={pressure:.1f} hPa, "
+                                            f"Td={dewpoint:.1f}°C. Returning LIGHTNING-RAINY."
+                                        )
+                                        return ATTR_CONDITION_LIGHTNING_RAINY
 
-                                # Check for high intensity regardless of unit
-                                is_pouring = False
-                                if current_rain > PRECIP_POURING_THRESHOLD:
-                                    # High precipitation rate → POURING
-                                    is_pouring = True
+                                # RAIN or POURING - Liquid precipitation
+                                # WMO: > 7.5 mm/h = heavy rain (pouring)
+                                # Pouring only available for precipitation_intensity sensors (mm/h, in/h)
+                                # Accumulation sensors (mm/in) report per-interval totals, not rate → rainy only
+
+                                is_pouring = (
+                                    is_pouring_capable
+                                    and current_rain > PRECIP_POURING_THRESHOLD  # 7.5 mm/h
+                                )
 
                                 if is_pouring:
                                     # POURING - Heavy convective rain

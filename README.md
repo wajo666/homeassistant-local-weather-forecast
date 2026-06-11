@@ -54,14 +54,103 @@ Get accurate 3-day weather forecasts using only your local sensors. No cloud ser
 | **Pressure** | hPa, mbar, inHg, mmHg, kPa, psi | 1013 hPa, 29.92 inHg |
 | **Temperature** | °C, °F, K | 20°C, 68°F |
 | **Wind Speed** | m/s, km/h, mph, knots | 10 m/s, 36 km/h |
-| **Rain Rate** | mm/h, in/h | 2.5 mm/h, 0.1 in/h |
+| **Rain Rate** | mm/h, in/h, mm, in | 2.5 mm/h, 0.1 in/h, 0.303 mm |
 | **Solar Radiation** | W/m², lux | 850 W/m², 50000 lux |
 
-💡 **Don't worry about units!** The integration automatically converts everything (including lux → W/m²).
+💡 **Don't worry about units!** The integration automatically converts everything (including lux → W/m², in/h → mm/h).
 
 ---
 
-## 🎯 How It Works - Simple Explanation
+## 🌧️ Rain Sensor — Setup Guide
+
+### Supported Sensor Types
+
+| `device_class` | Units | `rainy` | `pouring` | Examples |
+|----------------|-------|---------|-----------|---------|
+| `precipitation_intensity` | mm/h, in/h | ✅ | ✅ | Ecowitt `rain_rate`, Froggit, WS80/WS90 native rate |
+| `precipitation` | mm, in | ✅ | ❌ | Netatmo raw, generic accumulation sensor |
+
+> ⚠️ **If your station only provides accumulation sensors (mm/in) and you want `pouring` detection, you must create a template sensor that outputs mm/h.** See examples below.
+
+---
+
+### Option A — Native rate sensor (recommended)
+
+If your station provides a `rain_rate` or similar sensor with `device_class: precipitation_intensity` and unit `mm/h` or `in/h`, use it directly — no template needed:
+
+```yaml
+# In Local Weather Forecast config:
+rain_rate_sensor: sensor.your_rain_rate_sensor
+```
+
+---
+
+### Option B — Netatmo (instant + rolling hourly)
+
+Netatmo exposes three rain sensors, none of which are native mm/h. The best approach combines the instant sensor (gate: is it raining *right now?*) with the rolling hourly sensor (rate: how much per hour?):
+
+```yaml
+# configuration.yaml — template sensor
+template:
+  - sensor:
+      - name: "Netatmo Rain Rate"
+        unique_id: netatmo_rain_rate
+        unit_of_measurement: "mm/h"
+        device_class: precipitation_intensity
+        state_class: measurement
+        state: >
+          {% set instant = states('sensor.indoor_smart_rain_gauge_zrazky') | float(0) %}
+          {% set hourly  = states('sensor.indoor_smart_rain_gauge_zrazky_za_poslednu_hodinu') | float(0) %}
+          {% if instant > 0 %}
+            {{ hourly | round(2) }}
+          {% else %}
+            0.0
+          {% endif %}
+```
+
+> **Why this works:** The hourly rolling sensor is a true 60-minute sliding window calculated server-side by Netatmo — it equals mm/h directly. The instant sensor gates the output so the value drops to 0 immediately when rain stops (the hourly sensor would lag by up to 60 minutes on its own).
+
+---
+
+### Option C — Generic accumulation sensor only (trigger-based)
+
+If you only have a single mm accumulation sensor (no hourly equivalent), use a trigger-based template to calculate mm/h dynamically from the update interval:
+
+```yaml
+# configuration.yaml — trigger-based template sensor
+template:
+  - trigger:
+      - trigger: state
+        entity_id: sensor.your_rain_mm_sensor
+        not_to: ["unknown", "unavailable"]
+    sensor:
+      - name: "Rain Rate Calculated"
+        unique_id: rain_rate_calculated
+        unit_of_measurement: "mm/h"
+        device_class: precipitation_intensity
+        state_class: measurement
+        state: >
+          {% set mm = trigger.to_state.state | float(0) %}
+          {% if mm <= 0 %}
+            0.0
+          {% else %}
+            {% set elapsed_s = (
+                trigger.to_state.last_changed -
+                trigger.from_state.last_changed
+              ).total_seconds() %}
+            {% if 30 < elapsed_s < 1800 %}
+              {{ (mm / (elapsed_s / 3600)) | round(2) }}
+            {% else %}
+              {{ (mm * 6) | round(2) }}
+            {% endif %}
+          {% endif %}
+```
+
+> **How it works:** Uses `last_changed` timestamps to calculate the actual measurement interval dynamically (works for 5-min, 6-min, 10-min — any interval). Falls back to a 10-minute assumption if the interval is outside a valid range (e.g. after a long dry period).
+
+---
+
+
 
 ### 🌡️ Weather Detection Priority System
 
@@ -133,10 +222,15 @@ The integration uses a **6-phase intelligent decision system** to determine curr
 - Temp > 4°C (liquid precipitation):
   - P < 980 hPa + hail conditions → `hail`
   - P < 980 hPa → `lightning-rainy`
-  - P 980–1000 hPa + hail conditions → `hail`
-  - Rate >7.5 mm/h → `pouring`
+  - P 980–1015 hPa + hail conditions → `hail`
+  - Convective HIGH risk (T≥22°C, Td≥14°C, RH≥65%, P 1005–1022 hPa) → `lightning-rainy`
+  - Rate >7.5 mm/h → `pouring` *(only with `precipitation_intensity` sensor)*
   - Otherwise → `rainy`
-- Hail conditions: 18–35°C + RH>65% + gust_ratio>2.0 + gust≥15 m/s + P<1000 hPa
+- Hail conditions: 18–35°C + RH>65% + gust_ratio>2.0 + gust≥15 m/s + P<1015 hPa
+
+> ⚠️ **Pouring detection requires `device_class: precipitation_intensity` (mm/h or in/h).**
+> Accumulation sensors (`device_class: precipitation`, mm/in) detect rainy only.
+> See [Rain Sensor Setup Guide](#-rain-sensor--setup-guide) below.
 
 **Priority 2: Fog Detection** 🌫️
 - Critical (always): Spread <0.5°C + RH>95%
@@ -398,7 +492,7 @@ Go to **Settings** → **Integrations** → **Local Weather Forecast** → **Con
 | Entity | Description |
 |--------|-------------|
 | `sensor.local_forecast` | Base forecast text with all attributes |
-| `sensor.local_forecast_enhanced` | Enhanced forecast with fog/snow/frost detection |
+| `sensor.local_forecast_enhanced` | Enhanced forecast with fog/snow/frost/storm detection |
 | `sensor.local_forecast_rain_probability` | Precipitation probability (0-100%) with dynamic icon (rain/snow) |
 | `weather.local_weather_forecast_weather` | Weather entity (for weather cards) |
 
